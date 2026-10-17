@@ -1,127 +1,133 @@
-# A7C II 2.01 FL2／FL3 移植研究與安裝說明
+# A7C II 2.01 FL2/FL3 Port: Research and Installation Guide
 
-記錄在 Sony **ILCE-7CM2（A7C II）、韌體 2.01** 上，移植 FL2／FL3 照片創意外觀的實作、實機結果，以及不使用 AI 的安裝方式。
+English | [繁體中文](./README.zh-TW.md)
 
-**目前是單台機身基本功能通過的實驗預覽版，不能稱為全面穩定版。這份預覽工具也不是 Sony 官方記憶卡韌體更新包。**
+This repository documents an experimental port of the FL2 and FL3 still-photo Creative Looks to the **Sony ILCE-7CM2 (A7C II), firmware 2.01**. It covers the implementation, the observed results on one camera, and installation without an AI assistant.
 
-更新日期：2026-10-17。
+**This is an experimental preview with basic functionality confirmed on one camera. It is not a fully validated stable release or an official Sony memory-card firmware update.**
 
-## 目前確認到哪一步
+Updated: October 17, 2026.
 
-| 項目 | 目前證據 |
+## Current validation status
+
+| Item | Evidence so far |
 |---|---|
-| 目標機身及版本 | 一台 ILCE-7CM2；機身顯示2.01，讀回的 AP／CP 與固定的官方2.01程式雜湊一致 |
-| 程式安裝 | AP與CP已寫入固定窗口，保留檔案長度及inode；完成fsync與相機端完整SHA-256核對 |
-| 獨立程式讀回 | 兩個完整程式檔再次經USB讀回，與候選檔一致 |
-| 原生參數 | 使用該機身自己的備份合併新記錄；完成原生寫入、讀回、保存及儲存讀回 |
-| FL2／FL3選單 | 使用者確認：正常關機、取出電池約10秒再裝回後，兩個外觀出現 |
-| 基本拍攝／回放 | 使用者確認FL2、FL3、原有ST都能拍攝新照片並在相機回放 |
-| 新整理的可攜安裝流程 | 離線保護測試及模擬流程通過，尚未在第二台相機實測 |
+| Camera and version | One ILCE-7CM2 displaying version 2.01; complete AP/CP readbacks matched the pinned official 2.01 program hashes |
+| Program installation | Fixed AP/CP regions written in place, preserving file lengths and inodes; fsync and complete on-camera SHA-256 verification completed |
+| Independent program readback | Both complete program files read back over USB and matched the candidates |
+| Native parameters | New records merged into this camera's own backup; native writes, readbacks, saves, and storage readbacks completed |
+| FL2/FL3 menu | The user confirmed that both looks appeared after normal shutdown, removal of the battery for about 10 seconds, and power-on |
+| Basic photography and playback | The user confirmed that FL2, FL3, and the existing ST look could each capture new photos and play them back on the camera |
+| Packaged portable installer | Offline guard tests and simulated workflows passed; this reorganized portable workflow has not been tested on a second camera |
 
-「使用者確認拍攝正常」不是對全部照片格式、設定組合、MakerNote或色彩準確度的獨立量測。以下項目仍未完成：
+User-reported successful photography is not an independent measurement of every image format, setting combination, MakerNote field, or color characteristic. The following remain unvalidated:
 
-- 長時間使用、不同機身／地區版本與第二台機身驗證。
-- RAW、JPEG、HEIF、連拍、錄影及其他設定組合的完整回歸測試。
-- 新照片的所有標籤、重設值與預設標記的完整核對。
-- 與實體 Alpha 1 II 的色彩匹配驗證。
-- 寫入中斷電、部分映像損壞後的救機驗證。
+- Long-term operation, additional bodies, regional variants, and a second-camera installation.
+- Comprehensive regression testing across RAW, JPEG, HEIF, bursts, video, and other settings.
+- Complete verification of metadata, reset values, and default-value markers in newly captured photos.
+- Color matching against a physical Alpha 1 II.
+- Recovery after power loss during writing or a partially damaged image.
 
-修改韌體可能使相機無法正常開機。備份、讀回及模擬測試有助於檢查錯誤，**不能保證相機安全，也不能保證損壞後一定能回復**。請不要把這份研究轉述成「所有A7C II都能安全刷」或「已經完全穩定」。
+Firmware modification can prevent a camera from booting. Backups, readbacks, and emulation help detect errors, but **do not guarantee safety or recovery**. Do not describe this work as safe for every A7C II or fully stable.
 
-## 下載與分享包內容
+## Download and package contents
 
-[下載 A7C II 2.01 預覽工具 0.1.0](./a7c2-fl23-2.01-preview-0.1.0.zip)
+[Download the A7C II 2.01 preview toolkit, version 0.1.0](./a7c2-fl23-2.01-preview-0.1.0.zip)
 
-這個ZIP包含安裝工具和必要的小型補丁資料，**不包含完整Sony韌體、任何機身的完整備份或私人校準單元**。工具從待安裝相機讀取原檔，核對固定指紋，再建立候選；不同機身使用各自的備份。
+The ZIP contains the installer and small patch assets. **It does not include complete Sony firmware, a complete camera backup, or private calibration units.** The tool reads the target camera's original files, checks their exact fingerprints, and builds candidates locally. Each camera uses its own backup.
 
-| 內容 | 用途 |
+| Contents | Purpose |
 |---|---|
-| `Start.cmd`、`Start.ps1` | 在Windows建立此工具專用的Python環境並啟動介面；首次安裝必要元件需要網路 |
-| `gui.py` | 圖形介面：備份與檢查、安裝預覽版、重開後核對、回復原版 |
-| `app.py`、`core.py`、`transport.py` | 安裝流程、每台機身的資料合併、版本／雜湊檢查與有界USB通訊 |
-| `assets/patches.json`、`colors.json` | 固定AP／CP窗口與新增風格記錄；不是整份供體備份 |
-| `assets/installer.so`、`probe.so`、`runtime.so`、`wbi.so` | 原生機內工作程式：安裝／回復、診斷、執行期核對與既有開機快照介面 |
-| `assets/manifest.json` | 部署資產的完整SHA-256清單 |
-| `native/` | 原生工作程式與固定窗口表原始碼 |
-| `vendor/pmca/` | 固定版本Sony-PMCA-RE的必要通訊／備份解析來源 |
-| `tests/`、`VALIDATION.json` | 離線測試與已知驗證範圍 |
-| `README.zh-TW.md`、`BUILD.md`、`NOTICE.md`、授權檔 | 使用、建置及來源說明 |
+| `Start.cmd`, `Start.ps1` | Create a dedicated local Python environment on Windows and launch the interface; initial dependency installation requires Internet access |
+| `gui.py` | Graphical interface for preparation, installation, verification after restart, and restoration |
+| `app.py`, `core.py`, `transport.py` | Installation workflow, per-body data merging, version/hash checks, and USB communication with bounded timeouts |
+| `assets/patches.json`, `colors.json` | Fixed AP/CP patch regions and added look records, rather than an entire donor backup |
+| `assets/installer.so`, `probe.so`, `runtime.so`, `wbi.so` | Native camera-side workers for installation/restoration, diagnostics, runtime checks, and the existing boot-snapshot interfaces |
+| `assets/manifest.json` | Complete SHA-256 hashes of deployment assets |
+| `native/` | Source code for native workers and the fixed patch-region table |
+| `vendor/pmca/` | Required communication and backup-parsing source from a pinned Sony-PMCA-RE revision |
+| `tests/`, `VALIDATION.json` | Offline tests and the known validation scope |
+| `README.zh-TW.md`, `BUILD.md`, `NOTICE.md`, license files | Usage, build, attribution, and licensing information |
 
-ZIP SHA-256：
+The preview GUI and some documents inside the ZIP are currently in Traditional Chinese. The instructions below include translations of the relevant button labels. This English README does not change the toolkit binaries or its interface language.
+
+ZIP SHA-256:
 
 ```text
 2bbbf3942f2e1b8439242ec7fae703009645a4533473bafa7b41f542e13c6c75
 ```
 
-下載後可在PowerShell核對：
+Verify the download in PowerShell:
 
 ```powershell
 Get-FileHash .\a7c2-fl23-2.01-preview-0.1.0.zip -Algorithm SHA256
 ```
 
-請分享這個經整理的ZIP及本文件；**不要把安裝後產生的機身工作目錄或備份一起公開**。
+Share this prepared ZIP and the documentation. **Do not publish the per-camera working directory or backups created during installation.**
 
-## 不用AI，能不能自行安裝
+## Installation without an AI assistant
 
-可以。AI不參與其他使用者的安裝過程；實際操作由本機程式完成。目前仍需要Windows、Python及手動準備相機USB驅動，尚未整理成免Python的單一EXE。
+An AI assistant is not required to run the installer. Installation is performed by local software. Windows, Python, and manual USB-driver preparation are still required; the toolkit is not yet a standalone EXE that runs without Python.
 
-### 前置條件
+### Prerequisites
 
-1. 機身必須是A7C II／ILCE-7CM2，顯示韌體2.01。工具還會核對實際程式指紋；名稱或版本顯示相同，並不會跳過這項檢查。
-2. 安裝Python 3.10或更新版，包含Windows Python Launcher（`py`）及Tkinter。首次啟動需能從PyPI安裝固定版本必要元件。
-3. 使用可傳資料的USB線，相機USB模式設為「大量儲存／Mass Storage」。
-4. 準備兩個獨立的空白資料夾，存放機身工作資料及第二份備份；建議放在不同磁碟。
-5. 工具要求輸入實際電量，至少50%。這是工具的操作門檻，不是已證明低於或高於某電量就一定安全的實驗結論。寫入期間保持連線，不要關機或拔線。
+1. An A7C II / ILCE-7CM2 displaying firmware 2.01. The tool also verifies the actual program fingerprints; a matching model name or displayed version does not bypass this check.
+2. Python 3.10 or newer, including the Windows Python Launcher (`py`) and Tkinter. The first launch must be able to install pinned dependencies from PyPI.
+3. A USB cable that supports data transfer, with the camera set to **Mass Storage** mode.
+4. Two separate empty directories for the camera workspace and a second backup copy, preferably on different drives.
+5. The actual battery percentage entered into the tool, at least 50%. This is an operational threshold in the tool, not an experimentally established safety guarantee. Keep the camera connected and do not power it off during writing.
 
-### USB驅動：目前最需要手動處理的步驟
+### USB drivers: the main manual setup step
 
-使用 [Zadig官方網站](https://zadig.akeo.ie/) 提供的工具，為這台相機的兩個USB身份準備libusbK：
+Use the tool from the [official Zadig website](https://zadig.akeo.ie/) to prepare libusbK for this camera's two USB identities:
 
-| 身份 | VID:PID | 用途 |
+| Identity | VID:PID | Used when |
 |---|---|---|
-| 正常大量儲存 | `054C:0E8A` | 第一次服務認證之前 |
-| 服務身份 | `054C:0336` | 第一次認證成功後重新列舉，再進行第二次認證 |
+| Normal Mass Storage | `054C:0E8A` | Before the first service-authentication exchange |
+| Service identity | `054C:0336` | After re-enumeration following the first exchange, before the second exchange |
 
-服務身份通常要在第一次認證後才會出現，不能要求一台尚未進入服務模式的相機同時顯示兩個身份。可先安裝大量儲存身份驅動，再啟動工具；若第一次切到0336時因缺少驅動停止，需為目前列舉的0336身份安裝驅動，再依錯誤狀態重新連線。首次失敗產生的工作目錄請保留，不要讓「必須使用空白目錄」的限制導致覆蓋舊紀錄。
+The service identity normally appears only after the first authentication. Both identities will not be visible at the same time on a camera that has not entered service mode. Install the Mass Storage identity's driver first, then start the tool. If the first transition to `0336` stops because its driver is missing, install the driver for the currently enumerated `0336` device and reconnect as appropriate for the reported state.
 
-只對照VID／PID選擇這台相機。不要替換其他磁碟或相機PC Remote身份的驅動。自動驅動安裝精靈尚未提供；不熟悉Zadig的使用者不應把此預覽工具視為零門檻的一鍵更新。
+Preserve any workspace created by a failed first attempt. The requirement to use an empty directory is not a reason to overwrite or discard earlier evidence.
 
-### 圖形介面流程
+Identify the camera by VID/PID. Do not replace drivers for unrelated disks or the camera's PC Remote identity. There is no automatic driver-setup wizard yet; this preview is not a setup-free, one-click update for users unfamiliar with Zadig.
 
-1. 解壓ZIP，雙擊 `Start.cmd`。第一次會建立此資料夾內的Python環境並安裝元件；啟動介面本身不會自動寫相機。
-2. 選擇空白的機身工作目錄，以及另一個獨立空白備份目錄。
-3. 按「1 備份與檢查」。工具讀取原始AP、CP與機身設定，核對型號／指紋，建立兩份可核對的備份，使用自己的資料合併色彩單元，執行機內診斷與只校驗流程。
-4. 準備成功後，輸入實際電量，按「2 安裝預覽版」。這一步才會改寫程式固定窗口、完整讀回、保存四項目標設定，以及處理舊開機快照。
-5. 等工具顯示全部完成，再依下一節完整斷電。**發生錯誤或結果未知時，不要直接按第二次安裝。**
+### Graphical interface workflow
 
-準備流程不改寫程式檔或保存拍攝設定，但會將指定的臨時診斷模組上傳到Work區、執行並清除。因此「只校驗」不表示USB完全沒有任何臨時檔案寫入。
+1. Extract the ZIP and double-click `Start.cmd`. The first launch creates a local Python environment and installs dependencies. Opening the interface does not automatically write to the camera.
+2. Select an empty camera workspace and a separate empty backup directory.
+3. Click **「1 備份與檢查」 — Back up and check**. The tool reads the original AP, CP, and camera settings; checks the model and fingerprints; creates two verified backup copies; merges the new color records into this body's own data; and runs native diagnostics and verification-only checks.
+4. After preparation succeeds, enter the actual battery percentage and click **「2 安裝預覽版」 — Install preview**. This is the step that writes fixed program regions, performs complete readback, saves four target settings, and handles the old boot snapshot.
+5. Wait for all operations to finish, then follow the complete power-cycle procedure below. **Do not simply click Install again after an error or an unknown result.**
 
-### 完成後：正常關機，再取出電池
+Preparation does not modify program files or save shooting settings. It does upload, execute, and remove designated temporary diagnostic modules in Work storage. Verification-only does not mean that no temporary files are written over USB.
 
-只有在全部操作完成、沒有讀寫程序時：
+### After completion: shut down, then remove the battery
 
-1. 拔下USB。
-2. 正常關機，等待存取燈熄滅。
-3. 取出電池約10秒，再裝回開機。
-4. 檢查FL2與FL3是否出現並能選取。
+Only after every operation has completed and no reads or writes are running:
 
-這一步來自本次實測：只操作電源開關後，新選單沒有出現。隨後的唯讀診斷讀到，磁碟中的兩個選單旗標已是新值，但執行期仍是舊值0；完整斷電後，使用者確認新選單出現，三種外觀可拍攝及回放。沒有為此重複刷寫程式或設定。
+1. Disconnect USB.
+2. Shut the camera down normally and wait for its access lamp to turn off.
+3. Remove the battery for about 10 seconds, reinstall it, and power on.
+4. Check that FL2 and FL3 appear and can be selected.
 
-這個現象支持完整重新載入的重要性；**未單獨證明所有機身上保留舊值的唯一原因**。也沒有把取出電池當成寫入途中可以安全中斷的做法。
+This step comes from the observed installation. Switching the power off and on initially did not reveal the new looks. A subsequent read-only diagnostic showed that the two menu flags were updated on disk but still held their original zero values in the running process. After battery removal, the user confirmed that the new menu entries appeared and all three tested looks could capture and play back photos. No program or settings writes were repeated to obtain that result.
 
-分別選FL2、FL3，用相機內建功能重設各自調整值。預期順序為 Contrast、Highlights、Shadows、Fade、Saturation、Sharpness、Sharpness Range、Clarity：
+The observation supports the need to reload the camera's runtime state. **It does not establish the single cause of retained values on every body.** Battery removal is not a way to safely interrupt an ongoing write.
+
+Select FL2 and FL3 separately and use the camera's built-in reset for each look. The expected values, in the order Contrast, Highlights, Shadows, Fade, Saturation, Sharpness, Sharpness Range, and Clarity, are:
 
 ```text
 0, 0, 0, 1, 0, 4, 3, 1
 ```
 
-上列預設值有靜態來源支持，八項值及其標記仍應逐一實機確認。安裝器沒有批量覆蓋使用者目前調整值。
+Static sources support these defaults, but all eight values and their default markers should still be checked on the camera. The installer does not overwrite the user's current adjustments in bulk.
 
-固定白平衡與曝光，分別拍攝新的ST、FL2、FL3照片，檢查照片和機內回放。若需電腦端核對，重新連接後按「3 重開後核對」；這會檢查完整磁碟程式、保存參數與六個固定執行期區域，但不替代影像與拍攝組合的驗證。
+With white balance and exposure fixed, capture new ST, FL2, and FL3 photos and check the images and camera playback. For computer-side checks, reconnect and click **「3 重開後核對」 — Verify after restart**. This checks the complete program files on disk, saved parameters, and six fixed runtime regions. It does not replace image-quality or shooting-combination testing.
 
-### 命令列方式
+### Command-line usage
 
-以下路徑與82%只是範例，請使用自己的空白目錄及實際電量：
+The paths and 82% battery level below are examples. Use your own empty directories and actual battery percentage:
 
 ```powershell
 python app.py check-package
@@ -131,149 +137,151 @@ python app.py verify --workspace X:\MyCamera
 python app.py restore --workspace X:\MyCamera --battery-percent 82
 ```
 
-`check-package` 與離線測試不連線相機。其餘命令應在安裝依賴及準備USB驅動後使用。
+`check-package` and the offline tests do not access USB. The other commands require the dependencies and camera USB drivers to be ready.
 
-## 為什麼不能像正常Sony韌體更新一樣刷
+## Why this cannot be installed like a normal Sony update
 
-| 項目 | 官方更新 | 本預覽工具 |
+| Item | Official update | This preview toolkit |
 |---|---|---|
-| 交付形式 | 官方支援頁提供的更新檔及指定更新程序 | Windows電腦端USB服務工具、固定補丁與原生工作程式 |
-| 是否可直接放記憶卡更新 | 依官方對該機型提供的程序 | 不可以 |
-| 需要處理USB服務驅動 | 官方一般更新流程不要求本工具這組服務驅動 | 需要 |
-| 更新檔驗證／簽章接受路徑 | 由官方更新機制接受 | 沒有建立能被官方更新流程接受的修改版更新檔 |
-| 適用版本 | 由官方更新包決定 | 只接受固定指紋的原版A7C II 2.01 |
+| Distribution | Official update files and the procedure specified by Sony | A Windows USB service tool, fixed patches, and native workers |
+| Direct memory-card installation | Depends on Sony's procedure for the model | Not supported |
+| These USB service drivers required | Not required by the ordinary official workflow | Required |
+| Update verification/signature acceptance | Accepted by the official update mechanism | No modified update container accepted by that mechanism has been produced |
+| Supported versions | Defined by the official update package | Only original A7C II 2.01 program files with the pinned fingerprints |
 
-目前完成的是透過USB服務模式對已確認的程式區域及原生參數進行移植。**取得一次性的機內執行能力，不等於永久停用官方更新驗證，也不等於已產生合法可接受的Sony更新容器。**
+The implemented path uses USB service access to modify identified program regions and native parameters. **One-shot code execution inside the camera does not permanently disable official update verification or produce an update container that the official mechanism will accept.**
 
-要改成一般使用者熟悉的記憶卡更新形式，還需要研究更新容器、型號／版本檢查、驗證或簽章接受路徑，並驗證失敗處理；本研究沒有完成這些工作。把ZIP或補丁改名為 `BODYDATA.DAT` 不能解決它。
+A memory-card update would require further work on the update container, model/version checks, verification or signature acceptance, and failure handling. This research has not completed that work. Renaming a ZIP or patch to `BODYDATA.DAT` does not solve it.
 
-即使日後把電腦工具包成單一EXE，也只是降低電腦端安裝門檻，不會因此變成官方記憶卡更新包。
+Packaging the computer-side tool as a single EXE could simplify setup, but would not turn it into an official memory-card firmware update.
 
-## 實作：AP、CP與原生參數各做什麼
+## Implementation: AP, CP, and native parameters
 
-只顯示FL2／FL3名稱，不足以證明影像處理已移植。本次分別處理選單、選取／綁定、AP到CP轉換、CP曲線與色彩參數、照片識別標籤，最後處理舊開機快照。
+Displaying FL2/FL3 names alone does not prove that their image processing has been ported. The implementation separately handles menu visibility, selection and saved bindings, AP-to-CP conversion, CP curves and color parameters, photo identifiers, and the old boot snapshot.
 
-### AP：使用A7C II自己的位置與產品欄位
+### AP: A7C II locations and product column
 
-原A7CR研究使用選單產品欄位8。本次在A7C II實機讀到產品索引16、枚舉9，並結合靜態消費流程定位**欄位9**；沒有把A7CR欄位8直接寫進A7C II。
+The reference A7CR work uses menu product column 8. On the A7C II, the live diagnostic returned product-table index 16 and model enum 9. Combined with static analysis of the consumer, this identified **column 9**. The A7CR column was not copied directly to the A7C II.
 
-以下均為A7C II 2.01 `appFw.so` 的**檔案偏移**，不是可直接當成相機記憶體位址的數字：
+The following are **file offsets** in A7C II 2.01 `appFw.so`, not addresses to use directly in camera memory:
 
-| 檔案偏移 | 長度 | 用途 |
+| File offset | Length | Purpose |
 |---|---:|---|
-| `0x3528804` | 112B | 有界AP look到CP mode轉換 |
-| `0x4b2ed19` | 2B | 兩個選取能力 |
-| `0x59892ca` | 2B | FL2選單欄位9旗標 |
-| `0x5989382` | 2B | FL3選單欄位9旗標 |
-| `0x4b4a5e4`、`0x4b4a5ec` | 各4B | 保留槽位16／17的初始look綁定10／11 |
-| `0x4b3b544`、`0x4b3b54c` | 各4B | FL2／FL3的出廠Fade預設1 |
+| `0x3528804` | 112 B | Bounded AP-look-to-CP-mode conversion |
+| `0x4b2ed19` | 2 B | Two selection capabilities |
+| `0x59892ca` | 2 B | FL2 menu flag, product column 9 |
+| `0x5989382` | 2 B | FL3 menu flag, product column 9 |
+| `0x4b4a5e4`, `0x4b4a5ec` | 4 B each | Initial bindings of reserved slots 16/17 to looks 10/11 |
+| `0x4b3b544`, `0x4b3b54c` | 4 B each | Factory Fade default of 1 for FL2/FL3 |
 
-共8個固定窗口，寫入範圍134B、實際差異111B。轉換表為：
+There are eight fixed regions covering 134 bytes, with 111 bytes actually changed. The conversion is:
 
 ```text
 AP look 0..11 -> CP mode 0,3,2,1,16,15,17,18,5,13,19,20
 ```
 
-原有十種風格、特殊值路徑及無效值處理保留。函式區塊模擬通過518案例；它不是完整AP程序模擬。
+The ten existing looks, special-value path, and invalid-value handling are preserved. Isolated function-block emulation passed 518 cases; it is not complete AP-process emulation.
 
-### CP：處理、曲線與照片識別
+### CP: processing, curves, and photo identifiers
 
-CP使用A7C II自己的位置重新組譯分派與分支，加入經格式轉換的四筆供體gamma記錄，補齊模式表及邊界、chroma白名單、兩個照片名稱寫入器與ColorMode22／23處理。照片FL2／FL3使用CP mode19／20及gamma48／49。
+Dispatch and branch code were reassembled for A7C II locations. The changes add four adapted donor gamma records, extend mode tables and bounds, update chroma whitelists, and handle two photo-name writers plus ColorMode 22/23. For still photos, FL2/FL3 use CP modes 19/20 and gamma rows 48/49.
 
-供體來自Alpha 1 II 4.00。供體gamma記錄580B、目標576B；對目標欄位及版面轉換後，22對可比對的既有Creative Look記錄逐byte相同。含機身執行期指標的記錄不拿來直接照抄；新記錄也檢查沒有這些供體指標。
+The donor is Alpha 1 II firmware 4.00. Its gamma records are 580 bytes; the target records are 576 bytes. After adapting the layout and target fields, 22 comparable pairs of existing Creative Look records match byte-for-byte. Existing records containing body-specific runtime pointers were excluded from direct copying, and the added records were checked for those pointers.
 
-新增資料放在CP檔案 `0x1100b80`，該區原始3872B為零。處理與標籤合併後共32個互不重疊窗口，寫入範圍4288B、實際差異2047B。原有有效gamma列保留；影片模式有回退邏輯，**完整錄影行為仍未實測**。
+The added data starts at CP file offset `0x1100b80`, where the original 3,872 bytes were zero. Processing and metadata changes together occupy 32 non-overlapping regions covering 4,288 bytes, with 2,047 bytes actually changed. Existing valid gamma rows are preserved. Video modes have fallback logic, but **complete video behavior has not been tested on hardware**.
 
-處理區塊1284案例、照片名稱／標籤區塊748案例通過。這些是獨立指令區塊測試，不是CP啟動或影像處理器硬體模擬。照片數值標籤與名稱的預期結果，也仍需用新照片進一步核對。
+Processing-block emulation passed 1,284 cases; photo-name/metadata-block emulation passed 748 cases. These are isolated instruction tests, not CP startup or image-processor hardware emulation. Expected numeric photo tags and names still require further checks using newly captured photos.
 
-### 色彩單元：合併自己的資料，不換整份備份
+### Color units: merge into the target body's own data
 
-CP chip1只更新這兩個單元中的新增映射及記錄：
+Only added mappings and records in these two CP chip-1 units are updated:
 
-| BKID | 長度 | 用途 |
+| BKID | Length | Purpose |
 |---|---:|---|
-| `0x02a40001` | 8192B | chroma與映射 |
-| `0x02a4000d` | 28672B | 三種光源的矩陣與映射 |
+| `0x02a40001` | 8,192 B | Chroma and mappings |
+| `0x02a4000d` | 28,672 B | Matrices for three illuminants and mappings |
 
-目標參數55／56對應供體still參數56／57，使用原先未占用的記錄槽23／25。每筆chroma為64B，每筆矩陣資料為576B；矩陣槽其餘填充保留。合併器拒絕已綁定參數、已被其他參數引用或已有資料的目標槽位，並核對既有55組參數的映射及記錄保持不變。
+Target parameters 55/56 correspond to donor still parameters 56/57 and use previously unused record slots 23/25. Each chroma record is 64 bytes and each added matrix record contains 576 bytes. The remaining padding in each matrix slot is preserved.
 
-不寫CP unit00／02，不拿其他機身的校準資料替換整份備份。AP既有保存值另透過原生介面，將保留槽 `0x02cf1287`、`0x02cf1289` 各1B遷移為 `0a`、`0b`，再保存；只改出廠初始值不足以替代既有保存值遷移。
+The merge rejects an already-bound parameter, a slot referenced by another parameter, or a destination record containing existing data. It verifies that the mappings and referenced records for all 55 existing parameters remain unchanged.
 
-本次寫入前後另外53,239筆設定值及屬性一致。兩筆AP內部記錄會在沒有設定寫入時自行遞增，已獨立觀測並限縮檢查其變動範圍；未將它們還原或寫回。這項數量是本次機身的紀錄，不是要求所有機身都有同樣筆數。
+CP units 00/02 are not written, and a whole backup is not replaced with another camera's calibration data. Existing AP saved values are migrated separately through native operations: the one-byte reserved bindings `0x02cf1287` and `0x02cf1289` become `0a` and `0b`, then are saved. Changing factory initial values alone does not migrate existing saved bindings.
 
-## 原生服務流程與操作邊界
+During the observed transaction, another 53,239 property values and attributes were unchanged. Two internal AP records also advance without settings writes; they were independently observed and checked using narrowly defined change patterns, rather than restored or written back. The property count belongs to this installation, not a requirement that every body contain the same number.
 
-此節提供協定與實作定位，**不是讓人任意試送寫入命令的操作指南**。應使用套件內完整的型號、原檔、備份、狀態及讀回檢查流程。
+## Native service path and operation boundaries
 
-1. 正常身份 `054C:0E8A` 完成一次Senser認證。
-2. 重新列舉為 `054C:0336`，重新開啟裝置後完成第二次認證。
-3. Jiritsu使用 `pFunc=0x40`，資料先帶little-endian `<HH category, command>`；此處category為 `0x1001`。外層response0及資料內status32為0都要確認。
-4. 命令15選擇路徑，17讀檔，16寫檔，18刪除選定檔案。舊 `0xff01` 檔案介面在這台機身被拒絕，沒有繼續拿它做備份。
-5. 原生SET_FILE2對確切路徑 `/tmp/jiritsu/libJit.so` 寫入完成後會載入並卸載該模組。本次透過這個入口執行限定功能的模組，讀取版本化結果，再核對臨時檔案清除。
+This section documents protocol and implementation findings. **It is not a procedure for sending arbitrary write commands.** Use the toolkit's complete identity, original-file, backup, state, and readback checks.
 
-本次沒有使用 `/etc/ld.so.preload`，沒有觸發會改時鐘的DEBUG命令，也沒有直接修改原始快閃記憶體區塊。
+1. Complete Senser authentication on normal identity `054C:0E8A`.
+2. Reopen the camera after it re-enumerates as `054C:0336`, and complete the second authentication.
+3. Jiritsu uses `pFunc=0x40` with a little-endian `<HH category, command>` prefix; the category here is `0x1001`. Both outer response 0 and inner 32-bit status 0 must be checked.
+4. Command 15 selects a path, 17 reads a file, 16 writes a file, and 18 deletes the selected file. The older `0xff01` file interface was rejected on the tested body and was not used for the backups.
+5. After SET_FILE2 writes the exact path `/tmp/jiritsu/libJit.so`, the native handler loads and unloads that module. Restricted workers use this entry point, return versioned results, and remove their temporary files; the host verifies cleanup.
 
-Backup類別 `0x603` 的READ1用於AP。CP使用的READ40／WRITE41分別是**十六進位命令 `0x40`、`0x41`**；payload包含BKID及chip selector1。兩個CP單元完整讀回後，使用SAVE3保存 `02a4`；AP兩個綁定完整讀回後，保存 `02cf`。格式曾從此版本官方 `backup.ko` 的原生處理器核對。
+The observed installation did not use `/etc/ld.so.preload`, trigger the DEBUG command that changes the clock, or write raw flash blocks directly.
 
-安裝工作程式在相機內要求完整原檔SHA-256、固定窗口原值及檔案長度相符，保留inode就地寫入、fsync，再核對完整候選SHA-256；失敗時嘗試回復原窗口並核對。`/usr` 原為唯讀，修改完恢復唯讀。相機端成功後，兩個完整檔案還會從主機獨立讀回。
+Backup category `0x603` uses READ1 for AP. CP READ40/WRITE41 refer to **hexadecimal commands `0x40` and `0x41`**, with a BKID and chip selector 1 in the payload. After complete CP-unit readback, SAVE3 saves subsystem `02a4`. After complete readback of the two AP bindings, subsystem `02cf` is saved. The formats were checked against native handlers in the official version's `backup.ko`.
 
-## 固定程式指紋
+The native installer requires matching complete original SHA-256 hashes, original bytes at each fixed region, and file lengths. It writes in place while preserving inodes, calls fsync, and verifies the complete candidate hashes. On failure it attempts to restore the original regions and verify them. `/usr`, originally read-only, is restored to read-only. After native success, the host independently reads both complete program files back over USB.
 
-| 程式 | 狀態 | SHA-256 |
+## Pinned program fingerprints
+
+| Program | State | SHA-256 |
 |---|---|---|
-| `appFw.so` | 原版2.01 | `2ea02f7ecbc5bb917316fe8ef4ce5ffd87eb66efaae78ba2ce11420552df539b` |
-| `appFw.so` | 本預覽候選 | `1aaeb8fbe0297950cab454d498d1a5ba874f91542aa2737aae27a73971e324d7` |
-| `cpapp-b.bin` | 原版2.01 | `f5a477588698ef965748903b8959a39ce4f59ffd4aee4d4234ef1670f56a1428` |
-| `cpapp-b.bin` | 本預覽候選 | `60a9de1a0636c7f6b5b98607a4d25eeb48634e25294f632743a6d256e583b370` |
+| `appFw.so` | Original 2.01 | `2ea02f7ecbc5bb917316fe8ef4ce5ffd87eb66efaae78ba2ce11420552df539b` |
+| `appFw.so` | Preview candidate | `1aaeb8fbe0297950cab454d498d1a5ba874f91542aa2737aae27a73971e324d7` |
+| `cpapp-b.bin` | Original 2.01 | `f5a477588698ef965748903b8959a39ce4f59ffd4aee4d4234ef1670f56a1428` |
+| `cpapp-b.bin` | Preview candidate | `60a9de1a0636c7f6b5b98607a4d25eeb48634e25294f632743a6d256e583b370` |
 
-這是兩個程式檔的指紋，不是整份官方更新容器的指紋。相同型號或顯示相同版本，不代表可以忽略原檔指紋。
+These identify the two program files, not an entire official update container. A matching model or displayed version is not a substitute for matching original-file hashes.
 
-## 舊開機快照：WBI
+## Old boot snapshots: WBI
 
-磁碟已修改不代表下次切換電源後就一定執行新內容。本次使用該版本既有sysfs介面，先要求起始 `image_mode` 為 `2\n`、`image_dev` 為 `*wbi4\n`，再依序：
+An on-disk modification does not guarantee that the next power-switch cycle runs the new contents. The observed procedure uses the existing sysfs interfaces for this version. It first requires `image_mode` to read `2\n` and `image_dev` to read `*wbi4\n`, then performs:
 
 ```text
-image_drop: ASCII 1，一次1 byte
-image_mode: 隨後ASCII 0，一次1 byte
+image_drop: write ASCII 1 once, one byte
+image_mode: immediately write ASCII 0 once, one byte
 ```
 
-順序是 **drop1 → mode0**。確認兩次寫入長度、關閉結果、mode0、後端未變與這次新產生的 `dropped wbi` 日誌。沒有以日誌代替開機與拍攝驗證，也沒有直接寫原始區塊。
+The order is **drop1 -> mode0**. Check both write lengths, close results, mode 0, the unchanged backend, and a fresh `dropped wbi` message from that operation. The log does not replace restart and photographic validation, and the procedure does not write raw sectors.
 
-此版本核心中相關函式的檔案偏移為：`0x63e28` → `0x63dc0` → `0x63ce8`，mode store為 `0x63150`。它們是分析定位，不是應覆寫的核心記憶體地址。相同名字的介面在其他版本上不能直接當成已驗證。
+In this kernel version, related function file offsets are `0x63e28` -> `0x63dc0` -> `0x63ce8`; the mode-store function is at `0x63150`. These are analysis locations, not kernel memory addresses to overwrite. Identically named interfaces on another version are not automatically validated.
 
-## 發生錯誤與原檔回復
+## Errors and restoration
 
-- 原檔、設定與第二份備份都要保留；設定備份含私人內容，勿公開。
-- 若逾時、斷線、工具標記 `needs_review` 或結果未知，停止後續寫入。先確認既有結果與目前檔案，不盲目重跑或重開機。
-- 安裝器有固定窗口回復流程，但它不等於在任意斷電、檔案部分損壞或相機無法進入服務模式時都能救回。
-- 介面的「回復原版」只使用該機身自己的原始資料，恢復兩個程式及四項目標設定；要求目前程式完整符合已知候選，未知部分映像會被拒絕。回復前先選ST、完整斷電開機後再連線。
-- 回復成功後也要完成完整斷電及正常拍攝檢查。官方更新失敗重試程序，不能推論成任意損壞都能回復。
+- Keep the original programs, settings, and second backup copy. Settings backups contain private information; do not publish them.
+- After a timeout, disconnection, `needs_review` state, or unknown result, stop further writes. Establish the existing outcome and current file state before retrying or rebooting.
+- Fixed-region restoration does not guarantee recovery after arbitrary power loss, partial file damage, or loss of service access.
+- **「回復原版」 — Restore original** uses this body's own original data to restore two programs and four target settings. It requires complete program files matching the known candidate and rejects unknown partial images. Select ST and perform a complete power cycle before reconnecting for restoration.
+- After successful restoration, perform the complete power cycle and check normal photography again. An official procedure for retrying a failed update is not evidence that arbitrary damage is recoverable.
 
-本次曾發生電腦端單次5秒等待造成只校驗逾時。後來取回既有成功結果，確認該次韌體窗口寫入0，再清理；沒有直接重跑未知操作。整理後通訊以完整有界時間預算處理，會話結果未知後不再發送後續清理命令。
+During this work, a five-second host-side read timeout interrupted a verification-only session. The existing successful result was later retrieved, confirming zero program-region writes for that operation, before cleanup. The unknown operation was not simply repeated. The reorganized transport uses bounded transaction budgets and sends no further cleanup commands after a session becomes unknown.
 
-## 測試證據與限制
+## Tests and their limits
 
-| 測試 | 結果 | 不能由此推論什麼 |
+| Test | Result | What it does not establish |
 |---|---:|---|
-| AP／CP獨立指令區塊 | 2550案例通過 | 不代表完整AP、CP或成像硬體模擬 |
-| 原檔／窗口負向守衛 | 5案例通過 | 不代表所有錯誤映像皆可回復 |
-| 原生診斷ELF系統呼叫模擬 | 13案例通過 | 不取代實機權限／載入結果 |
-| 原生安裝器故障注入 | 16案例通過 | 使用較小合成檔案，不代表斷電後可救機 |
-| WBI順序及失敗模擬 | 11案例通過 | 不等同獨立讀回儲存媒體中的快照狀態 |
-| 可攜工具離線保護測試 | 8項通過 | 不代表第二台實機已驗證 |
-| 可攜主機安裝／回復模擬 | 8項通過 | 沒有呼叫USB，也沒有在模擬測試中執行真實原生工作程式 |
-| 實際機身 | 一台 | 不代表其他機身、地區或長期穩定性 |
+| Isolated AP/CP instruction blocks | 2,550 cases passed | Complete AP, CP, or imaging-hardware emulation |
+| Original-file and patch-region rejection guards | 5 cases passed | Recovery from every invalid image |
+| Native diagnostic ELF syscall emulation | 13 cases passed | Actual camera privileges or loader behavior by itself |
+| Native installer fault injection | 16 cases passed | Power-loss recovery; the tests use smaller synthetic files |
+| WBI ordering and failure emulation | 11 cases passed | Independent readback of snapshot state on the storage medium |
+| Portable toolkit offline guard tests | 8 tests passed | Validation on a second camera |
+| Portable host installation/restoration simulation | 8 cases passed | USB behavior or real native execution within that simulation |
+| Physical cameras | One body | Other bodies, regional variants, or long-term stability |
 
-已驗證的事實應分開描述：程式檔寫入／完整讀回、原生參數保存、使用者選單／拍攝回報、可攜主機模擬，各自回答不同問題。
+Program-file writes and complete readbacks, native parameter persistence, user-reported menu/photography results, and portable host simulations answer different questions. They should be reported separately.
 
-## 來源與致謝
+## Sources and acknowledgments
 
-本研究參考以下公開工作，針對A7C II重新定位、實作及驗證。上游研究者未為本預覽工具的安全性或其他機身相容性背書。
+The following public work informed this A7C II-specific implementation and analysis. The upstream researchers have not endorsed the safety of this preview or its compatibility with other bodies.
 
-- [lzh2016zzz/a7cr-fl23-research](https://github.com/lzh2016zzz/a7cr-fl23-research/tree/43ba74441c8f10459ade41e84a379ad8005e6ef4)：A7CR FL2／FL3的分層移植、參數、標籤及WBI研究參考。
-- [YuuLuo/a7c2-service-preload](https://github.com/YuuLuo/a7c2-service-preload/tree/1619f938663a36d41e72302a8cfee89a0f6acd1a)：A7C II 2.01服務認證與機內執行鏈研究；其文件為CC BY-SA 4.0。本實作使用原生libJit載入入口，沒有使用預載配置。
-- [ma1co/Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE/tree/a82f5baaa8e9c3d9f28f94699e860fb2e48cc8e0)：USB／Senser、原生Backup操作與備份解析，MIT授權；附帶來源保留其授權全文。
-- [ma1co/fwtool.py PR52](https://github.com/ma1co/fwtool.py/pull/52)，固定提交 `3955d7890fc38daf942bb52827599bfe35de4a14`：官方韌體離線解包分析參考。
-- Sony官方A7C II 2.01、Alpha 1 II 4.00：程式與色彩資料分析來源。Sony商標與韌體資料權利屬原權利人。
+- [lzh2016zzz/a7cr-fl23-research](https://github.com/lzh2016zzz/a7cr-fl23-research/tree/43ba74441c8f10459ade41e84a379ad8005e6ef4): reference for the layered A7CR FL2/FL3 port, native parameters, metadata, and WBI handling.
+- [YuuLuo/a7c2-service-preload](https://github.com/YuuLuo/a7c2-service-preload/tree/1619f938663a36d41e72302a8cfee89a0f6acd1a): A7C II 2.01 service authentication and execution-chain research; its documentation is CC BY-SA 4.0. This implementation uses the native libJit loading entry point rather than preload configuration.
+- [ma1co/Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE/tree/a82f5baaa8e9c3d9f28f94699e860fb2e48cc8e0): USB/Senser communication, native Backup operations, and backup parsing, under MIT. The bundled source retains the full license.
+- [ma1co/fwtool.py PR52](https://github.com/ma1co/fwtool.py/pull/52), pinned commit `3955d7890fc38daf942bb52827599bfe35de4a14`: reference tooling for offline analysis of official firmware.
+- Official Sony A7C II 2.01 and Alpha 1 II 4.00 firmware: sources for program and color-data analysis. Sony trademarks and firmware-data rights remain with their respective rights holders.
 
-本README採 [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)。預覽工具的新程式碼授權及上游授權見ZIP內 `LICENSE`、`NOTICE.md` 與 `licenses/`。上述授權不宣稱涵蓋Sony韌體資料。本倉庫沒有公開本次機身的序號、完整設定備份、私人校準資料、私人登入憑證或個人電腦路徑。
+This README is licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). See `LICENSE`, `NOTICE.md`, and `licenses/` inside the ZIP for the preview toolkit's new code and upstream licenses. These licenses do not claim to cover Sony firmware data. This repository does not publish the tested camera's serial number, complete settings backup, private calibration data, private login credentials, or personal computer paths.
