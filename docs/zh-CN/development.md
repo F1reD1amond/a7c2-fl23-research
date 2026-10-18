@@ -2,7 +2,7 @@
 
 [返回首页](../../README.zh-CN.md) · [English](../en/development.md)
 
-维护同一个 `main`：FL23 保留原 Windows 入口，LUT 使用独立 Python 命令行。开发分支用于改动，标签用于 Release。
+机主已于 2026 年 10 月 19 日认可将已验证的 LUT 工作合并到 `main`。Main 保留两个独立入口：FL23 Windows 命令行／桌面工具，以及 Python LUT 命令行。后续修改使用功能分支，已发布的版本标签保持不变。
 
 ```text
 README.md / README.zh-CN.md  英文／简体中文首页

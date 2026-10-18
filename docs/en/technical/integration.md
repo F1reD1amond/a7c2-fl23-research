@@ -4,9 +4,13 @@
 
 Read [the workflow](../custom-lut.md), [formats](formats.md), [validation](validation.md), [failures](failures.md) and [the source rules](../../../src/looks/AGENTS.md) first. Work is scoped to ILCE-7CM2 firmware 2.01 and exact program fingerprints. A user request to import a look authorizes implementation within that scope, not bypassing identity guards or overwriting unrelated recipes.
 
+## Device CLI added in v2.1 preview
+
+`lut.py import/install/verify/restore/recover/resume` now implement the device workflow in `devicejob.py`. Stock and FL23 first-import adapters, repeated selected-slot updates, 68-resource transactions, selected ST settings and retained-image preparation are included. New names are staged atomically before programs start referencing them. The source/target and inverse remain exact per job; unknown sources stop. See [the AI guide](../lut-ai.md). The historical offline commands below retain their original restricted sources. An existing-six-look slot update passed on one Windows camera; stock first-install and Mac USB acceptance remain pending.
+
 ## Current evidence and layout
 
-The owner's six looks are installed in NC/CC/NN/Eterna/GR-positive/GR-negative order. The owner reports photos work and latest v4 switching looks normal. V4 complete disk readback and fresh settings preservation were verified before that physical report. A v4 post-reload machine check is pending; running CP instruction/table RAM has not been directly read. Keep those statements separate.
+The original six-look baseline was NC/CC/NN/Eterna/GR-positive/GR-negative. The owner reports photos work and latest v4 switching looks normal. V4 complete disk readback and fresh settings preservation were verified before that physical report. Later public-CLI trials updated GR Positive Film in slot 5 and, using the packaged standalone, replaced slot 4 with Astia. Post-reload AP spans, complete CP disk bytes and recipes were checked separately. Running CP instruction/table RAM has not been directly read.
 
 | Build | AP SHA-256 | CP SHA-256 |
 |---|---|---|
@@ -56,11 +60,11 @@ Re-upload may occur on every eligible preview update, not merely when a user cha
 
 ## Before and after an authorized device write
 
-Capture fresh complete programs, both settings domains and protected calibration; keep two verified copies on separate drives. Do not replace a current backup with an older recipe snapshot. Require exact model/version/source, adequate continuous power, whole-file preconditions, tested inverse and native preflight. Name, program and settings changes are separate reviewable transactions.
+Capture fresh complete programs, both settings domains and protected calibration; keep two verified copies, preferably on separate drives. Do not replace a current backup with an older recipe snapshot. Require exact model/version/source, adequate continuous power, whole-file preconditions, tested inverse and native preflight. Name, program and settings changes are separate reviewable transactions.
 
-Use one service session at a time. The USB host fix only retries explicit readiness/busy during initial identity querying. A timeout/disconnect or unknown native result must stop; recover existing result/temporary files rather than replaying a write. Do not reinstall drivers just because a response timed out.
+Use one service session at a time. The LUT layer binds the normal USB serial hash before authentication. Only recognized initial busy states or standard missing-card sense `02/3a/00` allow one guarded service acquisition; complete programs and native model proof precede persistent writes. An opaque HASP response is not a stable body ID. A timeout/disconnect or unknown native result must stop; recover existing result/temporary files rather than replaying a write. Recovery also needs normal USB identity. Do not reinstall drivers just because a response timed out. FL23 transport remains unchanged.
 
-After mutation, verify complete files, size/inode, read-only mount, known-temp cleanup and fresh settings preservation. Unknown settings differences are failures until independently explained; do not relax comparison globally or write changing telemetry back. The retained-image step is separate: inspect actual mode first. Never blindly rerun a worker expecting mode 2 when mode is already0. Do not use repeated flashing to force a stale runtime to reload.
+After mutation, verify complete files, size/inode, read-only mount, known-temp cleanup and fresh settings preservation. Compare every writable AP-group `02cf` setting except the known `02cf0b6e` diagnostic value, plus all four protected CP units. Unrelated runtime groups remain backed up and are not compared or written. Missing keys, changed attributes, unselected AP-setting changes and calibration differences still stop installation. The retained-image step is separate: inspect actual mode first. Never blindly rerun a worker expecting mode 2 when mode is already0. Do not use repeated flashing to force a stale runtime to reload.
 
 After all I/O has ended, request one necessary full power-removal/reload test. Verify AP runtime spans, CP complete disk file, saved/runtime recipes, protected units and boot evidence. Kernel boot/file hashes do not prove running CP instructions. Then separately test unpressed-shutter preview switching, photo output/playback and original FL/FL2/FL3. Preserve the owner's distinction: photos may work while preview is stale.
 

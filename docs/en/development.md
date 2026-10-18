@@ -2,7 +2,7 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/development.md)
 
-Use one maintained `main` branch. FL23 retains its Windows entry; LUT uses a separate Python CLI. Use development branches for changes and tags for Releases.
+The owner approved merging the verified LUT work into `main` on October 19, 2026. Main contains two separate entries: FL23's Windows CLI/desktop tool and the independent Python LUT CLI. Develop future changes on feature branches; keep published release tags immutable.
 
 ```text
 README.md / README.zh-CN.md  English / Simplified Chinese homepages
