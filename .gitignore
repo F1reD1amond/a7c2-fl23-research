@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.venv/
+.venv-macos/
+.venv-lut/
+private/
+*.private.*
+*.ARW
+*.HIF
+*.dcp
+*.cube
+USB-Startup-Fix-Result.txt
+diagnostic-reports/
+dist/
