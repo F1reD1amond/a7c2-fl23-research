@@ -5,13 +5,14 @@ Before camera work read [the workflow](../../docs/en/custom-lut.md), [integratio
 - Only explicit device commands open USB; doctor/offline commands never do. Run tests first; a candidate, USB transfer, title, emulation result or full disk readback is not a successful boot or physical test.
 - Preserve Sony per-body calibration; extract DCP look/tone only. Do not equate native-grid precision with full DCP fidelity.
 - Every imported slot requires ST in actual saved/runtime bindings. The base picker is editable; do not claim a hard lock. Preserve fresh unselected recipes and native titles.
-- Settings checks cover writable AP group02cf and four protected CP units. Keep full backups; unrelated runtime groups and the known02cf0b6e diagnostic value are not install gates or write targets.
+- Settings checks cover writable AP group02cf and four protected CP units. Keep reconstructable backups using the shared compressed foundation and per-slot checkpoints; do not reintroduce repeated raw program/readback/resource copies. Unrelated runtime groups and the known02cf0b6e diagnostic value are not install gates or write targets.
 - Keep FL/FL2/FL3 working. Names, preview, photo output and metadata are separate paths. Photos were correct during the intermittent preview failure.
 - Use exact adapter source identities. device_layout supports pinned stock/FL23, reconstructed standalone masks and legacy full7-v4 updates. Names/settings/retained-image transactions remain separate. Retired bootstrap6 is prohibited.
 - V4 retries uploads of validated cached live-view tables. It can add work on every eligible update; do not promise no timing/power cost or claim the offline dropped-submission model is a real trace.
 - Do not reuse the failed display/segment/icon approach or withdrawn 0xff2f04 notification change. Preserve the corrected incoming wide-branch target. Audit ABI and every entry boundary.
 - Never treat zero-filled storage as proof of ownership. Check exact mapped and loaded extents, references, lifetime and BSS boundaries.
-- Before writing: fresh source identity/settings, two verified independent backups, tested inverse, native preflight and adequate continuous power. One service session at a time.
+- Before writing: fresh source identity/settings, two independently reconstructable verified backups, tested inverse, native preflight and adequate continuous power. Keep both shared stores; no automatic deletion/garbage collection. One service session at a time.
+- Slot restoration creates a fresh transaction over current state, preserving later other slots. Reject later changes to the selected table/title/recipe. First-activation slot-only feature removal is not implemented; stop explicitly. Legacy exact restoration remains supported.
 - Retry only known initial read-only readiness/busy states. Unknown result, timeout or disconnect stops. Recover existing transaction results; never blindly repeat a firmware write.
 - After writing: full readback, size/inode/mount/cleanup checks, fresh saved/runtime preservation and retained-image inspection. Do not rerun mode 2→0 while already0. A kernel boot is not direct CP RAM proof.
 - Request only necessary physical actions once all I/O ends. Confirm unpressed-shutter preview, photos/playback and original looks separately. No broad stability claim from one camera.

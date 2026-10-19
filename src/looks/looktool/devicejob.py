@@ -3,9 +3,9 @@
 No device is opened at import time. Unknown native outcomes are never replayed.
 """
 from datetime import datetime,timezone
-import json,os,shutil,struct,uuid
+import gzip,json,os,shutil,struct,uuid
 from pathlib import Path
-from . import calibration,device_layout,devicesettings,firmware,nameworker,native,nativebuild,project,resources,worker
+from . import backupstore,calibration,device_layout,devicesettings,firmware,nameworker,native,nativebuild,project,resources,six,worker
 from .devicesession import Camera,invoke
 from .devicelock import serialized
 
@@ -27,16 +27,58 @@ class Job:
         self.state.setdefault('journal',[]).append({'time':datetime.now(timezone.utc).isoformat(),'event':phase,**values})
         write_json(self.state_path,self.state)
     def raw(self,name,data):
+        if self.state.get('backup_format')==2 and len(data)>=4096:
+            name+='.gz';data=gzip.compress(data,mtime=0)
         path=self.root/'evidence'/(str(len(self.state.get('journal',[]))).zfill(5)+'-'+uuid.uuid4().hex[:8]+'-'+name);path.parent.mkdir(exist_ok=True)
         with path.open('xb') as stream:stream.write(data);stream.flush();os.fsync(stream.fileno())
+    def _stores(self):
+        if len(self.state['backup_stores'])!=2:raise ValueError('Two compressed backup stores required')
+        return [backupstore.Store(p,self.state['backup_body']) for p in self.state['backup_stores']]
+    def source(self,name):
+        if self.state.get('backup_format')!=2:return (self.root/'source'/name).read_bytes()
+        return self._stores()[0].read(self.state['backup_objects'][name])
+    def resource_target(self,name):
+        raw,_=resources.rename(self.source('resources/'+name),{self.state['slot']:self.state['name']},self.state['layout']['label_ids'])
+        spec=next(s for s in self.state['name_build']['files'] if s['file']==name)
+        if len(raw)!=spec['after_bytes'] or firmware.sha(raw)!=spec['after_sha256']:raise ValueError('Reconstructed name target differs')
+        return raw
+    def _planned_settings(self,ap,ram,saved):
+        fields=devicesettings.plan(ap,ram,saved,[self.state['slot']])
+        recipe=self.state.get('restore_recipe')
+        if recipe is not None:
+            if json.loads((self.root/'candidate/restore-recipe.private.json').read_text(encoding='utf-8'))!=recipe:raise ValueError('Restoration recipe artifact differs')
+            if set(recipe)!={str(f['key']) for f in fields}:raise ValueError('Restoration recipe fields differ')
+            for f in fields:
+                value=bytes.fromhex(recipe[str(f['key'])])
+                if len(value)!=len(bytes.fromhex(f['after'])):raise ValueError('Restoration recipe size differs')
+                f['after']=value.hex()
+        return fields
     def load(self):
         self.state=json.loads(self.state_path.read_text(encoding='utf-8'))
         if self.state.get('schema')!='a7c2-lut-device-job/1':raise ValueError('Unknown device job')
+        if self.state.get('backup_format') not in (None,2):raise ValueError('Unknown device backup format')
         second=Path(self.state['backup_copy'])
         if second==self.root or self.root in second.parents or second in self.root.parents:raise ValueError('Independent backup folders required')
-        for name,expected in self.state['backup_files'].items():
-            for base in [self.root/'source',second]:
-                if firmware.sha((base/name).read_bytes())!=expected:raise ValueError('Body backup differs: '+name)
+        if self.state.get('backup_format')==2:
+            if self.state['backup_body']!=backupstore.body_key(self.state['identity']):raise ValueError('Compressed backups belong to a different body')
+            inventories=[self.state['backup_objects'],self.state['backup_mirror_objects']]
+            for path,inventory,key in zip([self.root/'source/snapshot.private.json',second/'snapshot.private.json'],inventories,['backup_manifest_sha256','backup_mirror_manifest_sha256']):
+                if firmware.sha(path.read_bytes())!=self.state[key]:raise ValueError('Compressed backup manifest differs')
+                manifest=json.loads(path.read_text(encoding='utf-8'))
+                if manifest!={'schema':'a7c2-lut-backup/2','body':self.state['backup_body'],'files':inventory}:raise ValueError('Compressed backup references differ')
+            stores=self._stores()
+            if stores[0].root==stores[1].root:raise ValueError('Separate compressed backup stores required')
+            if any(set(inv)!=set(self.state['backup_files']) for inv in inventories):raise ValueError('Compressed backup inventory differs')
+            for name,expected in self.state['backup_files'].items():
+                for store,inventory in zip(stores,inventories):
+                    if firmware.sha(store.read(inventory[name]))!=expected:raise ValueError('Body backup differs: '+name)
+            if 'slot_checkpoint_sha256' in self.state:
+                for base,key in zip([self.root,second],['slot_checkpoint_sha256','slot_checkpoint_mirror_sha256']):
+                    if firmware.sha((base/f'slot-{self.state["slot"]}-before.private.json').read_bytes())!=self.state[key]:raise ValueError('Slot checkpoint differs')
+        else:
+            for name,expected in self.state['backup_files'].items():
+                for base in [self.root/'source',second]:
+                    if firmware.sha((base/name).read_bytes())!=expected:raise ValueError('Body backup differs: '+name)
         for name,expected in self.state.get('artifacts',{}).items():
             if firmware.sha((self.root/name).read_bytes())!=expected:raise ValueError('Job artifact changed: '+name)
         return self
@@ -73,8 +115,7 @@ class Job:
         for name,path in PROGRAM_PATHS.items():
             raw=camera.read(path);actual[name]=raw
             if firmware.sha(raw)!=expected[name]:raise ValueError('Complete host readback differs: '+name)
-            self.raw('readback-'+name+'.bin',raw)
-        self.record('complete_host_program_readback_verified',hashes={n:firmware.sha(b) for n,b in actual.items()})
+        self.record('complete_host_program_readback_verified',hashes={n:firmware.sha(b) for n,b in actual.items()},full_readback_files_saved=False)
         if hasattr(camera,'pin_programs'):camera.pin_programs(actual['appFw.so'],actual['cpapp-b.bin'])
         return actual
     def _resource_readback(self,camera,after):
@@ -99,12 +140,22 @@ class Job:
         values['settings-ram.bin']=ram;values['settings-saved.bin']=saved
         for filename in nameworker.filenames():values['resources/'+filename]=camera.read('/usr/share/app/'+filename)
         values['boot-id.bin']=runtime['boot_id'].encode('ascii')
-        self.state['backup_files']={}
+        self.state.update(backup_format=2,backup_body=backupstore.body_key(camera.identity),
+            backup_stores=[str(self.root.parent/'.a7c2-lut-work-store'),str(second.parent/'.a7c2-lut-backup-store')],backup_objects={},backup_mirror_objects={},backup_files={})
+        stores=self._stores()
         for name,raw in values.items():
-            for base in [self.root/'source',second]:
-                path=base/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
-                if path.read_bytes()!=raw:raise ValueError('Independent backup readback differs')
+            specs=[store.put(name,raw) for store in stores]
+            self.state['backup_objects'][name]=specs[0]
+            self.state['backup_mirror_objects'][name]=specs[1]
             self.state['backup_files'][name]=firmware.sha(raw)
+        for path,inventory in zip([self.root/'source/snapshot.private.json',second/'snapshot.private.json'],[self.state['backup_objects'],self.state['backup_mirror_objects']]):
+            backupstore.write_json(path,{'schema':'a7c2-lut-backup/2','body':self.state['backup_body'],'files':inventory})
+        self.state['backup_manifest_sha256']=firmware.sha((self.root/'source/snapshot.private.json').read_bytes())
+        self.state['backup_mirror_manifest_sha256']=firmware.sha((second/'snapshot.private.json').read_bytes())
+        self.state['backup_storage_summary']={'raw_source_bytes':sum(map(len,values.values())),
+            'new_primary_compressed_bytes':stores[0].new_bytes,'new_independent_compressed_bytes':stores[1].new_bytes,
+            'new_primary_objects':stores[0].new_objects,'full_readback_copies_saved':False}
+        self.record('compressed_incremental_backups_verified',**self.state['backup_storage_summary'])
         self.state['identity']=camera.identity;self.save('BACKUPS_VERIFIED')
         return values
     def _fit(self,source,name,slot,model,attribution):
@@ -133,11 +184,21 @@ class Job:
             if span['memory']!=expected or span['disk']!=expected:raise ValueError('Source AP RAM/disk differ; finish the previous reload before importing')
         f,r,after=device_layout.replace(ap,cp,{slot:raw});write_json(self.root/'transition/forward.private.json',f);write_json(self.root/'transition/reverse.private.json',r)
         self.state['source_hashes']={n:firmware.sha(values[n]) for n in PROGRAM_PATHS};self.state['target_hashes']={n:firmware.sha(after[n]) for n in PROGRAM_PATHS}
-        self.state['settings_plan']=devicesettings.plan(ap,camera.records(values['settings-ram.bin']),camera.records(values['settings-saved.bin']),[slot])
+        self.state['settings_plan']=self._planned_settings(ap,camera.records(values['settings-ram.bin']),camera.records(values['settings-saved.bin']))
         self.state['program_build']=nativebuild.build_program({n:values[n] for n in PROGRAM_PATHS},f,r,self.root/'worker/program',self.zig)
         renamed,self.state['name_build']=nameworker.prepare({n:values['resources/'+n] for n in nameworker.filenames()},{slot:name},ap,self.state['job_id'],self.root/'worker/names',self.zig,target_ap=after['appFw.so'],label_ids=self.state['layout']['label_ids'])
-        folder=self.root/'resource-target';folder.mkdir()
-        for n,b in renamed.items():(folder/n).write_bytes(b)
+        del renamed
+        # Targets are reproducible from the verified source and selected name;
+        # do not keep another complete set of 68 resources on the host.
+        checkpoint={'schema':'a7c2-lut-slot-backup/1','slot':slot,'job_id':self.state['job_id'],
+            'body':self.state['backup_body'],'source_manifest_sha256':self.state['backup_manifest_sha256'],
+            'settings_before':self.state['settings_plan'],'before_table_hex':six.read_tables(cp)[slot-1].hex() if self.state['layout']['mask']&(1<<(slot-1)) else None,
+            'name_records_before':{n:resources.decode(values['resources/'+n])['entries'].get(self.state['layout']['label_ids'][slot-1],{}).get('text') for n in nameworker.filenames()}}
+        filename=f'slot-{slot}-before.private.json'
+        for base,key in zip([self.root,second],['backup_manifest_sha256','backup_mirror_manifest_sha256']):
+            backupstore.write_json(base/filename,dict(checkpoint,source_manifest_sha256=self.state[key]))
+        self.state['slot_checkpoint_sha256']=firmware.sha((self.root/filename).read_bytes())
+        self.state['slot_checkpoint_mirror_sha256']=firmware.sha((second/filename).read_bytes())
         self.artifacts();self.save('PREPARED')
         self._read_programs(camera,self.state['source_hashes'])
         self._invoke(camera,'program',0);self._invoke(camera,'names',0)
@@ -174,8 +235,7 @@ class Job:
         self.raw(('restore-' if restore else '')+'settings-ram.bin',after_ram);self.raw(('restore-' if restore else '')+'settings-saved.bin',after_saved)
         self.record('settings_preservation_verified',restore=restore,fields=len(fields));self.save('SETTINGS_RESTORED' if restore else 'SETTINGS_VERIFIED')
     def _validate_settings_plan(self,camera):
-        source=self.root/'source'
-        expected=devicesettings.plan((source/'appFw.so').read_bytes(),camera.records((source/'settings-ram.bin').read_bytes()),camera.records((source/'settings-saved.bin').read_bytes()),[self.state['slot']])
+        expected=self._planned_settings(self.source('appFw.so'),camera.records(self.source('settings-ram.bin')),camera.records(self.source('settings-saved.bin')))
         if expected!=self.state['settings_plan']:raise ValueError('Selected settings plan differs from the original verified descriptors')
     def _reload(self,camera):
         runtime=self._invoke(camera,'runtime',0)
@@ -195,7 +255,7 @@ class Job:
         self._read_programs(camera,self.state['source_hashes'])
         self._resource_readback(camera,False)
         for memory,label in [(True,'settings-ram.bin'),(False,'settings-saved.bin')]:
-            baseline=camera.records((self.root/'source'/label).read_bytes());snapshot=camera.snapshot(memory)
+            baseline=camera.records(self.source(label));snapshot=camera.snapshot(memory)
             self.raw('preinstall-'+label,snapshot);fresh=camera.records(snapshot)
             devicesettings.compare(baseline,fresh,{},camera.core)
         self.save('NAME_WRITE_INTENT');self._invoke(camera,'names',1);self._resource_readback(camera,True);self.save('NAMES_VERIFIED')
@@ -234,6 +294,57 @@ class Job:
             prior=self.state['phase'];self.save('NEEDS_REVIEW',failed_during=prior,error=str(exc));raise
         return self.state
     @serialized
+    def restore_slot(self,original,battery,backup_copy):
+        """New transaction restoring one previously imported slot over fresh state.
+
+        Native runtime removal on a slot's first import is a separate operation;
+        this method never removes shared code required by other slots.
+        """
+        original.load()
+        if type(battery) is not int or not 50<=battery<=100:raise ValueError('Actual battery percentage 50..100 required')
+        if original.state['phase'] not in ['COMPLETE','RELOAD_VERIFIED']:raise ValueError('Verify the original completed installation before slot restoration')
+        slot=original.state['slot'];ap=original.source('appFw.so');cp=original.source('cpapp-b.bin')
+        old_layout=device_layout.identify(ap,cp)
+        if not old_layout['mask']&(1<<(slot-1)):
+            raise ValueError('This was the slot\'s first activation. Use exact restore before later imports; slot-only runtime removal is not implemented.')
+        raw=six.read_tables(cp)[slot-1]
+        titles={resources.decode(original.source('resources/'+n))['entries'][old_layout['label_ids'][slot-1]]['text'] for n in nameworker.filenames()}
+        if len(titles)!=1:raise ValueError('Slot restoration needs one consistent previous imported name across languages')
+        name=titles.pop();second=Path(backup_copy).resolve()
+        if second==self.root or second in self.root.parents or self.root in second.parents:raise ValueError('Separate original backup locations required')
+        for path in [self.root,second]:
+            if path.exists() and (not path.is_dir() or any(path.iterdir())):raise ValueError('Use new empty job and backup directories')
+        self.root.mkdir(parents=True,exist_ok=True);second.mkdir(parents=True,exist_ok=True)
+        self.state={'schema':'a7c2-lut-device-job/1','job_id':uuid.uuid4().hex[:16],'backup_copy':str(second),
+            'name':name,'slot':slot,'journal':[],'backup_files':{},'camera_writes_requested':True,
+            'restore_recipe':{str(f['key']):f['before_saved'] for f in original.state['settings_plan']},
+            'slot_restore_of':original.state['job_id'],'conversion_table_sha256':firmware.sha(raw)}
+        candidate=self.root/'candidate';candidate.mkdir();(candidate/f'slot{slot}.bin').write_bytes(raw)
+        write_json(candidate/'restore-recipe.private.json',self.state['restore_recipe'])
+        self.save('CONVERTED')
+        try:
+            with self.factory(original.state['identity']) as camera:
+                original_fields=original._planned_settings(ap,camera.records(original.source('settings-ram.bin')),camera.records(original.source('settings-saved.bin')))
+                if original_fields!=original.state['settings_plan']:raise ValueError('Original recipe plan differs from its backup')
+                prior_table=(original.root/f'candidate/slot{slot}.bin').read_bytes()
+                if firmware.sha(prior_table)!=original.state['conversion_table_sha256']:raise ValueError('Original fitted table differs')
+                # Guard just the original job's selected result, so later
+                # updates to other slots do not block this new transaction.
+                current={n:camera.read(p) for n,p in PROGRAM_PATHS.items()}
+                layout=device_layout.identify(current['appFw.so'],current['cpapp-b.bin'])
+                if (not layout['mask']&(1<<(slot-1)) or six.read_tables(current['cpapp-b.bin'])[slot-1]!=prior_table):
+                    raise ValueError('This selected slot was changed later; preserve it and select its latest job')
+                for n in nameworker.filenames():
+                    title=resources.decode(camera.read('/usr/share/app/'+n))['entries'][layout['label_ids'][slot-1]]['text']
+                    if title!=original.state['name']:raise ValueError('Selected slot title was changed later')
+                for memory in [True,False]:
+                    records=camera.records(camera.snapshot(memory))
+                    if any(records[0][f['key']].data.hex()!=f['after'] for f in original.state['settings_plan']):raise ValueError('Selected slot recipe was changed later')
+                self._prepare(camera,name,slot,second,raw);self._install(camera)
+        except BaseException as exc:
+            prior=self.state['phase'];self.save('NEEDS_REVIEW',failed_during=prior,error=str(exc));raise
+        return self.state
+    @serialized
     def install(self,battery):
         self.load()
         if type(battery) is not int or not 50<=battery<=100:raise ValueError('Actual battery percentage 50..100 required')
@@ -267,8 +378,8 @@ class Job:
             ram=camera.records(camera.snapshot(True));saved=camera.records(camera.snapshot(False))
             for f in self.state['settings_plan']:
                 if ram[0][f['key']].data!=bytes.fromhex(f['before_ram'] if restore else f['after']) or saved[0][f['key']].data!=bytes.fromhex(f['before_saved'] if restore else f['after']):raise ValueError('Reloaded selected recipe differs')
-            devicesettings.protected_equal(camera.records((self.root/'source/settings-ram.bin').read_bytes()),ram)
-            devicesettings.protected_equal(camera.records((self.root/'source/settings-saved.bin').read_bytes()),saved)
+            devicesettings.protected_equal(camera.records(self.source('settings-ram.bin')),ram)
+            devicesettings.protected_equal(camera.records(self.source('settings-saved.bin')),saved)
             self.record('postreload_storage_and_settings_verified',boot_id_sha256=firmware.sha(boot),CP_running_memory_directly_read=False)
             if accept_photos and not restore:
                 self.record('physical_acceptance_reported_by_user')
@@ -315,10 +426,10 @@ class Job:
                         row.append((a,b))
                     values.append(row)
                 if values[0]!=values[1] or values[1]!=values[2]:raise ValueError('Selected settings still changing; do not write')
-                devicesettings.protected_equal(camera.records((self.root/'source/settings-ram.bin').read_bytes()),samples[-1][0])
+                devicesettings.protected_equal(camera.records(self.source('settings-ram.bin')),samples[-1][0])
                 for memory,baseline,actual in [(True,'settings-ram.bin',samples[-1][0]),(False,'settings-saved.bin',samples[-1][1])]:
                     expected={f['key']:actual[0][f['key']].data.hex() for f in self.state['settings_plan']}
-                    devicesettings.compare(camera.records((self.root/'source'/baseline).read_bytes()),actual,expected,camera.core)
+                    devicesettings.compare(camera.records(self.source(baseline)),actual,expected,camera.core)
                 self.record('stable_partial_settings_observed_without_writes')
                 self.save('PARTIAL_SETTINGS_VERIFIED')
             return self.state

@@ -4,6 +4,8 @@
 
 ## Physical observations
 
+The compact-backup development branch has no new camera validation. An offline AP/CP measurement used 118,051,624 original bytes: the first shared store used 27,018,672 compressed payload bytes, and one later slot-6 replacement added 2,152 bytes. These figures are per copy and exclude names, settings, manifests, logs and compiler cache; they are not USB timing measurements. Host simulation covers ordinary install/exact restore and restoring an earlier slot after a later different-slot update. First-activation slot-only removal remains unsupported.
+
 | Item | Evidence | Limit |
 |---|---|---|
 | FL2/FL3 | Owner previously captured and replayed FL2/FL3/ST successfully | One body; portable frontend not independently installed on a second body |

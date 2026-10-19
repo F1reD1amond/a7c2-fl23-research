@@ -46,4 +46,15 @@ class LutCliTests(unittest.TestCase):
             self.assertEqual(result.returncode,0,result.stderr);self.assertIn('doctor',result.stdout)
             self.assertFalse((Path(folder)/'.venv').exists())
 
+class SlotRestoreCliTests(unittest.TestCase):
+    def test_slot_restore_routes_to_new_job_once(self):
+        from unittest.mock import Mock
+        from looktool import devicecli
+        original=Mock();fresh=Mock();fresh.root=Path('new-job')
+        fresh.restore_slot.return_value={'phase':'AWAITING_RELOAD','slot':6,'name':'Previous six'}
+        def factory(folder,**kwargs):return original if Path(folder)==Path('original-job') else fresh
+        with patch.object(devicecli,'settings',return_value={}),patch.object(devicecli,'Job',side_effect=factory),redirect_stdout(io.StringIO()):
+            result=devicecli.main(['restore-slot','original-job','--work-dir','new-job','--backup-dir','new-backup','--battery-percent','90'])
+        self.assertEqual(result,0);fresh.restore_slot.assert_called_once_with(original,90,Path('new-backup'))
+
 if __name__=='__main__':unittest.main()

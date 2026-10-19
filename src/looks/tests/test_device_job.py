@@ -44,9 +44,10 @@ class SimCamera:
 
 class SimJob(devicejob.Job):
     fail_after_program=False
-    def _fit(self,*args):
-        out=self.root/'candidate';out.mkdir();(out/'slot6.bin').write_bytes(bytes([1])*1215)
-        return bytes([1])*1215
+    def _fit(self,source,name,slot,*args):
+        raw=getattr(self,'table',bytes([1])*1215)
+        out=self.root/'candidate';out.mkdir();(out/f'slot{slot}.bin').write_bytes(raw)
+        return raw
     def _invoke(self,camera,kind,mode):
         self.record('simulated_native_call',kind=kind,mode=mode)
         if kind=='runtime':
@@ -61,7 +62,7 @@ class SimJob(devicejob.Job):
                 for n,b in after.items():camera.files[devicejob.PROGRAM_PATHS[n]]=b
                 if mode==1 and self.fail_after_program:raise TimeoutError('simulated lost completion')
         elif kind=='names' and mode in [1,2]:
-            for n in nameworker.filenames():camera.files['/usr/share/app/'+n]=(self.root/('resource-target' if mode==1 else 'source/resources')/n).read_bytes()
+            for n in nameworker.filenames():camera.files['/usr/share/app/'+n]=self.resource_target(n) if mode==1 else self.source('resources/'+n)
         return {'native_verified':True}
 
 def fake_program(before,f,r,out,zig):

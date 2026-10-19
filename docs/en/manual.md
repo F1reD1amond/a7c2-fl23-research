@@ -44,6 +44,7 @@ Names/paths with spaces need quotes. Unsupported firmware, missing dependencies,
 | `install JOB --battery-percent N` | Install a prepared job |
 | `verify JOB --accept-photos` | Check reload and record completed physical acceptance |
 | `restore JOB --battery-percent N` | Restore this job exactly |
+| `restore-slot JOB --battery-percent N` | Undo a previously imported slot replacement, preserving later other slots (development) |
 | `recover JOB` | Recover existing evidence without loader execution |
 | `resume JOB --battery-percent N` | Continue a proven interrupted phase |
 | `configure --calibration MODEL --backup-root DIR` | Optional persistent color-model/backup preferences |

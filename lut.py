@@ -10,7 +10,7 @@ import shutil
 ROOT=Path(__file__).resolve().parent
 DEVICE_COMMANDS={'configure':'Configure local calibration/backups once','import':'Back up, convert and preflight; --write performs installation',
     'install':'Install a prepared job','verify':'Verify after reload; record actual photo acceptance',
-    'restore':'Restore this exact installation','recover':'Inspect an existing interrupted job without replay',
+    'restore':'Restore this exact installation','restore-slot':'Restore a previous imported slot, preserving other later slots','recover':'Inspect an existing interrupted job without replay',
     'resume':'Explicitly continue a recovered known phase; never repeat program writes'}
 COMMANDS={'inspect':'Inspect a DCP/CUBE reference','plan':'View an existing project slot plan',
           'check-bindings':'Check host ST binding declarations','calibrate':'Generate calibration from measured inputs',
@@ -24,7 +24,7 @@ def missing_packages():
 def main(argv=None):
     argv=list(sys.argv[1:] if argv is None else argv)
     parser=argparse.ArgumentParser(description=__doc__,epilog='Run from the extracted root: python lut.py inspect path/to/profile.dcp')
-    parser.add_argument('--version',action='version',version='2.1')
+    parser.add_argument('--version',action='version',version='2.2-backup-dev')
     parser.add_argument('--device',action='store_true',help='doctor: also check USB/native-build dependencies; never connect')
     parser.add_argument('command',nargs='?',choices=['doctor',*COMMANDS,*DEVICE_COMMANDS],help='doctor/offline conversion or explicit device job')
     if not argv or argv[0] in ['-h','--help']:

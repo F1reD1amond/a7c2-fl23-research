@@ -12,3 +12,5 @@ private/
 USB-Startup-Fix-Result.txt
 diagnostic-reports/
 dist/
+.a7c2-lut-work-store/
+.a7c2-lut-backup-store/

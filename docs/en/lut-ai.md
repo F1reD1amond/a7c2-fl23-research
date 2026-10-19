@@ -64,3 +64,9 @@ python -m unittest discover -s tests -v
 Run that from `src/looks`. Optional instruction/native replay dependencies are in `requirements-research.txt`. Exact full-image tests require private owner fixtures through `A7C2_RESEARCH_FIXTURES`; absence means skipped, not passed. From root also run the existing FL23 and host suites, `dev/release/check_publication.py`, then `dev/release/build_lut.py` and test the emitted standalone CLI.
 
 Separate software tests, exact-image reproduction, device readback, loaded state, physical camera behavior and Mac USB acceptance in every report. One Windows existing-six-look slot update passed physical checks and standalone reload verification; stock first-install, Mac USB and this job's physical restoration remain untested. Do not weaken source checks to finish a demonstration.
+
+## Compressed foundations and slot restoration (development)
+
+`backupstore.py` separates bodies, compresses/deduplicates 1 MiB chunks and stores changed chunks as XOR deltas against raw foundations, never earlier jobs. Primary/independent stores may have different foundations; both manifests must reconstruct identical complete files. Use `Job.source()` for legacy/plain and compressed storage. Retain both shared stores; no automatic garbage collection or historical-backup deletion. Readbacks retain results only, large setting evidence uses gzip, name targets are reconstructed, and compiler caches are shared.
+
+`restore-slot` creates a new job over fresh current programs/names/recipes, restoring one old table/name/recipe after checking that the selected result has not subsequently changed. Preserve later other slots and native FL2/FL3. Only replacement of an already imported slot is supported; first-activation slot-only feature removal stops explicitly. Offline simulation is not physical validation.

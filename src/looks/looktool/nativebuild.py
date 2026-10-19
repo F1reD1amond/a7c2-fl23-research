@@ -17,7 +17,9 @@ def zig_command(explicit=None):
 
 def compile_worker(source,header,destination,zig=None):
     destination=Path(destination);destination.parent.mkdir(parents=True,exist_ok=True)
-    env=os.environ.copy();env['ZIG_GLOBAL_CACHE_DIR']=str(destination.parent/'zig-global');env['ZIG_LOCAL_CACHE_DIR']=str(destination.parent/'zig-local')
+    env=os.environ.copy()
+    cache=Path(os.environ.get('A7C2_ZIG_CACHE',Path.home()/'.cache/a7c2-lut/zig')).resolve()
+    env['ZIG_GLOBAL_CACHE_DIR']=str(cache/'global');env['ZIG_LOCAL_CACHE_DIR']=str(cache/'local')
     command=zig_command(zig)+['cc','-target','aarch64-linux-gnu','-shared','-fPIC','-O2',
         '-ffreestanding','-fno-builtin','-fno-stack-protector','-fno-unwind-tables','-fno-asynchronous-unwind-tables',
         '-nostdlib','-g0','-Wl,--strip-debug','-Wl,--no-undefined','-Wl,-Bsymbolic','-Wl,-z,noexecstack',

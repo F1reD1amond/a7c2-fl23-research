@@ -34,9 +34,11 @@ Without `--write`, this prepares, backs up and preflights without installing tab
 
 ## 3. Back up the camera
 
-The same command from step 2 converts the table first, then captures complete programs, all 68 name resources and saved/live settings, verifies two backup copies, builds exact restoration data and runs native preflight. No separate backup command is needed here.
+Development branch `feature/lut-compact-backups` uses a **shared compressed foundation plus a per-slot pre-write checkpoint**. Initial data is saved once; subsequent jobs add changed blocks. No repeated complete program copies, complete name targets or full readback files are retained. Complete reads/readbacks still verify current data; only their results are saved. This storage/slot-restore workflow awaits physical validation and is not in the old v2.1 download.
 
-Keep the printed **Job path**. The second copy defaults to `~/.a7c2-lut/backups`; prefer another drive with `--backup-dir "new-empty-folder-on-external-drive"`. Retain the entire job and backup folders.
+The step-2 command handles backup automatically. Each job has one `slot-N-before.private.json` with the prior table, names and recipe. The complete source can be reconstructed from the foundation and this snapshot's direct deltas. Output reports newly added compressed bytes.
+
+Keep the printed **Job path**, its backup directory, and the sibling `.a7c2-lut-work-store` / `.a7c2-lut-backup-store` directories. A small checkpoint alone is not self-contained. Default paths reuse the foundation automatically. For custom paths, keep successive jobs/backups under consistent parents; prefer another drive for the second copy. Existing plain backups remain readable and are not deleted.
 
 ## 4. Write
 
@@ -85,3 +87,11 @@ The job restores its original recipes/programs/names and reads them back, then r
 **Disconnect or unknown result:** keep the folders and first run `python lut.py recover "JOB_PATH"`. It reads existing results, classifies state and cleans confirmed owned temporary files without reexecuting a loader. Only a proven phase permits `python lut.py resume "JOB_PATH" --battery-percent 90`. If it remains `NEEDS_REVIEW`, stop; do not repeat import/install blindly.
 
 [The AI guide](lut-ai.md) covers implementation/reproduction; ordinary installation does not require it.
+
+The development version can also undo the replacement of a **previously imported slot**, preserving later changes to other slots:
+
+```text
+python lut.py restore-slot "ORIGINAL_JOB" --battery-percent 90
+```
+
+This creates a fresh restoration job over current state; reload/verify using steps 6–7. A subsequent change to the same slot stops restoration rather than overwriting it. Slot-only removal of shared functionality after a slot's first activation is not implemented; use the exact `restore` flow above. Compressed snapshots do not depend on intermediate job directories, but retain their shared foundation.
