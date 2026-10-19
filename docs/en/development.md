@@ -2,12 +2,13 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/development.md)
 
-The owner approved merging the verified LUT work into `main` on October 19, 2026. Main contains two separate entries: FL23's Windows CLI/desktop tool and the independent Python LUT CLI. Develop future changes on feature branches; keep published release tags immutable.
+The owner approved the Recovery, slot-restoration and service-first USB fixes for `main` on October 20, 2026, including updating the existing v2.2-preview.1 commit/release. Main contains FL23's Windows CLI/desktop tool, the Python LUT CLI and independent Recovery. Develop future changes on feature branches; further release rewrites need authorization.
 
 ```text
 README.md / README.zh-CN.md  English / Simplified Chinese homepages
 FL23.cmd                   Original FL23 Windows GUI/device CLI
-lut.py                     Portable LUT-only CLI
+lut.py                     Portable LUT import / single-slot restore CLI
+recovery.py                Independent complete rollback CLI
 src/
   fl23/                     Installer, fixed native assets and transport
   looks/                    Conversion, exact-source adapters and tests
@@ -39,4 +40,4 @@ The LUT entry uses the current Python without Tkinter, shell wrappers, automatic
 
 Every user or technical guide has the same path under `docs/en/` and `docs/zh-CN/`. Keep filenames and commands identical; retain original license/attribution text. `AGENTS.md` files are canonical machine instructions rather than additional user guides.
 
-Release assets contain one current tools ZIP, a separate original-DCP ZIP and checksums. Keep build outputs in ignored `dist/`; do not commit ZIPs, firmware, camera backups, calibration, photos or private generated manifests. See [licenses](notices.md) and [validation](technical/validation.md).
+Preview assets contain one tools ZIP, standalone LUT and Recovery Python files, and checksums. Link the unchanged original-DCP ZIP from v2.1. Record changes in [the changelog](changelog.md); this preview's fixes are also in main. Keep build outputs in ignored `dist/`; do not commit ZIPs, firmware, camera backups, calibration, photos or private generated manifests. See [licenses](notices.md) and [validation](technical/validation.md).

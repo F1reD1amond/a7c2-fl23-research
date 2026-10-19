@@ -2,7 +2,7 @@
 
 [English](README.md) · **简体中文**
 
-**本开发分支：**三个独立入口：FL23 安装／核对，LUT 导入／单槽恢复，[Recovery](docs/zh-CN/recovery.md) 完整回退。两种安装顺序均支持；按离线测试验收，未合并 main。
+**v2.2-preview.1（main）：**三个独立入口：FL23 安装／核对，LUT 导入／单槽恢复，[Recovery](docs/zh-CN/recovery.md) 完整回退。支持两种安装顺序，已集成直接服务认证的 USB 连接修复；见[更新与验证记录](docs/zh-CN/changelog.md)。
 
 用于 **Sony A7C II／ILCE-7CM2 固件 2.01**，按需求选择入口：
 
@@ -11,11 +11,11 @@
 | [安装与核对](docs/zh-CN/fl23.md) | [导入与单槽恢复](docs/zh-CN/custom-lut.md) | [完整回退](docs/zh-CN/recovery.md) |
 | 优先用 **`.\FL23.cmd --help`**；双击 `FL23.cmd` 打开桌面版 | **`python lut.py import "look.dcp" --name "Classic Neg." --slot 1`** | **`python recovery.py --help`** |
 
-**当前正式版：[v2.1](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.1)。** `main` 已包含 FL23 和自定义 LUT／DCP 命令行，两个入口分别使用。
+**预览版：[v2.2-preview.1](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.2-preview.1)** · [更新日志](docs/zh-CN/changelog.md)。此前非预览版：[v2.1](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.1)。
 
-在发布页面下载单文件 `lut.py` 或完整工具包，原始 DCP 另有独立附件。[FL23 v1.0 下载](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v1.0)。
+在预览版发布页下载单文件 `lut.py`、单文件 `recovery.py` 或完整工具包。[原始 DCP](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.1/a7c2-dcp-profiles-2026-10-18.zip)继续独立下载。[FL23 v1.0 下载](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v1.0)。
 
-[安装依赖和 Windows／macOS 命令](docs/zh-CN/manual.md)。FL23 保留原启动器、界面和安装流程；仅 LUT／DCP 使用纯命令行，需 64 位 Python 3.10+，不依赖 Tkinter 或 CMD。
+[安装依赖和 Windows／macOS 命令](docs/zh-CN/manual.md)。FL23 保留原启动器、界面和安装流程；LUT／DCP 和 Recovery 使用纯命令行，需 64 位 Python 3.10+，不依赖 Tkinter 或 CMD。
 
 LUT 已实现转换、备份、真实写入／完整读回、重载检查和还原，不依赖 AI 或预先安装 FL23。已在一台 Windows 相机上通过既有六款版本的单槽更新、预览／拍照及单文件重载验证。原厂首次导入和 Mac USB 尚未实测。默认映射是共用单场景近似，不保证完整 DCP 还原，也不是 Sony 签名更新。
 

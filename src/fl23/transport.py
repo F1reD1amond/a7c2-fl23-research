@@ -143,19 +143,28 @@ def identity():
         return {'model':info.modelName,'serial_sha256':core.sha(info.serial.encode())}
     finally:usb.util.dispose_resources(dev)
 
+def service_identity(snapshot,model):
+    """Keep the original normal-query binding without that application query."""
+    if model!=core.MODEL:raise RuntimeError('只支援 '+core.MODEL)
+    serial=core.backup_records(snapshot)[0].get(0x00e70003)
+    if serial is None or len(serial.data)!=4:
+        raise RuntimeError('服務備份缺少四位元組序列號屬性 00e70003')
+    # getCameraInfo hexlifies its four serial bytes before the old tool hashes
+    # the text. Hashing the raw bytes would break existing per-body backups.
+    return {'model':model,'serial_sha256':core.sha(serial.data.hex().encode('ascii'))}
+
 class Session:
     def __init__(self,expected=None):self.expected=expected;self.healthy=True
     def __enter__(self):
-        self.identity=identity()
-        if self.expected and self.identity!=self.expected:raise RuntimeError('目前機身與備份機身不同')
         dev=get_device(0x0e8a)
-        auth=None
         try:
+            # Standard USB strings remain usable when the storage LUN and
+            # DevInfoSender_GetModelInfo are busy. Neither is a service gate.
+            model=usb.util.get_string(dev,dev.iProduct) if dev.iProduct else None
+            if model!=core.MODEL:raise RuntimeError('只支援 '+core.MODEL+'；USB 型號不符')
             auth=SonySenserAuthDevice(GenericUsbDriver(Bounded(dev,20)))
             auth.start();auth.authenticate()
-        except BaseException:
-            if auth is not None:auth.stop()
-            raise
+            # An ambiguous authentication is not retried or followed by stop.
         finally:usb.util.dispose_resources(dev)
         deadline=time.monotonic()+15
         while True:
@@ -166,13 +175,18 @@ class Session:
         time.sleep(2)
         self.backend=Bounded(self.dev)
         self.auth=SonySenserAuthDevice(GenericUsbDriver(self.backend))
+        authenticated=False
         try:
             self.auth.start();self.auth.authenticate()
+            authenticated=True
             self.channel=SonySenserDevice(self.auth.driver)
             self.camera=SonySenserCamera(self.channel)
-            if len(self.camera.readHasp())!=88:raise RuntimeError('ProductInfo 回應不符')
+            snapshot=self.call(self.camera.getBackupPresetData,True)
+            self.identity=service_identity(snapshot,model)
+            if self.expected and self.identity!=self.expected:raise RuntimeError('目前機身與備份機身不同')
         except BaseException:
-            try:self.auth.stop()
+            try:
+                if authenticated and self.healthy:self.auth.stop()
             finally:usb.util.dispose_resources(self.dev)
             raise
         return self
@@ -184,7 +198,7 @@ class Session:
         if not self.healthy:raise RuntimeError('會話結果未知，停止後續命令')
         self.backend.reset()
         try:return method(*args)
-        except Exception:self.healthy=False;raise
+        except BaseException:self.healthy=False;raise
     def jiritsu(self,cmd,data=b'',missing=False):
         if cmd not in [15,16,17,18]:raise ValueError('不允許此 Jiritsu 命令')
         response,out=self.call(self.channel.sendSenserPacket,0x40,struct.pack('<HH',0x1001,cmd)+data)

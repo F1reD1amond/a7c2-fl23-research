@@ -1,6 +1,6 @@
 # A7C II Tools
 
-**Development branch:** three independent entries: FL23 installs/checks, LUT imports/restores one slot, and [Recovery](docs/en/recovery.md) performs complete rollback. Both installation orders are supported. Offline validation only; not merged into main.
+**v2.2-preview.1 (main):** three independent entries: FL23 installs/checks, LUT imports/restores one slot, and [Recovery](docs/en/recovery.md) performs complete rollback. Both installation orders are supported. Includes the service-first USB connection fix; [changes and validation](docs/en/changelog.md).
 
 **English** · [简体中文](README.zh-CN.md)
 
@@ -11,11 +11,11 @@ For **Sony A7C II / ILCE-7CM2 firmware 2.01**, choose the workflow:
 | [Install and verify](docs/en/fl23.md) | [Reference file to camera / slot restore](docs/en/custom-lut.md) | [Complete rollback](docs/en/recovery.md) |
 | Prefer **`.\FL23.cmd --help`** for CLI; double-click `FL23.cmd` for desktop | **`python lut.py import "look.dcp" --name "Classic Neg." --slot 1`** | **`python recovery.py --help`** |
 
-**Current release: [v2.1](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.1).** `main` contains both FL23 and the custom LUT/DCP CLI, with separate entries below.
+**Preview: [v2.2-preview.1](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.2-preview.1)** · [Changelog](docs/en/changelog.md). Previous non-preview release: [v2.1](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.1).
 
-Download the single-file `lut.py` or complete tools ZIP from the release; original DCPs are a separate attachment. [FL23 v1.0 release](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v1.0).
+Download standalone `lut.py`, standalone `recovery.py`, or the complete tools ZIP from the preview release. [Original DCPs](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.1/a7c2-dcp-profiles-2026-10-18.zip) remain a separate download. [FL23 v1.0 release](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v1.0).
 
-[Setup and Windows/macOS commands](docs/en/manual.md). FL23 retains its existing launcher, interface and installation flow. Only LUT/DCP is CLI-only, with 64-bit Python 3.10+ and no Tkinter/CMD dependency.
+[Setup and Windows/macOS commands](docs/en/manual.md). FL23 retains its existing launcher, interface and installation flow. LUT/DCP and Recovery are CLI-only, with 64-bit Python 3.10+ and no Tkinter/CMD dependency.
 
 LUT conversion, backups, actual writing/full readback, reload checks and restoration are implemented; no AI or prior FL23 installation is needed. One Windows camera passed an existing-six-look slot update, preview/photos and standalone reload verification. Stock first-install and Mac USB remain untested. The default color bridge is a shared one-scene approximation, not full DCP fidelity or a Sony-signed update.
 

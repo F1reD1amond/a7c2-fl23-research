@@ -2,7 +2,7 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/lut-ai.md)
 
-The [user guide](custom-lut.md) is an eight-stage manual workflow. Its device commands are implemented; do not replace installation with offline manifest generation. Read [source rules](../../src/looks/AGENTS.md), [integration](technical/integration.md) and [historical failures](technical/failures.md). FL23's entry and files must remain unchanged.
+The [user guide](custom-lut.md) is an eight-stage manual workflow. Its device commands are implemented; do not replace installation with offline manifest generation. Read [source rules](../../src/looks/AGENTS.md), [integration](technical/integration.md) and [historical failures](technical/failures.md). Preserve FL23 behavior and the shared service-first transport.
 
 ## Run the user's workflow
 
@@ -53,7 +53,7 @@ Preserve `job.private.json`, both source copies, input/model, candidates, manife
 
 Every reconnect requires the normal Mass Storage USB serial hash to match the job before authentication. A service-only connection stops and requires a normal reconnect. `readHasp()` is diagnostic only: its 88-byte response varies across sessions and cannot identify a body. Legacy jobs without a stable binding cannot be forced forward; retain them and prepare a fresh job. Unknown native output remains untouched. An authenticated failed report can permit continuation only after rollback/read-only evidence and complete source/target classification. Settings comparison covers the writable AP group `02cf` and all four protected CP units. The known `02cf0b6e` diagnostic value and unrelated runtime groups are backed up but do not block installation; their values are never written.
 
-If the initial storage query stays in recognized busy states or standard missing-card sense `02/3a/00`, the LUT layer can acquire service access once. USB timeouts, unknown sense codes and other manufacturers stop. On a first capture, complete AP/CP files must match a supported layout before the pinned read-only probe confirms native model index 16. No program/name/settings write is allowed before that confirmation. FL23 transport source is unchanged.
+Shared `Session` confirms the normal USB product string and authenticates directly, without requiring TUR or `getCameraInfo` to pass. It binds AP property `0x00E70003` with the original hex-text serial digest; the LUT layer also retains its normal USB-serial binding. HASP is not an identity source. Authentication/transport failures stop without retries. Existing program/native-model and selected-slot checks still apply before persistent writes.
 
 ## Reproduce tests and package
 

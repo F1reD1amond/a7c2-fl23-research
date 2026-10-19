@@ -2,12 +2,13 @@
 
 [返回首页](../../README.zh-CN.md) · [English](../en/development.md)
 
-机主已于 2026 年 10 月 19 日认可将已验证的 LUT 工作合并到 `main`。Main 保留两个独立入口：FL23 Windows 命令行／桌面工具，以及 Python LUT 命令行。后续修改使用功能分支，已发布的版本标签保持不变。
+机主已于 2026 年 10 月 20 日认可将 Recovery、单槽恢复和直接服务认证的 USB 修复合入 `main`，并更新同一个 v2.2-preview.1 提交／Release。Main 保留 FL23 Windows 命令行／桌面工具、Python LUT 命令行和独立 Recovery 三个入口。后续修改使用功能分支；再次改写发布历史需另获授权。
 
 ```text
 README.md / README.zh-CN.md  英文／简体中文首页
 FL23.cmd                   原 FL23 Windows 图形界面／设备命令
-lut.py                     跨平台 LUT 命令行
+lut.py                     跨平台 LUT 导入／单槽恢复命令行
+recovery.py                独立完整回退命令行
 src/
   fl23/                     安装器、固定原生组件和通讯程序
   looks/                    转换、精确来源适配器和测试
@@ -39,4 +40,4 @@ LUT 入口直接使用当前 Python，不依赖 Tkinter 或 shell 启动层，�
 
 用户和技术说明在 `docs/en/`、`docs/zh-CN/` 下逐项对应。文件名和命令保持一致，许可和署名原文保留。`AGENTS.md` 是供工具读取的统一规则，不另作一套用户说明。
 
-Release 只提供一份当前工具包、一份独立原始 DCP 包和校验值。打包产物留在忽略的 `dist/`，不把 ZIP、完整固件、机身备份、校准、照片或私人生成清单提交到仓库。见[许可](notices.md)和[验证记录](technical/validation.md)。
+预览版提供一份工具包、独立 LUT／Recovery Python 文件及校验值；原始 DCP 继续链接 v2.1 的同一份附件。修改写入[更新日志](changelog.md)，此次修复也包含在 main。打包产物留在忽略的 `dist/`，不把 ZIP、完整固件、机身备份、校准、照片或私人生成清单提交到仓库。见[许可](notices.md)和[验证记录](technical/validation.md)。

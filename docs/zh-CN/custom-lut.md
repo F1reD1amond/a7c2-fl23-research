@@ -8,11 +8,11 @@
 
 | 需要什么 | 下载／查看 |
 |---|---|
-| 直接使用，推荐 | [单文件 lut.py](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.1/lut.py)；保存文件，不要复制网页内容 |
-| 完整工具、源码及说明 | [完整工具包 ZIP](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.1/a7c2-tools-2.1.zip)；解压后进入含 `lut.py` 的目录 |
-| 阅读／修改源码 | [本版源码](https://github.com/QAQLeonard/a7c2-fl23-research/tree/v2.1) · [LUT 实现](https://github.com/QAQLeonard/a7c2-fl23-research/tree/v2.1/src/looks) |
+| 直接使用，推荐 | [单文件 lut.py](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.2-preview.1/lut.py)；保存文件，不要复制网页内容 |
+| 完整工具、源码及说明 | [完整工具包 ZIP](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.2-preview.1/a7c2-tools-2.2-preview.1.zip)；解压后进入含 `lut.py` 的目录 |
+| 阅读／修改源码 | [本版源码](https://github.com/QAQLeonard/a7c2-fl23-research/tree/v2.2-preview.1) · [LUT 实现](https://github.com/QAQLeonard/a7c2-fl23-research/tree/v2.2-preview.1/src/looks) |
 
-附件和校验值见[发布页](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.1)。最新源码见 [main](https://github.com/QAQLeonard/a7c2-fl23-research/tree/main) 和 [LUT 实现目录](https://github.com/QAQLeonard/a7c2-fl23-research/tree/main/src/looks)。初次使用建议下载上表的固定版本。
+附件和校验值见[发布页](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.2-preview.1)。当前源码见 [main](https://github.com/QAQLeonard/a7c2-fl23-research/tree/main) 和 [LUT 实现目录](https://github.com/QAQLeonard/a7c2-fl23-research/tree/main/src/looks)。初次使用建议下载上表的版本。
 
 在 `lut.py` 所在目录打开终端，以下命令都从这里执行。Windows 使用 `python`，Mac 换成 `python3`；若按安装说明建立了虚拟环境，使用其中安装依赖的 Python。单文件和完整工具包的操作相同，区别只是[安装依赖的方法](manual.md#python-和依赖)。
 
@@ -34,7 +34,7 @@ python lut.py import "look.dcp" --name "Classic Neg." --slot 1
 
 ## 3. 备份相机
 
-开发分支 `feature/lut-compact-backups` 改用**共用压缩基础备份＋单槽写前记录**。首次保存基础数据，后续只新增变化的数据块；不再为每次导入重复保存整份程序、整套名称目标和多份完整读回文件。完整读取/读回仍用于核对，核对后保存结果即可。新存储和单槽还原尚未实机验证，旧 v2.1 下载不包含它们。
+本预览版使用**共用压缩基础备份＋单槽写前记录**。首次保存基础数据，后续只新增变化的数据块；不再为每次导入重复保存整份程序、整套名称目标和多份完整读回文件。完整读取/读回仍用于核对，核对后保存结果即可。新存储和单槽还原尚未实机验证，旧 v2.1 下载不包含它们。
 
 第 2 步的命令自动完成备份，不需要额外命令。每次 Job 有一个 `slot-N-before.private.json`，记录该槽写入前的色表、名称及配方；完整原始数据可由压缩基础和本次增量重建。程序会显示本次实际新增的压缩占用。
 

@@ -2,7 +2,9 @@
 
 [首页](../../README.zh-CN.md) · [English](../en/recovery.md)
 
-Recovery 负责完整回退；FL23 只安装／核对，LUT 工具只导入／恢复单槽。本页适用于开发版，v2.1 下载不含此入口。[Python／驱动准备](manual.md)与 LUT 共用依赖，但运行 Recovery 不需要调用 LUT 工具或提供 LUT Job。
+Recovery 负责完整回退；FL23 只安装／核对，LUT 工具只导入／恢复单槽。本页适用于 v2.2-preview.1，v2.1 下载不含此入口。[Python／驱动准备](manual.md)与 LUT 共用依赖，但运行 Recovery 不需要调用 LUT 工具或提供 LUT Job。
+
+下载[单文件 recovery.py](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.2-preview.1/recovery.py) 或[完整工具包](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.2-preview.1/a7c2-tools-2.2-preview.1.zip)。[更新日志](changelog.md)。
 
 完整源码包从根目录运行；打包后的单文件 `recovery.py` 可单独使用，内部已包含支持代码，Python／设备依赖仍需安装。
 

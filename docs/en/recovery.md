@@ -2,7 +2,9 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/recovery.md)
 
-Recovery performs full rollback. FL23 only installs/verifies; LUT imports/restores individual slots. This page describes development code, not the v2.1 download. [Python/driver setup](manual.md) uses shared dependencies, but Recovery does not call the LUT entry or require a LUT job.
+Recovery performs full rollback. FL23 only installs/verifies; LUT imports/restores individual slots. This page covers v2.2-preview.1; the v2.1 download does not include Recovery. [Python/driver setup](manual.md) uses shared dependencies, but Recovery does not call the LUT entry or require a LUT job.
+
+Download [standalone recovery.py](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.2-preview.1/recovery.py) or the [complete tools ZIP](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.2-preview.1/a7c2-tools-2.2-preview.1.zip). [Changelog](changelog.md).
 
 Run the source entry from the complete checkout root, or use the packaged self-contained `recovery.py` on its own. The packaged file embeds its support code; Python/device dependencies still need installation.
 

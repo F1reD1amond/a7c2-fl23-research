@@ -8,11 +8,11 @@ Download the tool, then follow [setup](manual.md) for Python and USB:
 
 | What you need | Download / source |
 |---|---|
-| Run the tool, recommended | [Single-file lut.py](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.1/lut.py); save the file rather than copying the webpage |
-| Complete tools, source and guides | [Tools ZIP](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.1/a7c2-tools-2.1.zip); extract it and enter the folder containing `lut.py` |
-| Read / modify the source | [This version's source](https://github.com/QAQLeonard/a7c2-fl23-research/tree/v2.1) · [LUT implementation](https://github.com/QAQLeonard/a7c2-fl23-research/tree/v2.1/src/looks) |
+| Run the tool, recommended | [Single-file lut.py](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.2-preview.1/lut.py); save the file rather than copying the webpage |
+| Complete tools, source and guides | [Tools ZIP](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.2-preview.1/a7c2-tools-2.2-preview.1.zip); extract it and enter the folder containing `lut.py` |
+| Read / modify the source | [This version's source](https://github.com/QAQLeonard/a7c2-fl23-research/tree/v2.2-preview.1) · [LUT implementation](https://github.com/QAQLeonard/a7c2-fl23-research/tree/v2.2-preview.1/src/looks) |
 
-All attachments and checksums are on the [release page](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.1). Current source is on [main](https://github.com/QAQLeonard/a7c2-fl23-research/tree/main); [LUT implementation](https://github.com/QAQLeonard/a7c2-fl23-research/tree/main/src/looks). For a first installation, use the fixed version linked above.
+All attachments and checksums are on the [release page](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.2-preview.1). Current source is on [main](https://github.com/QAQLeonard/a7c2-fl23-research/tree/main); [LUT implementation](https://github.com/QAQLeonard/a7c2-fl23-research/tree/main/src/looks). For a first installation, use the version linked above.
 
 Open a terminal in the folder containing `lut.py` and run the commands below there. Use `python` on Windows or `python3` on Mac; if you created a virtual environment, use its interpreter with the installed dependencies. Both downloads use the same commands; only [dependency setup](manual.md#python-and-dependencies) differs.
 
@@ -34,7 +34,7 @@ Without `--write`, this prepares, backs up and preflights without installing tab
 
 ## 3. Back up the camera
 
-Development branch `feature/lut-compact-backups` uses a **shared compressed foundation plus a per-slot pre-write checkpoint**. Initial data is saved once; subsequent jobs add changed blocks. No repeated complete program copies, complete name targets or full readback files are retained. Complete reads/readbacks still verify current data; only their results are saved. This storage/slot-restore workflow awaits physical validation and is not in the old v2.1 download.
+This preview uses a **shared compressed foundation plus a per-slot pre-write checkpoint**. Initial data is saved once; subsequent jobs add changed blocks. No repeated complete program copies, complete name targets or full readback files are retained. Complete reads/readbacks still verify current data; only their results are saved. This storage/slot-restore workflow awaits physical validation and is not in the old v2.1 download.
 
 The step-2 command handles backup automatically. Each job has one `slot-N-before.private.json` with the prior table, names and recipe. The complete source can be reconstructed from the foundation and this snapshot's direct deltas. Output reports newly added compressed bytes.
 

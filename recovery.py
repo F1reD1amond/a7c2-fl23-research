@@ -9,7 +9,7 @@ ROOT=Path(__file__).resolve().parent
 def main(argv=None):
     argv=list(sys.argv[1:] if argv is None else argv)
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version',action='version',version='2.2-recovery-dev')
+    parser.add_argument('--version',action='version',version='2.2-preview.1')
     sub=parser.add_subparsers(dest='command',required=True)
     p=sub.add_parser('restore',help='Return to the selected backup, including later FL23/LUT changes')
     p.add_argument('backup',type=Path);p.add_argument('--work-dir',type=Path)

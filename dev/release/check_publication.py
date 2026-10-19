@@ -1,4 +1,4 @@
-"""Check public links, staged-file privacy, UTF-8, and exact embedded host patch."""
+"""Check public links, publication privacy, UTF-8 and Python syntax."""
 import ast,base64,hashlib,json,re,zipfile
 from pathlib import Path
 from urllib.parse import unquote
@@ -28,8 +28,6 @@ def main():
                 target=(p.parent/unquote(url.split('#')[0])).resolve();links+=1
                 if not target.exists():errors.append('Missing link '+url+' in '+str(p.relative_to(ROOT)))
         elif p.suffix=='.py':ast.parse(data.decode('utf-8'),filename=str(p))
-    transport=(ROOT/'src/fl23/transport.py').read_bytes().replace(b'\r\n',b'\n')
-    if sha(transport)!='a578ebfd0cffa0f715ec025ef7e661d239652ae8573cea3982a27c8c08f06ccb':errors.append('Integrated startup transport differs')
     for p in ROOT.glob('*.zip'):errors.append('Download binary belongs in Releases: '+p.name)
     for p in ROOT.glob('*USB*.cmd'):errors.append('Separate repair download remains: '+p.name)
     if not (ROOT/'lut.py').is_file():errors.append('Missing LUT Python entry')
@@ -37,15 +35,15 @@ def main():
     if any(p.suffix.lower() in ['.cmd','.ps1'] or p.name=='gui.py' for p in (ROOT/'src/looks').rglob('*') if p.is_file()):errors.append('Retired LUT launcher or GUI remains')
     english={p.relative_to(ROOT/'docs/en').as_posix() for p in (ROOT/'docs/en').rglob('*.md')}
     chinese={p.relative_to(ROOT/'docs/zh-CN').as_posix() for p in (ROOT/'docs/zh-CN').rglob('*.md')}
-    if english!=chinese or len(english)!=14:errors.append('Expected 14 matching English/Simplified Chinese guide pairs')
+    if english!=chinese or len(english)!=15:errors.append('Expected 15 matching English/Simplified Chinese guide pairs')
     expected_markdown={'README.md','README.zh-CN.md','AGENTS.md','src/looks/AGENTS.md'}
     expected_markdown|={'docs/'+lang+'/'+name for lang in ['en','zh-CN'] for name in english}
     actual_markdown={p.relative_to(ROOT).as_posix() for p in files if p.suffix=='.md'}
     if actual_markdown!=expected_markdown:errors.append('Markdown outside the documented bilingual structure')
     for p in files:
-        if p.suffix=='.md' and ('zh-TW' in p.name or '(英文)' in p.read_text(encoding='utf-8') or '（英文）' in p.read_text(encoding='utf-8')):errors.append('Retired language reference: '+str(p.relative_to(ROOT)))
+        if p.suffix=='.md' and ('zh-TW' in p.name or '(鑻辨枃)' in p.read_text(encoding='utf-8') or '锛堣嫳鏂囷級' in p.read_text(encoding='utf-8')):errors.append('Retired language reference: '+str(p.relative_to(ROOT)))
     manifest=json.loads((ROOT/'docs/profiles/manifest.json').read_text(encoding='utf-8'))
     if len(manifest['profiles'])!=18:errors.append('Expected all18 DCP references')
     if errors:raise ValueError('\n'.join(errors))
-    print(json.dumps({'public_files_checked':len(files),'local_markdown_links_checked':links,'bilingual_guide_pairs':len(english),'UTF8_and_Python_syntax_verified':True,'integrated_startup_fix_verified':True,'DCP_manifest_count':18,'camera_io':False},indent=2))
+    print(json.dumps({'public_files_checked':len(files),'local_markdown_links_checked':links,'bilingual_guide_pairs':len(english),'UTF8_and_Python_syntax_verified':True,'DCP_manifest_count':18,'camera_io':False},indent=2))
 if __name__=='__main__':main()

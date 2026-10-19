@@ -10,7 +10,9 @@ Read [AGENTS](../../AGENTS.md), [the user guide](fl23.md) and [compat.py](../../
 
 At the owner's request, FL23 has no stock/repository whole-firmware provenance whitelist. Changes outside actual patch positions do not disqualify a body. Instruction conflicts at write positions still stop with an address. Preserve existing LUT conversion and CP data; already enabled FL23 is backed up/verified without reinstalling.
 
-The desktop shows a pre-install provenance-risk warning and CLI prints the same warning. Keep duplicate actual-file backups, exact candidates/inverses and full post-write readback. Per-job integrity is distinct from stock provenance. This workflow awaits physical validation; USB behavior is unchanged.
+The desktop shows a pre-install provenance-risk warning and CLI prints the same warning. Keep duplicate actual-file backups, exact candidates/inverses and full post-write readback. Per-job integrity is distinct from stock provenance.
+
+`Session` reads the normal USB product string, authenticates 0E8A→0336, then uses `getBackupPresetData(True)` and AP property `0x00E70003` (four bytes). Preserve the old binding with `sha256(serial.data.hex().encode('ascii'))`, not a hash of raw bytes or HASP. Match an existing expected identity before returning a usable session. Storage readiness and `getCameraInfo` are optional diagnostics, never service-entry prerequisites. Authentication/transport timeouts are not retried. This integrated change is offline-tested; user-reported success of the same service route is separate from validation of the released build.
 
 Use 64-bit Python 3.10+ on Windows. The launcher installs dependencies, with no separate compiler operation. Normal/service USB IDs are 054C:0E8A / 054C:0336.
 

@@ -10,7 +10,11 @@ Both FL23→LUT and LUT→FL23 produce identical final AP/CP bytes in real-file 
 
 These are offline tests and native syscall simulations, without new camera I/O, boot acceptance or physical Recovery validation. Earlier validation records below remain historical evidence.
 
-Latest offline runs: 131 LUT cases (35 private-fixture skips), 22 FL23 cases and 37 host/USB simulations passed. Seven real-file order/slot cases passed separately, including wrong recorded hashes; 44 byte-only native name cases passed.
+Latest offline runs: 131 LUT cases (35 private-fixture skips), 22 FL23 cases and 46 host/USB simulations passed. Seven real-file order/slot cases passed separately, including wrong recorded hashes; 44 byte-only native name cases passed.
+
+## Service-first USB update — October 20, 2026
+
+Nine active-transport simulations cover direct service entry without TUR/GetModelInfo, legacy serial compatibility including leading zero bytes, new preparation, wrong body/model, malformed serial, missing service identity, and authentication/read timeout or interruption without retries. A historical real backup's AP `00e70003` hex-text digest matches its recorded normal-query identity; the historical HASP sample contains neither that raw serial nor its hex text. This update did not operate a camera. The user reported successful installation by another AI using the service route; the exact amended release build and physical Recovery/Mac USB remain untested.
 
 ## Physical observations
 

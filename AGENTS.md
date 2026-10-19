@@ -1,8 +1,9 @@
 # Repository entrypoint
 
-The owner approved merging the physically verified LUT work into `main` on
-October 19, 2026. Main now contains separate FL23 and LUT entries. Develop
-future changes on feature branches and preserve existing release tags.
+The owner approved merging the Recovery/slot-restoration fixes and the
+service-first USB fix into `main` on October 20, 2026, and updating the existing
+v2.2-preview.1 commit/release. Main has three independent entries. Develop
+future changes on feature branches; further release rewrites need authorization.
 Read `docs/en/ai.md` before implementation.
 
 - `src/fl23/`: exact-source FL2/FL3 installation, backup and verification.
@@ -21,6 +22,9 @@ host byte readback, without firmware SHA gates or repeated package SHA scans.
 Keep actual patch-position conflict guards and body-bound backups. Existing
 LUT import adapters retain their source fingerprints; single-slot restoration uses byte checks without firmware/backup/worker hash gates. Checkpoint rollback
 is independent of their job order/output fingerprints.
+Service entry checks the normal USB product string, authenticates, then binds
+AP property 00e70003 using the legacy hex-text serial digest. Do not make TUR
+readiness or getCameraInfo prerequisites, or substitute a HASP hash.
 Never repeat a write with an unknown outcome. Offline manifests alone are not an installation. The new
 device importer passed two selected-slot updates on one Windows camera;
 stock first-install, physical restoration and Mac USB remain untested.
