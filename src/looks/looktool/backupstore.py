@@ -26,9 +26,9 @@ def body_key(identity):
     return sha(('ILCE-7CM2\0'+serial).encode('utf-8'))
 
 class Store:
-    def __init__(self,root,body):
+    def __init__(self,root,body,*,hash_checks=True):
         if not re.fullmatch('[a-f0-9]{64}',body):raise ValueError('Invalid backup body key')
-        self.root=Path(root).resolve()/body;self.new_bytes=0;self.new_objects=0
+        self.root=Path(root).resolve()/body;self.new_bytes=0;self.new_objects=0;self.hash_checks=hash_checks
     def _path(self,digest):
         if not isinstance(digest,str) or not re.fullmatch('[a-f0-9]{64}',digest):raise ValueError('Invalid backup object reference')
         return self.root/'objects'/(digest+'.z')
@@ -39,7 +39,7 @@ class Store:
         decoder=zlib.decompressobj()
         try:raw=decoder.decompress(packed,size+1)
         except zlib.error as exc:raise ValueError('Compressed backup object is damaged') from exc
-        if len(raw)!=size or not decoder.eof or decoder.unused_data or decoder.unconsumed_tail or sha(raw)!=digest:
+        if len(raw)!=size or not decoder.eof or decoder.unused_data or decoder.unconsumed_tail or (self.hash_checks and sha(raw)!=digest):
             raise ValueError('Compressed backup object is damaged')
         return raw
     def _put(self,raw):
@@ -89,9 +89,9 @@ class Store:
             if 'delta' in entry:
                 base=self._read(entry['base'],entry['base_bytes'])[:expected].ljust(expected,b'\0');delta=self._read(entry['delta'],expected)
                 block=bytes(a^b for a,b in zip(base,delta))
-                if sha(block)!=entry['sha256']:raise ValueError('Backup delta reconstruction differs')
+                if self.hash_checks and sha(block)!=entry['sha256']:raise ValueError('Backup delta reconstruction differs')
             else:block=self._read(entry['sha256'],expected)
             output.extend(block)
         raw=bytes(output)
-        if len(raw)!=size or sha(raw)!=spec['sha256']:raise ValueError('Backup file reconstruction differs')
+        if len(raw)!=size or (self.hash_checks and sha(raw)!=spec['sha256']):raise ValueError('Backup file reconstruction differs')
         return raw

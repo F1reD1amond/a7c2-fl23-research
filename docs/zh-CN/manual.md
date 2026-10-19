@@ -2,7 +2,7 @@
 
 [首页](../../README.zh-CN.md) · [English](../en/manual.md)
 
-FL23 保留现有 Windows 命令行和桌面入口，见[FL23 教程](fl23.md)。下面只讲独立 LUT 导入器。
+FL23 保留现有 Windows 命令行和桌面入口，见[FL23 教程](fl23.md)。下面的 Python／驱动准备适用于独立的 LUT 和 Recovery 入口。
 
 ## Python 和依赖
 
@@ -23,7 +23,7 @@ python -m pip install "numpy>=1.24,<3" "scipy>=1.10,<2" pyusb==1.3.1 libusb-pack
 python lut.py doctor --device
 ```
 
-Mac 将 `python` 换成 `python3`。单文件会将经过校验的内部源码／原生程序释放到 `~/.a7c2-lut/runtime`；工作和备份目录独立保存，不随工具更新覆盖。依赖不内置，也不会自动安装。`doctor` 不连接相机。
+Mac 将 `python` 换成 `python3`。单文件会将经过校验的内部源码／原生程序释放到 `~/.a7c2-tools/runtime`；工作和备份目录独立保存，不随工具更新覆盖。依赖不内置，也不会自动安装。`doctor` 不连接相机。
 
 ## 相机连接
 
@@ -43,15 +43,14 @@ Mac 使用 libusb，不安装 Zadig。遇到设备占用，关闭“照片”／
 | 再加 `--write --battery-percent N` | 同时写入并完整读回 |
 | `install JOB --battery-percent N` | 写入已准备的工作 |
 | `verify JOB --accept-photos` | 核对重新加载，记录已完成的实机验收 |
-| `restore JOB --battery-percent N` | 精确还原这次导入 |
-| `rollback BACKUP2 --firmware-version 2.01 --battery-percent N` | 越过后续 LUT 修改，一次回到最初完整备份点（开发版） |
-| `rollback-verify WORK --accept-photos` | 断电重开并实测后，核对完整回退 |
-| `upgrade-checkpoint BACKUP2 --fl23-workspace WORK --first-lut-job JOB --output ARCHIVE` | 离线补齐旧存档，记录无法补回的历史数据 |
-| `inspect-checkpoint BACKUP2` | 离线查看存档范围和限制 |
 | `diagnose-job JOB` | 离线解释已有错误及名称还原报告，不连接相机 |
-| `restore-slot JOB --battery-percent N` | 还原之前已导入槽位的替换，保留其他后续槽位（开发版） |
+| `restore-slot JOB --battery-percent N` | 恢复一个槽位（含首次导入），保留其他槽位和 FL23 |
 | `recover JOB` | 读取已有证据，不重新执行加载器 |
 | `resume JOB --battery-percent N` | 继续已确认状态的中断阶段 |
 | `configure --calibration MODEL --backup-root DIR` | 可选：保存自己的色彩模型／备份位置 |
 
 表中命令都加前缀 `python lut.py`。原有离线研究命令仍在 `--help`，普通安装无需使用它们。
+
+## 独立 Recovery
+
+完整回退使用 `python recovery.py restore BACKUP --firmware-version 2.01 --battery-percent N`。独立[教程](recovery.md)包含旧 backup2／新存档、重载和核对。与 LUT 共用 Python／设备依赖，运行不需要 LUT Job；Mac 使用 `python3`。FL23 只保留 prepare／install／verify。

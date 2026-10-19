@@ -2,13 +2,13 @@
 import argparse,hashlib,json,zipfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
-VERSION='2.2-checkpoint-dev'
+VERSION='2.2-recovery-dev'
 def sha(data):return hashlib.sha256(data).hexdigest()
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output',type=Path,default=ROOT/f'dist/a7c2-tools-{VERSION}.zip');args=parser.parse_args()
     files={}
-    sources=[ROOT/name for name in ['README.md','README.zh-CN.md','LICENSE','AGENTS.md','FL23.cmd','lut.py']]
+    sources=[ROOT/name for name in ['README.md','README.zh-CN.md','LICENSE','AGENTS.md','FL23.cmd','lut.py','recovery.py']]
     for folder in ['src','docs','dev']:
         sources.extend(p for p in (ROOT/folder).rglob('*') if p.is_file() and not any(v in p.parts for v in ['__pycache__','.venv','private']))
     for source in sources:

@@ -6,6 +6,14 @@ from looktool.devicejob import Job
 from unittest.mock import patch
 
 class StoreTests(unittest.TestCase):
+    def test_slot_reader_ignores_hash_values_but_keeps_compression_errors(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store=b.Store(folder,'a'*64,hash_checks=False)
+            spec=store.put('before',b'original slot bytes')
+            spec['sha256']='0'*64
+            self.assertEqual(store.read(spec),b'original slot bytes')
+            store._path(spec['chunks'][0]['sha256']).write_bytes(b'broken compressed data')
+            with self.assertRaises(ValueError):store.read(spec)
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name);self.store=b.Store(self.root/'work','a'*64)
@@ -66,11 +74,11 @@ class StoreTests(unittest.TestCase):
         state={'schema':'a7c2-lut-device-job/1','backup_copy':str(second),'backup_files':{'old.bin':b.sha(b'old full backup')}}
         b.write_json(job.state_path,state);job.load();self.assertEqual(job.source('old.bin'),b'old full backup')
         self.assertEqual((second/'old.bin').read_bytes(),b'old full backup')
-    def test_first_activation_slot_restore_stops_before_camera_or_folders(self):
-        original=type('Original',(),{'state':{'phase':'COMPLETE','slot':1},'load':lambda self:None,'source':lambda self,n:b'not-used'})()
+    def test_low_battery_slot_restore_stops_before_camera_or_folders(self):
+        original=type('Original',(),{'state':{'phase':'COMPLETE','slot':1},'load':lambda self,**kw:None,'source':lambda self,n:b'not-used'})()
         job=Job(self.root/'new')
-        with patch('looktool.devicejob.device_layout.identify',return_value={'mask':0}),patch.object(job,'factory',side_effect=AssertionError('No camera')):
-            with self.assertRaisesRegex(ValueError,'first activation'):job.restore_slot(original,90,self.root/'copy')
+        with patch.object(job,'factory',side_effect=AssertionError('No camera')):
+            with self.assertRaisesRegex(ValueError,'50'):job.restore_slot(original,12,self.root/'copy')
         self.assertFalse(job.root.exists())
     def test_normal_conversion_does_not_require_a_restore_recipe(self):
         from looktool import devicejob

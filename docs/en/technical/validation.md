@@ -2,13 +2,23 @@
 
 [Home](../../../README.md) · [简体中文](../../zh-CN/technical/validation.md)
 
+## Current independent tools (offline)
+
+FL23 exposes prepare/install/verify only. `lut.py restore-slot` supports native first activation and previous imported-table restoration; `recovery.py` performs complete rollback from a new checkpoint or original raw FL23 backup2, without an old workspace/LUT job.
+
+Both FL23→LUT and LUT→FL23 produce identical final AP/CP bytes in real-file tests. Selected-slot undo preserves later FL23 and another slot; the zero-mask state can import again. All 68 original name resources were reconstructed exactly after repeated appended titles. Slot restoration passed with intentionally incorrect recorded file hashes. Native byte-only name workers passed 44 syscall/failure cases; the tested native program worker was 8,464 bytes. Table FNV fields are generated for the camera format; they are not host file admission gates.
+
+These are offline tests and native syscall simulations, without new camera I/O, boot acceptance or physical Recovery validation. Earlier validation records below remain historical evidence.
+
+Latest offline runs: 131 LUT cases (35 private-fixture skips), 22 FL23 cases and 37 host/USB simulations passed. Seven real-file order/slot cases passed separately, including wrong recorded hashes; 44 byte-only native name cases passed.
+
 ## Physical observations
 
 The `feature/backup2-rollback` branch adds an initial checkpoint and byte-based FL23/rollback workers. Software checks covered multiple later LUT edits followed by one rollback, original titles/recipes, unrelated settings, legacy supplementation, and stopping after unknown completion/readback errors. A real six-look→stock fixture compiled into two workers of 23,368 and 23,088 bytes (74 windows); the final 68-resource worker was 18,104 bytes. Actual name-worker ELF replay passed 28 syscall/failure cases across stock and already-named targets. These are offline tests, with no camera writes or physical rollback acceptance. Routine LUT imports still use compressed incremental backups; an initial archive is saved once per body.
 
 Development regression: 119 LUT cases (29 private-fixture skips), 22 FL23 cases including real-source compilation, and 37 host/USB simulations passed. Five additional private-fixture job/slot simulations passed with initial checkpoint capture enabled. These simulations do not open a camera.
 
-The compact-backup development branch has no new camera validation. An offline AP/CP measurement used 118,051,624 original bytes: the first shared store used 27,018,672 compressed payload bytes, and one later slot-6 replacement added 2,152 bytes. These figures are per copy and exclude names, settings, manifests, logs and compiler cache; they are not USB timing measurements. Host simulation covers ordinary install/exact restore and restoring an earlier slot after a later different-slot update. First-activation slot-only removal remains unsupported.
+The compact-backup development branch has no new camera validation. An offline AP/CP measurement used 118,051,624 original bytes: the first shared store used 27,018,672 compressed payload bytes, and one later slot-6 replacement added 2,152 bytes. These figures are per copy and exclude names, settings, manifests, logs and compiler cache; they are not USB timing measurements. Host simulation covers ordinary install/exact restore and restoring an earlier slot after a later different-slot update. The current slot restorer also handles first activation, leaving zero-mask shared code dormant.
 
 | Item | Evidence | Limit |
 |---|---|---|

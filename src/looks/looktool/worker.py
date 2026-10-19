@@ -64,6 +64,9 @@ def validate_worker_report(raw,mode,contract):
     Native evidence alone is insufficient: complete host readback, settings
     preservation, cleanup and physical acceptance remain separate checks.
     """
+    if contract.get('byte_only'):
+        from .checkpointworker import program_report
+        return program_report(raw,mode,{'windows':contract['window_writes'],'sizes':[contract['sizes'][n] for n in NAMES]})
     if type(mode) is not int or mode not in (0,1,2) or len(raw)!=240:
         raise ValueError('Expected native mode 0/1/2 and exactly 240 report bytes')
     if contract.get('schema')!='a7c2-table-worker-contract/1':raise ValueError('Unknown worker contract')

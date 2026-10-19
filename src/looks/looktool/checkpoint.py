@@ -4,6 +4,7 @@ Archives are private: they contain the owner's programs and body settings.
 ZIP CRC detects damaged storage; firmware verification uses direct bytes.
 """
 import json
+import hashlib
 import os
 from pathlib import Path
 import shutil
@@ -59,7 +60,7 @@ def read(path):
         if manifest.get('schema')!=SCHEMA or manifest.get('version')!='2.01':raise ValueError('Unsupported checkpoint format/version')
         expected=inventory()
         if set(manifest['files'])!=expected or set(archive.namelist())!=expected|{'manifest.json'}:
-            raise ValueError('Incomplete checkpoint; legacy backup2 needs upgrade-checkpoint first')
+            raise ValueError('Incomplete checkpoint; Recovery also accepts the original raw FL23 backup directory')
         same_body(manifest['identity'],manifest['identity'])
         values={name:archive.read(name) for name in expected}
     return manifest,values
@@ -77,37 +78,48 @@ def capture(session,programs,ram,saved):
         values['resources/'+filename]=session.read('/tmp/jiritsu/../../usr/share/app/'+filename)
     return values
 
-def upgrade_legacy(backup2,workspace,first_lut,output):
-    """Supplement old FL23 backup2; never overwrite the originals."""
-    from .devicejob import Job
+def read_legacy(backup2):
+    """Read the original FL23 tool's own raw backup, with no LUT job/state.
+
+    AP property 00e70003 is the four-byte camera serial used by Sony's normal
+    identity query. Its digest binds the body, never the firmware source.
+    """
     from .devicesession import modules
     _,core=modules()
-    backup2,workspace=Path(backup2),Path(workspace)
-    state=json.loads((workspace/'state.json').read_text(encoding='utf-8'))
-    if state.get('version')!='2.01':raise ValueError('Legacy workspace version differs')
-    job=Job(first_lut)
-    job.state=json.loads(job.state_path.read_text(encoding='utf-8'))
-    same_body(state['identity'],job.state['identity'])
-    values={}
-    for name in PROGRAM_PATHS:
-        raw=(backup2/(name+'.bin')).read_bytes()
-        if raw!=(workspace/'original'/(name+'.bin')).read_bytes():raise ValueError('Selected backup2 and FL23 workspace differ: '+name)
-        values[name]=raw
-    ram=(backup2/'backup.private.bin').read_bytes()
-    if ram!=(workspace/'original/backup.private.bin').read_bytes():raise ValueError('Selected backup2 settings and workspace differ')
-    # FL23 never changes name resources. Require a pre-custom source to avoid
-    # silently taking titles from a later LUT task.
-    for name in nameworker.filenames():
-        raw=job.source('resources/'+name)
-        if resources.decode(raw)['count']!=2860:raise ValueError('Use the earliest pre-custom LUT job for original name resources')
-        values['resources/'+name]=raw
-    core.backup_records(ram)
+    folder=Path(backup2)
+    if not (folder/'appFw.so.bin').exists() and (folder/'original').is_dir():folder=folder/'original'
+    values={name:(folder/(name+'.bin')).read_bytes() for name in PROGRAM_PATHS}
+    ram=(folder/'backup.private.bin').read_bytes()
+    records=core.backup_records(ram)
+    serial=records[0].get(0x00e70003)
+    if serial is None or len(serial.data)!=4:raise ValueError('Original FL23 backup has no camera serial property 00e70003')
+    identity={'model':'ILCE-7CM2','serial_sha256':hashlib.sha256(serial.data.hex().encode('ascii')).hexdigest()}
+    # Released legacy FL23 backups precede custom-look activation. A newer
+    # checkpoint captures titles even when LUTs already exist at prepare time.
+    ap=values['appFw.so']
+    for slot in range(6):
+        at=0x59896f0+slot*0xb8
+        if at+4<=len(ap) and struct.unpack_from('<I',ap,at)[0] in resources.LABEL_IDS:
+            raise ValueError('This legacy backup already contains custom LUT titles but did not capture their original resources')
     values.update({'settings-ram.bin':ram,'settings-saved.bin':ram})
-    limitations=['Legacy FL23 did not save a separate flash settings snapshot. Look recipes use the original RAM snapshot; original unsaved/flash differences cannot be recovered.']
-    identity=dict(state['identity'])
-    if job.state['identity'].get('usb_serial_sha256'):identity['usb_serial_sha256']=job.state['identity']['usb_serial_sha256']
-    return write(output,values,identity,provenance={'type':'legacy-backup2-plus-pre-custom-names',
-        'backup2':str(backup2.resolve()),'workspace':str(workspace.resolve()),'names_job':str(Path(first_lut).resolve())},limitations=limitations)
+    return {'schema':SCHEMA,'model':'ILCE-7CM2','version':'2.01','identity':identity,'legacy_raw':True,
+        'scope':'Original FL23 programs and look settings; project-added names reconstructed from native records',
+        'provenance':{'type':'original-fl23-backup','folder':str(folder.resolve())},
+        'limitations':['Legacy FL23 recorded the live look settings only; a separate historical flash snapshot was not saved.']},values
+
+def load_target(path):
+    if archive_path(path).exists():return read(path)
+    if Path(path).is_dir():return read_legacy(path)
+    return read(path)
+
+def complete_legacy_names(values,current):
+    result=dict(values)
+    for name in nameworker.filenames():
+        key='resources/'+name
+        result[key]=resources.before_custom(current[key])
+        # Prove the existing native reverse worker reconstructs these bytes.
+        if result[key]!=current[key]:name_inverse(result[key],current[key])
+    return result
 
 def recipe_keys(ap):
     keys=list(AP_KEYS)

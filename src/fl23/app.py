@@ -229,19 +229,17 @@ class Job:
         event('安裝及讀回完成。拔線、正常關機，等存取燈熄滅後取出電池10秒，再裝回開機。')
         event('請分別重設FL2/FL3、拍新照片及回放；目前是實驗預覽版。')
     def verify(self):
-        saved_state=core.read_json(self.state_path)
-        if saved_state.get('rollback_workspace'):
-            import compat
-            compat.modules()
-            from looktool.checkpointjob import Rollback
-            result=Rollback(saved_state['rollback_workspace']).verify()
-            self.state=saved_state;self.save('restored_loaded')
-            event('最初備份已讀回，AP 執行片段已載入；仍請確認取景、拍攝及回放。')
-            return result
         from transport import Session
         self.load()
         with Session(self.state['identity']) as session:
-            self.files(session,True)
+            # Later LUT installs legitimately change these program files.
+            # Verify FL23's current patches/parameters and loaded spans.
+            programs={name:session.read('/tmp/jiritsu/../..'+path) for name,path in
+                [(core.PROGRAMS[0],'/usr/lib/appFw.so'),(core.PROGRAMS[1],'/cp/cpapp-b.bin')]}
+            import compat
+            _,enabled,_,_,_=compat.plan(programs[core.PROGRAMS[0]],programs[core.PROGRAMS[1]],
+                self.state.get('version',core.VERSION),transitions=False)
+            if not enabled:raise ValueError('目前程式未完整啟用 FL2／FL3')
             current=core.backup_records(session.call(session.camera.getBackupPresetData,True))
             if self.state.get('compatibility',{}).get('already_enabled'):
                 new={k:(self.root/'original'/f'unit-{k:08x}.bin').read_bytes() for k in core.CP_KEYS}
@@ -249,74 +247,31 @@ class Job:
             if any(current[1][k].data!=v for k,v in new.items()):raise ValueError('重開後 CP 參數不符')
             if any(current[0][k].data!=bytes([10+i]) for i,k in enumerate(core.AP_KEYS)):raise ValueError('重開後 AP 綁定不符')
             runtime=self.module(session,'runtime')
-            candidate=(self.root/'candidate/appFw.so').read_bytes() if 'compatibility' in self.state else core.patch_program((self.root/'original/appFw.so.bin').read_bytes(),0)
+            candidate=programs[core.PROGRAMS[0]]
             for span in runtime['spans']:
                 expected=candidate[span['offset']:span['offset']+span['length']].hex()
                 if span['memory']!=expected or span['disk']!=expected:
                     raise ValueError('執行期仍有舊資料；請確認已關機並取出電池後再開機')
         self.audit('post_restart_files_and_targets_verified')
         event('磁碟程式與保存參數符合預期；選單、照片及回放仍需實際檢查。')
-    def restore(self,battery):
-        # New full checkpoint is independent of the last installed LUT job.
-        archive=self.root/'original/checkpoint.private.zip'
-        if self.state_path.exists():
-            state=core.read_json(self.state_path)
-            second=Path(state['backup_copy'])/'checkpoint.private.zip'
-            if second.exists():archive=second
-        if archive.exists():
-            import compat
-            compat.modules()
-            from looktool.checkpointjob import Rollback
-            self.state=core.read_json(self.state_path)
-            folder=self.root/f'rollback-{datetime.now():%Y%m%d-%H%M%S-%f}'
-            result=Rollback(folder).run(archive,battery,core.VERSION)
-            self.save('restored_pending_cold_start',rollback_workspace=str(folder))
-            return result
-        from transport import Session
-        self.load()
-        if self.state.get('compatibility',{}).get('already_enabled'):
-            raise ValueError('這個工作目錄只辨識既有 FL23，未安裝；不能用它卸載既有修改')
-        if not 50<=battery<=100:raise ValueError('回復前需確認電量至少50%')
-        with Session(self.state['identity']) as session:
-            # Native full-candidate check occurs inside restore worker before
-            # writes. Independent readback here also rejects partial images.
-            self.files(session,True);self.module(session,'wbi',0)
-            self.save('restoring_settings');self.settings(session,True)
-            self.save('restoring_programs');self.module(session,'installer',2)
-            self.files(session,False);self.module(session,'wbi',1)
-        self.save('restored_pending_cold_start')
-        event('已回復到本次 prepare 前的程式與目標設定，並完整讀回。正常關機後完整斷電再開機。')
 
 def main():
     p=argparse.ArgumentParser(description='A7C II 2.01 FL2/FL3 實驗預覽版')
-    p.add_argument('command',choices=['prepare','install','verify','restore','rollback','rollback-verify','check-package'])
+    p.add_argument('command',choices=['prepare','install','verify','check-package'])
     p.add_argument('--workspace',type=Path);p.add_argument('--backup-copy',type=Path)
-    p.add_argument('--firmware-version',help='prepare/rollback: firmware version from the camera version screen, e.g. 2.01')
+    p.add_argument('--firmware-version',help='prepare: firmware version from the camera version screen, e.g. 2.01')
     p.add_argument('--battery-percent',type=int,default=-1)
-    p.add_argument('--accept-photos',action='store_true')
-    p.add_argument('--zig')
     args=p.parse_args()
     if args.command=='check-package':core.assets();event('套件資產完整；此檢查不連線相機。');return
     if not args.workspace:p.error('必須指定機身工作目錄')
     job=Job(args.workspace)
     try:
-        if args.command in ('rollback','rollback-verify'):
-            import compat
-            compat.modules()
-            from looktool.checkpointjob import Rollback
-            rollback=Rollback(args.workspace,zig=args.zig)
-            if args.command=='rollback':
-                if not args.backup_copy:p.error('rollback 需要 --backup-copy 指向原始 backup2')
-                if not args.firmware_version:p.error('請用 --firmware-version 2.01 填寫相機版本')
-                rollback.run(args.backup_copy,args.battery_percent,args.firmware_version)
-            else:rollback.verify(args.accept_photos)
-        elif args.command=='prepare':
+        if args.command=='prepare':
             if not args.backup_copy:p.error('準備時需指定第二份備份目錄')
             if not args.firmware_version:p.error('請用 --firmware-version 2.01 填寫相機版本頁的版本')
             job.prepare(args.backup_copy,args.firmware_version)
         elif args.command=='install':job.install(args.battery_percent)
         elif args.command=='verify':job.verify()
-        else:job.restore(args.battery_percent)
     except Exception as exc:
         if hasattr(job,'state'):
             job.state['last_error']=str(exc);job.state['failed_during']=job.state['phase']

@@ -23,7 +23,7 @@ python -m pip install "numpy>=1.24,<3" "scipy>=1.10,<2" pyusb==1.3.1 libusb-pack
 python lut.py doctor --device
 ```
 
-On Mac replace `python` with `python3`. The standalone file extracts its verified internal source/native assets under `~/.a7c2-lut/runtime`; jobs/backups are separate and survive tool updates. Pip dependencies are not bundled or automatically installed. `doctor` never opens the camera.
+On Mac replace `python` with `python3`. The standalone file extracts its verified internal source/native assets under `~/.a7c2-tools/runtime`; jobs/backups are separate and survive tool updates. Pip dependencies are not bundled or automatically installed. `doctor` never opens the camera.
 
 ## Camera connection
 
@@ -43,15 +43,14 @@ Names/paths with spaces need quotes. Unsupported firmware, missing dependencies,
 | Same command plus `--write --battery-percent N` | Also install and fully read back |
 | `install JOB --battery-percent N` | Install a prepared job |
 | `verify JOB --accept-photos` | Check reload and record completed physical acceptance |
-| `restore JOB --battery-percent N` | Restore this job exactly |
-| `rollback BACKUP2 --firmware-version 2.01 --battery-percent N` | Return to the initial complete checkpoint over later LUT changes (development) |
-| `rollback-verify WORK --accept-photos` | Verify the full rollback after cold restart and physical checks |
-| `upgrade-checkpoint BACKUP2 --fl23-workspace WORK --first-lut-job JOB --output ARCHIVE` | Supplement a legacy checkpoint offline; records missing historical data |
-| `inspect-checkpoint BACKUP2` | Show archived scope and limitations without USB |
 | `diagnose-job JOB` | Explain recorded failures/name reports offline, with no camera access |
-| `restore-slot JOB --battery-percent N` | Undo a previously imported slot replacement, preserving later other slots (development) |
+| `restore-slot JOB --battery-percent N` | Restore one slot, including first activation; preserve other slots and FL23 |
 | `recover JOB` | Recover existing evidence without loader execution |
 | `resume JOB --battery-percent N` | Continue a proven interrupted phase |
 | `configure --calibration MODEL --backup-root DIR` | Optional persistent color-model/backup preferences |
 
 All examples have the prefix `python lut.py`. Offline research commands remain available in `--help`; ordinary users do not need them.
+
+## Independent Recovery
+
+Complete rollback uses `python recovery.py restore BACKUP --firmware-version 2.01 --battery-percent N`. Its own [guide](recovery.md) covers original backup2 folders and new archives, reload and verification. Recovery uses the same Python/device dependencies and works without LUT jobs. On Mac use `python3`. FL23 exposes only prepare/install/verify.

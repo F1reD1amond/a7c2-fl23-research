@@ -12,7 +12,7 @@ def filenames():
     if len(names)!=68 or len(set(names))!=68 or any(not re.fullmatch(r'string_[a-z]+_(horizontal|vertical)\.uxc',n) for n in names):raise ValueError('Resource allowlist differs')
     return names
 
-def prepare(sources,names,ap,job_id,out,zig=None,*,target_ap=None,label_ids=resources.LABEL_IDS):
+def prepare(sources,names,ap,job_id,out,zig=None,*,target_ap=None,label_ids=resources.LABEL_IDS,byte_only=False):
     if set(sources)!=set(filenames()):raise ValueError('All 68 complete resource sources are required')
     if not re.fullmatch(r'[a-f0-9]{16}',job_id):raise ValueError('Invalid resource transaction ID')
     out=Path(out);out.mkdir(parents=True,exist_ok=True);target={};specs=[];pointers=[]
@@ -24,7 +24,7 @@ def prepare(sources,names,ap,job_id,out,zig=None,*,target_ap=None,label_ids=reso
         changed,plan=resources.rename(raw,names,label_ids)
         if resources.inverse(changed,plan)!=raw:raise ValueError('Resource inverse differs')
         target[filename]=changed;pointers.append([parsed['entries'].get(rid,{}).get('pointer',65535) for rid in label_ids])
-        specs.append({'file':filename,'before_bytes':len(raw),'after_bytes':len(changed),'before_sha256':firmware.sha(raw),'after_sha256':firmware.sha(changed),'inverse':plan})
+        specs.append({'file':filename,'before_bytes':len(raw),'after_bytes':len(changed),'before_sha256':'00'*32 if byte_only else firmware.sha(raw),'after_sha256':'00'*32 if byte_only else firmware.sha(changed),'inverse':plan})
     lines=['static const struct Asset assets[]={'+','.join('{'+q(s['file'])+','+str(s['before_bytes'])+','+cbytes(bytes.fromhex(s['before_sha256']))+','+cbytes(bytes.fromhex(s['after_sha256']))+'}' for s in specs)+'};',
         'static const u32 asset_count='+str(len(specs))+';',
         'static const u32 after_sizes[]={'+','.join(str(s['after_bytes']) for s in specs)+'};',
@@ -38,11 +38,12 @@ def prepare(sources,names,ap,job_id,out,zig=None,*,target_ap=None,label_ids=reso
         # installers. Root is the worker's euid, not the files' owner.
         'static const u32 original_uid=57285,original_gid=1000;',
         'static const u64 ap_size='+str(len(ap))+'UL;',
-        'static const u8 ap_plain_hash[32]='+cbytes(bytes.fromhex(firmware.sha(ap)))+';',
-        'static const u8 ap_named_hash[32]='+cbytes(bytes.fromhex(firmware.sha(target_ap if target_ap is not None else ap)))+';']
+        'static const u8 ap_plain_hash[32]='+cbytes(bytes(32) if byte_only else bytes.fromhex(firmware.sha(ap)))+';',
+        'static const u8 ap_named_hash[32]='+cbytes(bytes(32) if byte_only else bytes.fromhex(firmware.sha(target_ap if target_ap is not None else ap)))+';']
+    if byte_only:lines[:0]=['#define CHECKPOINT_BYTES 1','#define BYTE_NAME_UPDATES 1']
     header=out/'names.private.h';header.write_text('\n'.join(lines)+'\n',encoding='ascii',newline='\n')
-    destination=out/'names.so';build=compile_worker(ROOT/'src/looks/native/names.c',header,destination,zig)
-    build.update(path=str(destination),AP=firmware.sha(ap),target_AP=firmware.sha(target_ap if target_ap is not None else ap),count=len(specs),files=specs,job_id=job_id)
+    destination=out/'names.so';build=compile_worker(ROOT/'src/looks/native/names.c',header,destination,zig,fingerprints=not byte_only)
+    build.update(path=str(destination),AP=None if byte_only else firmware.sha(ap),target_AP=None if byte_only else firmware.sha(target_ap if target_ap is not None else ap),count=len(specs),files=specs,job_id=job_id,byte_only=byte_only)
     return target,build
 
 def validate(raw,mode,build):
@@ -51,8 +52,8 @@ def validate(raw,mode,build):
     count=build['count']
     if not 1<=count<=68 or len(build['files'])!=count:raise ValueError('Invalid pinned resource count')
     expected_ap=build.get('target_AP',build['AP']) if mode==3 else build['AP']
-    if values[:5]!=(b'A7NMR001',1,mode,9,count) or any(values[i] for i in [5,6,7,8,9,10,17]) or values[18].hex()!=expected_ap:
-        raise ValueError(name_failure_text(raw,mode,build))
+    if values[:5]!=(b'A7NMR001',1,mode,9,count) or any(values[i] for i in [5,6,7,8,9,10,17]) or (not build.get('byte_only') and values[18].hex()!=expected_ap):
+        raise ValueError(('Native name operation incomplete: phase=%s status=%s' % (values[3],values[5])) if build.get('byte_only') else name_failure_text(raw,mode,build))
     if values[11]<=0 or any(n>count for n in values[12:17]):raise ValueError('Native name PID/count bounds differ')
     if mode==0 and any(values[12:17]):raise ValueError('Read-only name preflight reported a write')
     if mode==1 and (values[12:15]!=(count,count,count) or any(values[15:17])):raise ValueError('Native name commit counts differ')

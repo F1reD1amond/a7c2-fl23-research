@@ -5,7 +5,7 @@ import struct
 import uuid
 from . import checkpoint, checkpointworker, devicesettings, nameworker, nativebuild
 from .devicesession import Camera, invoke
-from .devicejob import write_json
+from .backupstore import write_json
 
 TEMPS={'checkpoint.staged.so','checkpoint.program.request','checkpoint.program.result',
        'checkpoint.names.request','checkpoint.names.result'}
@@ -125,20 +125,27 @@ class Rollback:
     def run(self,archive,battery,firmware_version):
         if firmware_version!='2.01':raise ValueError('Read the camera version page: rollback supports 2.01 only')
         if not 50<=battery<=100:raise ValueError('Actual battery percentage must be at least 50')
-        manifest,target=checkpoint.read(archive)
+        manifest,target=checkpoint.load_target(archive)
         if self.root.exists() and any(self.root.iterdir()):raise ValueError('Use a new rollback work directory; preserve previous results')
         self.root.mkdir(parents=True,exist_ok=True)
         print('Rollback work:',self.root,flush=True)
         self.state={'schema':'a7c2-checkpoint-rollback/1','identity':manifest['identity'],'journal':[],
-            'target':str(checkpoint.archive_path(archive).resolve()),'limitations':manifest['limitations']}
+            'target':str(Path(archive).resolve()),'limitations':manifest['limitations']}
         self.save('READING')
         try:
             with self.factory(manifest['identity']) as camera:
                 checkpoint.same_body(manifest['identity'],camera.identity)
                 current=self.capture(camera)
                 checkpoint.write(self.root/'before.private.zip',current,camera.identity,provenance={'type':'before-full-rollback'})
-                # Keep the chosen target self-contained, including for verify.
-                checkpoint.copy(checkpoint.archive_path(archive),self.root/'target.private.zip')
+                # Old FL23 backups carry their own body serial/programs/settings.
+                # Reconstruct appended names from current native records; never
+                # ask for a LUT job or an unrelated working directory.
+                if manifest.get('legacy_raw'):
+                    target=checkpoint.complete_legacy_names(target,current)
+                    checkpoint.write(self.root/'target.private.zip',target,manifest['identity'],
+                        provenance=manifest['provenance'],limitations=manifest['limitations'])
+                    self.record('legacy_fl23_target_completed_without_lut_job')
+                else:checkpoint.copy(checkpoint.archive_path(archive),self.root/'target.private.zip')
                 settings=self.settings_plan(camera,current,target)
                 self.save('BUILDING')
                 programs=checkpointworker.build_programs(current,target,self.root/'worker',self.zig)
@@ -164,7 +171,7 @@ class Rollback:
                     self.native(camera,'wbi',0);self.native(camera,'wbi',1)
                 elif runtime['image_mode'].strip()!='0':raise ValueError('Unsupported retained image state')
             self.save('RESTORED_AWAITING_RELOAD')
-            print('All I/O ended. Disconnect USB/power, shut down normally, wait for the access lamp, remove battery for ≥1 minute. Restart and check preview/photos/playback, then run rollback-verify.',flush=True)
+            print('All I/O ended. Disconnect USB/power, shut down normally, wait for the access lamp, remove battery for ≥1 minute. Restart and check preview/photos/playback, then run: python recovery.py verify "'+str(self.root)+'" --accept-photos',flush=True)
             return self.state
         except BaseException as exc:
             self.save('NEEDS_REVIEW',error=str(exc));raise

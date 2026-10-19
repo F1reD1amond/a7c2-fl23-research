@@ -118,8 +118,10 @@ static i64 stage_one(u32 i) {
   while(at&3)assetbuf[at++]=0;
  }
  if(at!=after_sizes[i])return -84;
+#ifndef CHECKPOINT_BYTES
  SHA256 h;u8 digest[32];sha_init(&h);sha_add(&h,assetbuf,after_sizes[i]);sha_end(&h,digest);
  if(!same(digest,a->after,32))return -84;
+#endif
  fd=op(temp,0x200c1,s.mode&07777);if(fd<0)return fd;temp_created[i]=1;
  v=sc(55,fd,s.uid,s.gid,0,0,0);if(!v)v=sc(52,fd,s.mode&07777,0,0,0,0);if(!v)v=write_exact(fd,assetbuf,after_sizes[i]);
  if(!v)v=sc(82,fd,0,0,0,0,0);c=cl(&fd);if(!v)v=c;if(v)return v;
@@ -166,6 +168,8 @@ static void work(void) {
  if(!same(req.magic,(const u8*)"A7NAM001",8)||req.mode>4||req.reserved||!asset_count||asset_count>68){r.status=-22;return;}
 #ifndef CHECKPOINT_BYTES
  if(req.mode==4){r.status=-22;return;}
+#elif defined(BYTE_NAME_UPDATES)
+ if(req.mode>3){r.status=-22;return;}
 #else
  if(req.mode!=2&&req.mode!=4){r.status=-22;return;}
 #endif

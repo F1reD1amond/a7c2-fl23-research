@@ -2,7 +2,7 @@
 
 [返回首页](../../README.zh-CN.md) · [English](../en/fl23-ai.md) · [用户安装步骤](fl23.md)
 
-目标是在 Windows 为 A7C II 2.01 安装 FL2／FL3，完成双份备份、写入、独立读回、冷加载、拍照／回放和还原。**命令行为主，桌面版为同一后端的替代入口。** FL23 安装不导入 LUT；最初存档完整回退则会撤销后来的 LUT 修改，回到所选初始状态。
+目标是在 Windows 为 A7C II 2.01 安装 FL2／FL3，完成双份备份、写入、独立读回、冷加载、拍照／回放和还原。**命令行为主，桌面版为同一后端的替代入口。** FL23 安装不导入 LUT；独立 Recovery 执行完整回退，恢复所选初始状态。
 
 ## 1. 从哪里开始
 
@@ -18,7 +18,7 @@ Windows 使用 64 位 Python 3.10+；启动器自动准备依赖，不需要独�
 
 | 源码 | 作用 |
 |---|---|
-| [app.py](../../src/fl23/app.py) | `Job.prepare/install/verify/restore`：阶段、备份、候选、交易与验收 |
+| [app.py](../../src/fl23/app.py) | `Job.prepare/install/verify`：阶段、备份、候选、交易与验收 |
 | [gui.py](../../src/fl23/gui.py) | Windows 桌面按钮转发到同一 `app.py` 命令 |
 | [core.py](../../src/fl23/core.py) | `ORIGINAL/FINAL`、固定补丁、机身数据合并、保护和原生报告判定 |
 | [transport.py](../../src/fl23/transport.py) | `Session`：身份绑定、认证、有界 I/O、未知结果停止、受限临时文件／Backup 写入 |
@@ -72,17 +72,11 @@ Windows 使用 64 位 Python 3.10+；启动器自动准备依赖，不需要独�
 
 所有原生模块都在调用前记录意图，暂存读回后一次调用，核对 magic／版本／模式／长度／错误和写入次数。新 FL23 程序用 `BYTE_WINDOWS_ONLY` 检查改写字节，主机完整字节读回，不检查完整固件哈希。结果未知时停止后续发包，保留 `state.json`、日志、原生结果和临时文件，先查实际结果。
 
-## 6. 还原与故障处理
+## 6. 独立恢复
 
-新版 prepare 在构造候选之前保存完整私有 backup2。直接以它为目标回退，不要求当前程序符合旧 Job 输出哈希：
+FL23 不提供恢复命令或桌面按钮。完整回退使用 [Recovery](recovery.md)，直接选旧 backup2 或新存档，不要求任何 LUT Job。保留机型／机身绑定、实际字节核对、完整读回和未知结果证据，不重新引入完整固件哈希门槛。
 
-```text
-.\FL23.cmd rollback --backup-copy "E:/CameraBackup-A7C2-01" --workspace "D:/RollbackWork" --firmware-version 2.01 --battery-percent 82
-```
-
-共用后端：[checkpoint.py](../../src/looks/looktool/checkpoint.py)、[checkpointjob.py](../../src/looks/looktool/checkpointjob.py)、[checkpointworker.py](../../src/looks/looktool/checkpointworker.py)。原生程序保留 inode，检查实际改写窗口；名称只逆转本工具的追加式修改，写前生成完整结果并与存档比较，外部不可重建的改动在写前停止。设置只恢复 FL23 字段和六个配方，保留其他设置／校准；只在保留镜像实际为 2 时处理 2→0。断电、`rollback-verify --workspace ... --accept-photos` 和实测是独立阶段。
-
-旧 backup2 需原工作目录和自定义名称启用前的资源补齐；[upgrade-checkpoint](custom-lut.md#8-必要时还原)明确记录缺失历史闪存快照，不能虚构原档或重放未知写入。新完整回退尚未实机验证。
+两个安装顺序都必须保留另一功能：`compat.plan` 在现有 LUT 程序旁启用 FL23 标志／参数；LUT 规划器接受原厂或 FL23 起点。FL23 核对读取当前程序，检查自身标志及运行片段，允许后来导入 LUT。用私人真实程序样本测试两种顺序及安装 FL23 后的单槽恢复；离线结果不代表相机启动验证。
 
 ## 7. AI 的测试和交付
 

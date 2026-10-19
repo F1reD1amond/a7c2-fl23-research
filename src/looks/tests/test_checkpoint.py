@@ -1,5 +1,6 @@
 """Initial checkpoint restoration across multiple later LUT edits. No USB."""
 import copy
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -12,7 +13,7 @@ from looktool import checkpoint,checkpointworker,checkpointjob,firmware,namework
 from test_device_components import resource_fixture
 from test_device_job import Prop,core
 
-BODY={'model':'ILCE-7CM2','serial_sha256':'test-body'}
+BODY={'model':'ILCE-7CM2','serial_sha256':hashlib.sha256(b'01020304').hexdigest()}
 KEYS=[*checkpoint.AP_KEYS,*range(0x02cf2000,0x02cf2036)]
 
 def stock_names():
@@ -23,6 +24,7 @@ def stock_names():
 
 def values(resource=None):
     props=[{str(k):['00',0] for k in KEYS},{str(k):['0102',0] for k in checkpoint.CP_KEYS}]
+    props[0][str(0x00e70003)]=['01020304',2]
     raw=json.dumps(props).encode()
     return {'appFw.so':bytes(40000),'cpapp-b.bin':bytes(40000),
         'settings-ram.bin':raw,'settings-saved.bin':raw,
@@ -174,32 +176,43 @@ class CheckpointTests(unittest.TestCase):
             current=initial
             for slot in (1,2,5,6,5,1):current=resources.rename(current,{slot:'Latest '+str(slot)})[0]
             self.assertEqual(resources.inverse(current,checkpoint.name_inverse(initial,current)),initial)
-    def test_legacy_upgrade_is_offline_and_records_missing_saved_snapshot(self):
-        work=self.root/'legacy-work';backup=self.root/'legacy-backup2';first=self.root/'first-lut'
-        (work/'original').mkdir(parents=True);backup.mkdir();(first/'source/resources').mkdir(parents=True)
-        state={'version':'2.01','identity':BODY}
-        (work/'state.json').write_text(json.dumps(state));(first/'job.private.json').write_text(json.dumps({'identity':BODY}))
-        for name in checkpoint.PROGRAM_PATHS:
-            for parent in (work/'original',backup):(parent/(name+'.bin')).write_bytes(self.original[name])
-        for parent in (work/'original',backup):(parent/'backup.private.bin').write_bytes(self.original['settings-ram.bin'])
-        for n in nameworker.filenames():(first/'source/resources'/n).write_bytes(self.original['resources/'+n])
-        out=backup/'checkpoint.private.zip'
+    def legacy_folder(self):
+        folder=self.root/'original-backup2';folder.mkdir()
+        for name in checkpoint.PROGRAM_PATHS:(folder/(name+'.bin')).write_bytes(self.original[name])
+        (folder/'backup.private.bin').write_bytes(self.original['settings-ram.bin'])
+        return folder
+    def test_original_fl23_backup_alone_restores_after_multiple_luts(self):
+        backup=self.legacy_folder();c=self.camera_after_updates()
+        # No original workspace, LUT jobs or checkpoint ZIP exist.
+        job=SimRollback(self.root/'legacy-restore',factory=c)
         with patch('looktool.devicesession.modules',return_value=(None,SimpleNamespace(backup_records=records))):
-            manifest=checkpoint.upgrade_legacy(backup,work,first,out)
-        self.assertIn('did not save',manifest['limitations'][0])
-        self.assertEqual(checkpoint.read(out)[1],self.original)
-        self.assertTrue((backup/'appFw.so.bin').exists())
-    def test_legacy_later_named_job_is_not_called_original_names(self):
-        work=self.root/'legacy-work';backup=self.root/'legacy-backup2';first=self.root/'later-lut'
-        (work/'original').mkdir(parents=True);backup.mkdir();(first/'source/resources').mkdir(parents=True)
-        (work/'state.json').write_text(json.dumps({'version':'2.01','identity':BODY}))
-        (first/'job.private.json').write_text(json.dumps({'identity':BODY}))
-        for name in checkpoint.PROGRAM_PATHS:
-            for parent in (work/'original',backup):(parent/(name+'.bin')).write_bytes(self.original[name])
-        for parent in (work/'original',backup):(parent/'backup.private.bin').write_bytes(self.original['settings-ram.bin'])
-        for n in nameworker.filenames():(first/'source/resources'/n).write_bytes(resource_fixture())
-        with patch('looktool.devicesession.modules',return_value=(None,SimpleNamespace(backup_records=records))):
-            with self.assertRaisesRegex(ValueError,'earliest pre-custom'):checkpoint.upgrade_legacy(backup,work,first,backup/'checkpoint.private.zip')
+            state=job.run(backup,100,'2.01')
+        self.assertEqual(state['phase'],'RESTORED_AWAITING_RELOAD')
+        self.assertEqual(job.verify(True)['phase'],'COMPLETE')
+        _,target=checkpoint.read(job.root/'target.private.zip')
+        self.assertEqual(target,self.original)
         self.assertFalse((backup/'checkpoint.private.zip').exists())
+        self.assertEqual(set(p.name for p in backup.iterdir()),{'appFw.so.bin','cpapp-b.bin.bin','backup.private.bin'})
+        self.assertIn('legacy_fl23_target_completed_without_lut_job',[r['event'] for r in state['journal']])
+    def test_original_fl23_backup_alone_also_restores_without_lut_installation(self):
+        backup=self.legacy_folder();c=Camera(self.original)
+        c.files['/usr/lib/appFw.so']=bytes([1])*len(self.original['appFw.so'])
+        job=SimRollback(self.root/'legacy-only-fl23',factory=c)
+        with patch('looktool.devicesession.modules',return_value=(None,SimpleNamespace(backup_records=records))):
+            job.run(backup,100,'2.01')
+        self.assertEqual(c.files['/usr/lib/appFw.so'],self.original['appFw.so'])
+        self.assertFalse(any(kind=='names' for kind,mode in c.native_calls))
+    def test_legacy_uses_its_own_serial_and_preserves_missing_flash_limitation(self):
+        backup=self.legacy_folder()
+        with patch('looktool.devicesession.modules',return_value=(None,SimpleNamespace(backup_records=records))):
+            manifest,source=checkpoint.load_target(backup)
+        self.assertEqual(manifest['identity'],BODY)
+        self.assertIn('not saved',manifest['limitations'][0])
+        self.assertEqual(source['settings-ram.bin'],self.original['settings-ram.bin'])
+    def test_resource_native_records_reconstruct_without_historical_name_job(self):
+        source=stock_names();current=source
+        for slot in (1,2,3,4,5,6,1,5):current=resources.rename(current,{slot:'Look '+str(slot)})[0]
+        self.assertEqual(resources.before_custom(current),source)
+        self.assertEqual(resources.before_custom(source),source)
 
 if __name__=='__main__':unittest.main()

@@ -37,13 +37,44 @@ def identify_ap(ap):
         template=ap[0x35287f0:0x3528874].hex();templates=runtime()['ap_templates']
         if template not in templates:continue
         mask=templates.index(template)
-        if mask and _ap_target(bytes(restored),mask)==ap:return {'kind':spec['kind']+'-lut','mask':mask,'label_ids':list(range(0x0200ab2c,0x0200ab32))}
+        if _ap_target(bytes(restored),mask)==ap:return {'kind':spec['kind']+'-lut','mask':mask,'label_ids':list(range(0x0200ab2c,0x0200ab32))}
     raise ValueError('Unsupported AP identity; no firmware/settings writes performed')
 
 def code_hash(cp):
     start=six.TABLE_FILE+8;end=six.TABLE_FILE+32+6*six.TABLE_BYTES
     if len(cp)<end:raise ValueError('Truncated CP program')
     h=hashlib.sha256();h.update(cp[:start]);h.update(bytes(end-start));h.update(cp[end:]);return h.hexdigest()
+
+def structural_ap(ap):
+    """Recognize actual converter bytes/slot mask, without a file digest."""
+    template=ap[0x35287f0:0x3528874].hex();asset=runtime()
+    base='fl23' if ap[0x4b2ed19:0x4b2ed1b]==b'\x01\x01' else 'stock'
+    labels=list(range(0x0200ab2c,0x0200ab32))
+    if template in asset['ap_templates']:
+        return {'kind':base+'-lut','mask':asset['ap_templates'].index(template),'label_ids':labels}
+    legacy=bytes.fromhex('e1000035002800511f1400718800005400e4031140000039c0035fd63f2c007188020054800000100048613840000039c0035fd600030201100f1112050d13141f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d51f2003d5')
+    if ap[0x3528804:0x3528874]==legacy:
+        from .resources import LABEL_IDS
+        return {'kind':'legacy-six','mask':63,'label_ids':list(LABEL_IDS)}
+    spec=next(s for s in asset['ap_sources'] if s['kind']==base)
+    converter=next(w for w in spec['restore'] if w['offset']==0x35287f0)
+    raw=bytes.fromhex(converter['hex'])
+    if ap[converter['offset']:converter['offset']+len(raw)]!=raw:
+        raise ValueError('Custom-slot converter bytes conflict; no writes')
+    return {'kind':base,'mask':0,'label_ids':labels,'first_install':True}
+
+def structural(ap,cp):
+    identity=structural_ap(ap)
+    if not identity.get('first_install'):
+        if len(cp)<six.TABLE_FILE+32+6*six.TABLE_BYTES or struct.unpack_from('<2I',cp,six.TABLE_FILE)!=(six.MAGIC,six.VERSION):
+            raise ValueError('Custom table header/size differs')
+    return dict(identity,layout='full7-v4' if identity['kind']=='legacy-six' else 'standalone-v1')
+
+def tables(cp):
+    """Read native-grid payloads, without comparing source table digests."""
+    if len(cp)<six.TABLE_FILE+32+6*six.TABLE_BYTES or struct.unpack_from('<2I',cp,six.TABLE_FILE)!=(six.MAGIC,six.VERSION):
+        raise ValueError('Custom table header/size differs')
+    return [cp[six.TABLE_FILE+32+i*six.TABLE_BYTES:six.TABLE_FILE+32+(i+1)*six.TABLE_BYTES] for i in range(6)]
 
 def identify(ap,cp):
     a=identify_ap(ap);c=firmware.sha(cp);asset=runtime()
@@ -59,8 +90,9 @@ def identify(ap,cp):
     return dict(a,layout='full7-v4' if a['kind']=='legacy-six' else 'standalone-v1',AP=firmware.sha(ap),CP=c,
         physical_first_install_tested=False if a['kind']!='legacy-six' else None)
 
-def replace(ap,cp,replacements):
-    identity=identify(ap,cp)
+def replace(ap,cp,replacements,*,hash_checks=True):
+    identify_current=identify if hash_checks else structural
+    identity=identify_current(ap,cp)
     if not replacements or any(type(s) is not int or s not in range(1,7) for s in replacements):raise ValueError('Select custom slots 1..6')
     result=bytearray(cp);spans=[];ap_result=ap;ap_spans=[]
     if identity.get('first_install'):
@@ -69,7 +101,7 @@ def replace(ap,cp,replacements):
             at=w['offset'];old,new=bytes.fromhex(w['before']),bytes.fromhex(w['after'])
             if cp[at:at+len(old)]!=old:raise ValueError('Bootstrap source window differs')
             result[at:at+len(new)]=new
-        if firmware.sha(result)!=runtime()['cp_zero_tables_sha256']:raise ValueError('Canonical runtime differs')
+        if hash_checks and firmware.sha(result)!=runtime()['cp_zero_tables_sha256']:raise ValueError('Canonical runtime differs')
     if identity['kind']!='legacy-six':
         source=bytearray(ap)
         spec=next(s for s in runtime()['ap_sources'] if identity['kind'].startswith(s['kind']))
@@ -94,6 +126,41 @@ def replace(ap,cp,replacements):
     regions={'appFw.so':ap_spans,'cpapp-b.bin':spans}
     f=firmware.transition(before,after,regions)
     r=firmware.transition(after,before,regions)
-    identify(after['appFw.so'],after['cpapp-b.bin'])
-    if firmware.apply(after,r)!=before:raise ValueError('Complete table inverse differs')
+    identify_current(after['appFw.so'],after['cpapp-b.bin'])
+    if firmware.apply(after,r,hash_checks=hash_checks)!=before:raise ValueError('Complete table inverse differs')
     return f,r,after
+
+def before_first_table(ap,cp,slot,*,hash_checks=True):
+    """Dormant canonical data for a slot that originally used native looks."""
+    identity=(identify if hash_checks else structural)(ap,cp)
+    read_tables=six.read_tables if hash_checks else tables
+    if not identity.get('first_install'):return read_tables(cp)[slot-1]
+    result=bytearray(cp)
+    spec=next(s for s in runtime()['cp_sources'] if s['kind']==identity['kind'])
+    for w in spec['windows']:
+        raw=bytes.fromhex(w['after']);result[w['offset']:w['offset']+len(raw)]=raw
+    return read_tables(bytes(result))[slot-1]
+
+def deactivate(ap,cp,slot,raw,*,hash_checks=True):
+    """Restore one native custom slot, retaining other LUTs and current FL23.
+
+    Mask zero leaves the shared CP runtime dormant. The independent recovery
+    tool removes shared programs when the owner wants a full rollback.
+    """
+    identify_current=identify if hash_checks else structural
+    identity=identify_current(ap,cp)
+    if identity['kind']=='legacy-six':raise ValueError('First-activation undo requires the standalone slot layout')
+    spec=next(s for s in runtime()['ap_sources'] if identity['kind'].startswith(s['kind']))
+    base=bytearray(ap)
+    for w in spec['restore']:
+        value=bytes.fromhex(w['hex']);base[w['offset']:w['offset']+len(value)]=value
+    after_ap=_ap_target(bytes(base),identity['mask']&~(1<<(slot-1)))
+    six.decode(raw);result=bytearray(cp)
+    at=six.TABLE_FILE+32+(slot-1)*six.TABLE_BYTES;check=six.TABLE_FILE+8+(slot-1)*4
+    result[at:at+six.TABLE_BYTES]=raw;struct.pack_into('<I',result,check,six.fnv(raw))
+    before={'appFw.so':ap,'cpapp-b.bin':cp};after={'appFw.so':after_ap,'cpapp-b.bin':bytes(result)}
+    regions={'appFw.so':[(w['offset'],len(bytes.fromhex(w['hex']))) for w in spec['restore']],
+        'cpapp-b.bin':[(at,six.TABLE_BYTES),(check,4)]}
+    forward,reverse=firmware.transition(before,after,regions),firmware.transition(after,before,regions)
+    identify_current(after_ap,after['cpapp-b.bin'])
+    return forward,reverse,after

@@ -59,3 +59,19 @@ def inverse(raw,plan):
         if struct.unpack_from('<H',raw,change['index_offset'])[0]!=change['after_pointer']:raise ValueError('Resource inverse pointer differs')
         if change['index_offset']<16+plan.get('before_count',2866)*2:struct.pack_into('<H',result,change['index_offset'],change['before_pointer'])
     decode(bytes(result));return bytes(result)
+
+def before_custom(raw):
+    """Remove this project's appended titles without an earlier LUT job.
+
+    A7C II 2.01 has 2860 native indices. The importer preserves every native
+    record and appends six indices/strings. The aligned end of the last native
+    record gives the original EOF; no firmware bytes or hashes are bundled.
+    """
+    parsed=decode(raw)
+    if parsed['group']!=5 or parsed['count'] not in (2860,2866):
+        raise ValueError('Unsupported A7C II name-resource layout')
+    native=[e for rid,e in parsed['entries'].items() if (rid&0xffffff)-0xa000<2860]
+    end=max(parsed['data_base']+e['pointer']*4+4+len(e['text'].encode('utf-8'))+1 for e in native)
+    end=(end+3)&~3
+    if parsed['count']==2860:return raw[:end]
+    return inverse(raw,{'before_count':2860,'before_bytes':end-12,'after_bytes':len(raw),'changes':[]})

@@ -76,37 +76,16 @@ python lut.py verify "JOB路径" --accept-photos
 
 只有确实完成上述实机检查后才加 `--accept-photos`。程序还会检查新启动、磁盘程序、AP 运行片段和配方；它没有直接读取运行中的 CP 指令／色表。
 
-## 8. 必要时还原
-
-**一次回到最初 backup2（`feature/backup2-rollback` 开发版，旧 v2.1 不含）：**
+## 8. 恢复单个槽位
 
 ```text
-python lut.py rollback "E:/CameraBackup-A7C2-01" --firmware-version 2.01 --battery-percent 90
+python lut.py restore-slot "要撤销的导入JOB" --battery-percent 90
 ```
 
-直接恢复 backup2 中的程序、名称、FL23 绑定／参数和六个自订配方，不要求逐个撤销后来的 LUT Job。命令会打印新的回退工作目录；出现 `RESTORED_AWAITING_RELOAD` 后按第 6 步断电重开，亲自检查预览和照片，再执行：
+恢复该次导入之前的一个槽位：旧色表、名称和配方恢复，其他槽位及后来安装的 FL23 保留。首次导入的槽位会回到原生基础外观和配方；共用辅助程序保留供其他槽位使用。所有槽位恢复后，辅助程序进入不套用自定义色表的状态，彻底还原程序文件由 Recovery 处理。
 
-```text
-python lut.py rollback-verify "回退工作目录" --accept-photos
-```
+单槽恢复不检查固件、备份或原生程序的文件哈希；使用实际改写字节和完整读回。工具创建新的单槽恢复 Job，仍采用共用压缩基础和小增量，按第 6、7 步重载后验证这个新 Job。保留原 Job 及共用存储。
 
-目标目录需有 `checkpoint.private.zip`。新版 FL23 prepare 自动在 backup2 保存它；仅用 LUT 的用户，首次导入会在第二备份父目录的 `initial-checkpoints` 下保存一次，以后更新不覆盖。该点若已包含 FL23，回退也会保留当时的 FL23。完整回退前另存当前状态，无关设置／计数器／校准保留。这项新回退尚未实机验证。
+**完整回退请用独立的 [Recovery](recovery.md)**。LUT 不再提供整个安装／整机回退命令，FL23 也不提供恢复按钮。先 FL23 后 LUT、先 LUT 后 FL23 都支持。
 
-**旧 backup2 先补齐一次（离线，不连相机）：**
-
-```text
-python lut.py upgrade-checkpoint "E:/CameraBackup-A7C2-01" --fl23-workspace "D:/CameraWork-A7C2-01" --first-lut-job "首次导入LUT的JOB" --output "E:/CameraBackup-A7C2-01/checkpoint.private.zip"
-```
-
-程序从旧 backup2 取原始程序和设置，从同一机身首次 LUT Job 取尚未改名的资源，不覆盖旧文件。旧版没保存独立闪存快照，因此初始配方以当时 RAM 为准，不能恢复未记录的 RAM／闪存差异；限制会写入新档。找不到原工作目录或首次资源，就不能把旧目录称为完整原始点。`inspect-checkpoint "backup2路径"` 可离线查看范围和限制。
-
-**仅撤销一个任务或槽位：**
-
-| 命令（前加 `python lut.py`） | 范围 |
-|---|---|
-| `restore JOB --battery-percent 90` | 撤销该次任务，多次导入按相反顺序 |
-| `restore-slot JOB --battery-percent 90` | 撤销已有自定义槽的替换，保留后来其他槽；不支持单槽移除首次启用功能 |
-| `diagnose-job JOB` | 离线解释已有错误，不连接 USB |
-| `recover JOB`／`resume JOB --battery-percent 90` | 先检查已有结果，确认可继续阶段后才续接 |
-
-还原后按第 6、7 步重载／验证。任务／单槽还原需保留共用压缩存储。结果未知或停在 `NAME_RESTORE_INTENT` 不等于完成：保留首次失败任务和临时证据，不换 Job 重复写入。[AI 实现说明](lut-ai.md)。
+若结果未知，保留首次失败任务和临时证据，先用 `python lut.py diagnose-job "JOB"` 离线查看，再用 `recover` 检查已有结果；只有确认可继续的阶段才用 `resume`，不重放未知写入。[AI 实现说明](lut-ai.md)。

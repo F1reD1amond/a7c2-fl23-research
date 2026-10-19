@@ -37,7 +37,7 @@ def main():
     if any(p.suffix.lower() in ['.cmd','.ps1'] or p.name=='gui.py' for p in (ROOT/'src/looks').rglob('*') if p.is_file()):errors.append('Retired LUT launcher or GUI remains')
     english={p.relative_to(ROOT/'docs/en').as_posix() for p in (ROOT/'docs/en').rglob('*.md')}
     chinese={p.relative_to(ROOT/'docs/zh-CN').as_posix() for p in (ROOT/'docs/zh-CN').rglob('*.md')}
-    if english!=chinese or len(english)!=13:errors.append('Expected 13 matching English/Simplified Chinese guide pairs')
+    if english!=chinese or len(english)!=14:errors.append('Expected 14 matching English/Simplified Chinese guide pairs')
     expected_markdown={'README.md','README.zh-CN.md','AGENTS.md','src/looks/AGENTS.md'}
     expected_markdown|={'docs/'+lang+'/'+name for lang in ['en','zh-CN'] for name in english}
     actual_markdown={p.relative_to(ROOT).as_posix() for p in files if p.suffix=='.md'}

@@ -52,7 +52,7 @@ def explain(folder,report_path=None):
     if 'Existing temporary state' in error:
         result.update(problem='pending_shared_temporary_state',next_step='Recover the FIRST failing job that owns the pending files; do not delete them or switch jobs.')
     elif 'Complete host readback differs' in error:
-        result.update(problem='current_program_differs_from_job',next_step='Check later jobs/changes and restore order. Do not replay this job or remove the comparison.')
+        result.update(problem='current_program_differs_from_job',next_step='Check later jobs/changes. Full rollback uses recovery.py; selected-slot restoration uses restore-slot. Preserve unknown outcomes instead of replaying this job.')
     elif failed=='NAME_RESTORE_INTENT':
         result.update(problem='name_restoration_needs_inspection',next_step='Run recover on THIS job; resume only after it establishes PROGRAMS_RESTORED or PARTIAL_NAMES_RESTORE_VERIFIED.')
     else:

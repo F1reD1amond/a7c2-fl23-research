@@ -61,8 +61,8 @@ class Camera:
             self.link.__exit__(*sys.exc_info());raise
         return self
     def pin_programs(self,ap,cp):
-        from .device_layout import identify
-        self.program_identity=identify(ap,cp);self.programs_pinned=True
+        from .device_layout import identify,structural
+        self.program_identity=(structural if getattr(self,'byte_checks',False) else identify)(ap,cp);self.programs_pinned=True
         return self.program_identity
     def confirm_identity(self,runtime):
         if not self.programs_pinned or runtime.get('model_index')!=16:raise ValueError('Pinned programs and actual native model proof are required')

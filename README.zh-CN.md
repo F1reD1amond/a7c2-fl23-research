@@ -2,14 +2,14 @@
 
 [English](README.md) · **简体中文**
 
-**本开发分支：**增加[一次回到最初 backup2](docs/zh-CN/custom-lut.md#8-必要时还原)，不要求逐个撤销后来的 LUT。新 FL23／回退使用字节核对，不做固件来源哈希校验；尚未实机验证完整回退，未合并 main。
+**本开发分支：**三个独立入口：FL23 安装／核对，LUT 导入／单槽恢复，[Recovery](docs/zh-CN/recovery.md) 完整回退。两种安装顺序均支持；按离线测试验收，未合并 main。
 
 用于 **Sony A7C II／ILCE-7CM2 固件 2.01**，按需求选择入口：
 
-| FL2／FL3 | 自定义 LUT／DCP |
-|---|---|
-| [安装与还原](docs/zh-CN/fl23.md) | [八步：从参考文件到相机](docs/zh-CN/custom-lut.md) |
-| 优先用 **`.\FL23.cmd --help`**；双击 `FL23.cmd` 打开桌面版 | **`python lut.py import "look.dcp" --name "Classic Neg." --slot 1`** |
+| FL2／FL3 | 自定义 LUT／DCP | Recovery |
+|---|---|---|
+| [安装与核对](docs/zh-CN/fl23.md) | [导入与单槽恢复](docs/zh-CN/custom-lut.md) | [完整回退](docs/zh-CN/recovery.md) |
+| 优先用 **`.\FL23.cmd --help`**；双击 `FL23.cmd` 打开桌面版 | **`python lut.py import "look.dcp" --name "Classic Neg." --slot 1`** | **`python recovery.py --help`** |
 
 **当前正式版：[v2.1](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.1)。** `main` 已包含 FL23 和自定义 LUT／DCP 命令行，两个入口分别使用。
 

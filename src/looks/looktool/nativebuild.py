@@ -41,9 +41,9 @@ def compile_worker(source,header,destination,zig=None,*,fingerprints=True):
     if not fingerprints:return {'bytes':len(blob)}
     return {'sha256':firmware.sha(blob),'bytes':len(blob),'native_source_sha256':firmware.sha(Path(source).read_bytes()),'manifest_sha256':firmware.sha(Path(header).read_bytes())}
 
-def program_header(before,forward,reverse):
-    after=firmware.apply(before,forward)
-    if firmware.apply(after,reverse)!=before:raise ValueError('Complete program inverse required')
+def program_header(before,forward,reverse,*,byte_only=False):
+    after=firmware.apply(before,forward,hash_checks=not byte_only)
+    if firmware.apply(after,reverse,hash_checks=not byte_only)!=before:raise ValueError('Complete program inverse required')
     rows=[];lines=[];windows=[]
     for chip,name in enumerate(NAMES):
         windows.extend(dict(w,chip=chip) for w in forward['files'][name]['windows'])
@@ -58,17 +58,20 @@ def program_header(before,forward,reverse):
     lines.extend(['static const struct Window windows[]={'+','.join(rows)+'};',
         f'static const u32 window_count={len(windows)};',
         'static const u64 file_sizes[]={'+','.join(str(len(before[n]))+'UL' for n in NAMES)+'};'])
-    for label,images in [('original',before),('final',after)]:
-        lines.append('static const u8 '+label+'_hashes[2][32]={'+','.join(cbytes(bytes.fromhex(firmware.sha(images[n]))) for n in NAMES)+'};')
+    if byte_only:lines.insert(0,'#define BYTE_WINDOWS_ONLY 1')
+    else:
+        for label,images in [('original',before),('final',after)]:
+            lines.append('static const u8 '+label+'_hashes[2][32]={'+','.join(cbytes(bytes.fromhex(firmware.sha(images[n]))) for n in NAMES)+'};')
     contract={'schema':'a7c2-table-worker-contract/1','sizes':{n:len(before[n]) for n in NAMES},
-        'before':{n:firmware.sha(before[n]) for n in NAMES},'after':{n:firmware.sha(after[n]) for n in NAMES},'window_writes':len(windows)}
+        'window_writes':len(windows),'byte_only':byte_only}
+    if not byte_only:contract.update(before={n:firmware.sha(before[n]) for n in NAMES},after={n:firmware.sha(after[n]) for n in NAMES})
     return '\n'.join(lines)+'\n',contract
 
-def build_program(before,forward,reverse,out,zig=None):
-    header,contract=program_header(before,forward,reverse)
+def build_program(before,forward,reverse,out,zig=None,*,byte_only=False):
+    header,contract=program_header(before,forward,reverse,byte_only=byte_only)
     if header is None:return {'unchanged':True,'contract':None}
     out=Path(out);out.mkdir(parents=True,exist_ok=True);h=out/'manifest.private.h';h.write_text(header,encoding='ascii',newline='\n')
     source=ROOT/'src/fl23/native/installer.c';destination=out/'program.so'
-    build=compile_worker(source,h,destination,zig)
+    build=compile_worker(source,h,destination,zig,fingerprints=not byte_only)
     build.update(path=str(destination),contract=contract,unchanged=False)
     return build

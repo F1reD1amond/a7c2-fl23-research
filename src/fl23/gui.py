@@ -30,7 +30,7 @@ def main():
     row=ttk.Frame(wrap);row.pack(fill='x',pady=(0,12))
     ttk.Label(row,text='相機目前電量：').pack(side='left')
     entry=ttk.Entry(row,width=7,textvariable=battery);entry.pack(side='left')
-    ttk.Label(row,text='%   寫入及回復至少需 50%，期間保持 USB 連接。').pack(side='left');controls.append(entry)
+    ttk.Label(row,text='%   寫入至少需 50%，期間保持 USB 連接。').pack(side='left');controls.append(entry)
     row=ttk.Frame(wrap);row.pack(fill='x',pady=(0,8))
     ttk.Label(row,text='相機版本（按相機版本頁填寫）：').pack(side='left')
     entry=ttk.Entry(row,width=8,textvariable=version);entry.pack(side='left');controls.append(entry)
@@ -47,7 +47,7 @@ def main():
             if not backup.get():messagebox.showinfo('選擇備份目錄','請先選擇第二份備份目錄。');return
             if version.get().strip()!='2.01':messagebox.showinfo('相機版本','此工具只適用 2.01，請先查看相機版本頁並填寫。');return
             cmd+=['--backup-copy',backup.get(),'--firmware-version',version.get().strip()]
-        if command in ['install','restore']:
+        if command=='install':
             try:value=int(battery.get())
             except ValueError:value=-1
             if not 50<=value<=100:messagebox.showinfo('確認電量','請輸入實際電量，至少需 50%。');return
@@ -66,7 +66,7 @@ def main():
                     q.put(('done',process.wait()))
             except Exception as exc:q.put(('log',str(exc)+'\n'));q.put(('done',1))
         threading.Thread(target=worker,daemon=True).start()
-    for title,command in [('1 備份與檢查','prepare'),('2 安裝預覽版','install'),('3 重開後核對','verify'),('回到最初備份','restore')]:
+    for title,command in [('1 備份與檢查','prepare'),('2 安裝預覽版','install'),('3 重開後核對','verify')]:
         button=ttk.Button(buttons,text=title,command=lambda c=command:run(c));button.pack(side='left',padx=(0,7));controls.append(button)
     def tick():
         try:

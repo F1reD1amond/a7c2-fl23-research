@@ -15,10 +15,20 @@ class SlotRestoreTests(f.DeviceJobTests):
     def test_restore_slot6_after_later_slot5_preserves_other_tables_names_recipes(self):
         old=six.read_tables(self.cp);self.create();self.accepted(self.job)
         second=self.another(2,5,bytes([2])*1215,'Updated five')
+        # File fingerprints are deliberately wrong: selected-slot restore must
+        # use recorded bytes and fresh readback, never these old hash gates.
+        state=json.loads(self.job.state_path.read_text(encoding='utf-8'))
+        state['backup_files']={k:'0'*64 for k in state['backup_files']}
+        state['artifacts']={k:'0'*64 for k in state['artifacts']}
+        state['conversion_table_sha256']='0'*64
+        for inventory in ('backup_objects','backup_mirror_objects'):
+            for spec in state[inventory].values():spec['sha256']='0'*64
+        self.job.state_path.write_text(json.dumps(state),encoding='utf-8')
         self.assertLess(second.state['backup_storage_summary']['new_primary_compressed_bytes'],65536)
         before=copy.deepcopy(self.camera.properties);latest=six.read_tables(self.camera.files['/cp/cpapp-b.bin'])
         undo=f.SimJob(self.folder/'undo6',factory=self.camera)
         self.assertEqual(undo.restore_slot(self.job,90,self.folder/'backup-undo6')['phase'],'AWAITING_RELOAD')
+        self.assertTrue(undo.state['byte_checks'])
         actual=six.read_tables(self.camera.files['/cp/cpapp-b.bin'])
         self.assertEqual(actual[5],old[5]);self.assertEqual(actual[:5],latest[:5])
         selected={field['key'] for field in self.job.state['settings_plan']}

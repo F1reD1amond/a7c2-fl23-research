@@ -76,37 +76,16 @@ python lut.py verify "JOB_PATH" --accept-photos
 
 Use `--accept-photos` only after those physical checks succeed. The tool additionally checks a new boot, disk programs, loaded AP spans and recipes; it does not directly dump running CP instructions/tables.
 
-## 8. Restore if needed
-
-**Return to the initial backup2 in one operation (`feature/backup2-rollback` development branch; not in v2.1):**
+## 8. Restore an individual slot
 
 ```text
-python lut.py rollback "E:/CameraBackup-A7C2-01" --firmware-version 2.01 --battery-percent 90
+python lut.py restore-slot "IMPORT_JOB_TO_UNDO" --battery-percent 90
 ```
 
-Restores programs, names, FL23 bindings/parameters and six custom-look recipes from backup2, without undoing later LUT jobs individually. The command prints a new rollback work directory. After `RESTORED_AWAITING_RELOAD`, follow step 6, test preview/photos yourself, then run:
+Restore that slot's previous table, title and recipe while preserving other slots and FL23 added later. A first import returns to its native base look/recipe. Shared helper code remains available for other slots; after all slots are restored it applies no custom tables. Recovery removes shared programs during a complete rollback.
 
-```text
-python lut.py rollback-verify "ROLLBACK_WORK" --accept-photos
-```
+Slot restoration does not gate firmware, backup or native-worker files on hashes. It uses edited-byte checks and complete readback. The tool creates a new restoration job with shared compressed foundations and small deltas; reload using steps 6–7 and verify that new job. Retain the original job and shared stores.
 
-The target needs `checkpoint.private.zip`. New FL23 prepare creates it in backup2. LUT-only users get one initial archive under `initial-checkpoints` beside the second backup directories; later updates do not overwrite it. If this point already included FL23, rollback retains that FL23 state. Full rollback separately saves the current state and preserves unrelated settings/counters/calibration. This new restoration has not been tested on a physical camera.
+**Complete rollback belongs to independent [Recovery](recovery.md)**. LUT no longer exposes whole-installation/camera rollback commands, and FL23 has no restore button. Both FL23→LUT and LUT→FL23 are supported.
 
-**Supplement legacy backup2 once (offline, no camera access):**
-
-```text
-python lut.py upgrade-checkpoint "E:/CameraBackup-A7C2-01" --fl23-workspace "D:/CameraWork-A7C2-01" --first-lut-job "FIRST_LUT_JOB" --output "E:/CameraBackup-A7C2-01/checkpoint.private.zip"
-```
-
-Uses the original programs/settings from backup2 and pre-custom name resources from the same body's first LUT job, retaining old files. Legacy FL23 did not save a separate flash snapshot: original recipes use the historical RAM snapshot, and unrecorded RAM/flash differences cannot be recovered. The archive records this limitation. Missing original workspace/resources prevent a complete legacy checkpoint. `inspect-checkpoint "BACKUP2"` shows scope/limitations offline.
-
-**Undo only a job or slot:**
-
-| Command (after `python lut.py`) | Scope |
-|---|---|
-| `restore JOB --battery-percent 90` | Undo that exact job; multiple imports require reverse order |
-| `restore-slot JOB --battery-percent 90` | Undo an existing slot replacement, retaining later other slots; first-activation removal is unsupported |
-| `diagnose-job JOB` | Explain recorded failures offline; no USB |
-| `recover JOB` / `resume JOB --battery-percent 90` | Inspect existing results, then continue only a proven phase |
-
-After either restoration, follow steps 6–7. Retain shared compressed stores for job/slot restoration. Unknown completion or `NAME_RESTORE_INTENT` is not success: preserve the first failing job and temporary evidence; do not switch jobs and repeat writes. [AI implementation guide](lut-ai.md).
+For an unknown result, preserve the original failed job and temporary evidence. Inspect offline with `python lut.py diagnose-job "JOB"`, then use `recover` to classify existing results. `resume` only continues a proven phase; never replay unknown writes. [AI implementation guide](lut-ai.md).

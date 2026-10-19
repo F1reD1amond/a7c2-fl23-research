@@ -20,6 +20,7 @@ def write_json(path,value):
 class Job:
     def __init__(self,folder,*,factory=Camera,zig=None):
         self.root=Path(folder).resolve();self.factory=factory;self.zig=zig;self.state_path=self.root/'job.private.json'
+    def _hashes(self):return getattr(self,'hash_checks',True) and not self.state.get('byte_checks',False)
     def save(self,phase,**values):
         self.state.update(values);self.state['phase']=phase;write_json(self.state_path,self.state)
         print('LUT:',phase,flush=True)
@@ -33,17 +34,17 @@ class Job:
         with path.open('xb') as stream:stream.write(data);stream.flush();os.fsync(stream.fileno())
     def _stores(self):
         if len(self.state['backup_stores'])!=2:raise ValueError('Two compressed backup stores required')
-        return [backupstore.Store(p,self.state['backup_body']) for p in self.state['backup_stores']]
+        return [backupstore.Store(p,self.state['backup_body'],hash_checks=self._hashes()) for p in self.state['backup_stores']]
     def source(self,name):
         if self.state.get('backup_format')!=2:return (self.root/'source'/name).read_bytes()
         return self._stores()[0].read(self.state['backup_objects'][name])
     def resource_target(self,name):
         raw,_=resources.rename(self.source('resources/'+name),{self.state['slot']:self.state['name']},self.state['layout']['label_ids'])
         spec=next(s for s in self.state['name_build']['files'] if s['file']==name)
-        if len(raw)!=spec['after_bytes'] or firmware.sha(raw)!=spec['after_sha256']:raise ValueError('Reconstructed name target differs')
+        if len(raw)!=spec['after_bytes'] or (self._hashes() and firmware.sha(raw)!=spec['after_sha256']):raise ValueError('Reconstructed name target differs')
         return raw
     def _planned_settings(self,ap,ram,saved):
-        fields=devicesettings.plan(ap,ram,saved,[self.state['slot']])
+        fields=devicesettings.plan(ap,ram,saved,[self.state['slot']],hash_checks=self._hashes())
         recipe=self.state.get('restore_recipe')
         if recipe is not None:
             if json.loads((self.root/'candidate/restore-recipe.private.json').read_text(encoding='utf-8'))!=recipe:raise ValueError('Restoration recipe artifact differs')
@@ -53,10 +54,12 @@ class Job:
                 if len(value)!=len(bytes.fromhex(f['after'])):raise ValueError('Restoration recipe size differs')
                 f['after']=value.hex()
         return fields
-    def load(self):
+    def load(self,*,hash_checks=True):
         self.state=json.loads(self.state_path.read_text(encoding='utf-8'))
+        self.hash_checks=hash_checks
         if self.state.get('schema')!='a7c2-lut-device-job/1':raise ValueError('Unknown device job')
         if self.state.get('backup_format') not in (None,2):raise ValueError('Unknown device backup format')
+        if not self._hashes():return self
         second=Path(self.state['backup_copy'])
         if second==self.root or self.root in second.parents or second in self.root.parents:raise ValueError('Independent backup folders required')
         if self.state.get('backup_format')==2:
@@ -108,28 +111,49 @@ class Job:
                 value.update(image_dev=raw[1608:1640].split(b'\0')[0].decode('ascii'),boot_id=raw[1768:1832].split(b'\0')[0].decode('ascii'),model_index=struct.unpack_from('<I',raw,48)[0])
                 return value
         else:raise ValueError('Unknown native operation')
-        if kind in ['program','names'] and firmware.sha(blob)!=build['sha256']:raise ValueError('Compiled worker changed')
+        if kind in ['program','names'] and self._hashes() and firmware.sha(blob)!=build['sha256']:raise ValueError('Compiled worker changed')
         return invoke(camera,blob,stage=stage,request=request,result=result,contents=struct.pack('<8sII',magic,mode,0) if request else None,mode=mode,decode=decode,record=self.record,save_raw=lambda raw:self.raw(kind+'-'+str(mode)+'.bin',raw),extras=('a7c2.probe.result',) if kind=='runtime' else ())
     def _read_programs(self,camera,expected):
         actual={}
-        for name,path in PROGRAM_PATHS.items():
-            raw=camera.read(path);actual[name]=raw
-            if firmware.sha(raw)!=expected[name]:raise ValueError('Complete host readback differs: '+name)
-        self.record('complete_host_program_readback_verified',hashes={n:firmware.sha(b) for n,b in actual.items()},full_readback_files_saved=False)
+        self._later_fl23=False
+        camera.byte_checks=not self._hashes()
+        if not self._hashes():
+            wanted={n:self.source(n) for n in PROGRAM_PATHS}
+            if expected!=self.state['source_hashes']:
+                wanted=firmware.apply(wanted,json.loads((self.root/'transition/forward.private.json').read_text(encoding='utf-8')),hash_checks=False)
+        for name,path in PROGRAM_PATHS.items():actual[name]=camera.read(path)
+        if self._hashes():
+            differs=any(firmware.sha(raw)!=expected[name] for name,raw in actual.items())
+            if differs and expected==self.state['target_hashes']:
+                # FL23 may be installed after a completed LUT import. Accept
+                # only its concrete transformation over this exact target.
+                source={n:self.source(n) for n in PROGRAM_PATHS}
+                target=firmware.apply(source,json.loads((self.root/'transition/forward.private.json').read_text(encoding='utf-8')))
+                from .devicesession import modules
+                modules();import compat
+                _,_,with_fl23,_,_=compat.plan(target['appFw.so'],target['cpapp-b.bin'],transitions=False)
+                self._later_fl23=actual==with_fl23
+                differs=not self._later_fl23
+            if differs:raise ValueError('Complete host readback differs from the job and its FL23-compatible target')
+        elif actual!=wanted:raise ValueError('Complete host readback differs from planned bytes')
+        self.record('complete_host_program_readback_verified',hashes={n:firmware.sha(b) for n,b in actual.items()} if self._hashes() else None,
+            comparison='file-digest' if self._hashes() else 'complete-bytes',full_readback_files_saved=False)
         if hasattr(camera,'pin_programs'):camera.pin_programs(actual['appFw.so'],actual['cpapp-b.bin'])
         return actual
     def _resource_readback(self,camera,after):
         for spec in self.state['name_build']['files']:
             raw=camera.read('/usr/share/app/'+spec['file']);which='after' if after else 'before'
-            if len(raw)!=spec[which+'_bytes'] or firmware.sha(raw)!=spec[which+'_sha256']:raise ValueError('Complete name readback differs: '+spec['file'])
+            desired=None if self._hashes() else (self.resource_target(spec['file']) if after else self.source('resources/'+spec['file']))
+            if len(raw)!=spec[which+'_bytes'] or ((firmware.sha(raw)!=spec[which+'_sha256']) if self._hashes() else (raw!=desired)):raise ValueError('Complete name readback differs: '+spec['file'])
         self.record('complete_name_resources_readback_verified',after=after,count=68)
     def _capture(self,camera,second):
         print('Reading full programs, saved/live settings and 68 name resources; keep USB connected.',flush=True)
         self.state['identity']=camera.identity
         values={name:camera.read(path) for name,path in PROGRAM_PATHS.items()}
+        camera.byte_checks=not self._hashes()
         self.state['layout']=(camera.pin_programs(values['appFw.so'],values['cpapp-b.bin']) if hasattr(camera,'pin_programs')
-            else device_layout.identify(values['appFw.so'],values['cpapp-b.bin']))
-        self.record('complete_source_identity_verified_before_native_execution',programs=self.state['layout'])
+            else (device_layout.identify if self._hashes() else device_layout.structural)(values['appFw.so'],values['cpapp-b.bin']))
+        self.record('complete_source_identity_verified_before_native_execution' if self._hashes() else 'source_model_and_converter_bytes_checked_before_native_execution',programs=self.state['layout'])
         runtime=self._invoke(camera,'runtime',0)
         if getattr(camera,'identity_pending',False):camera.confirm_identity(runtime)
         self.state['identity']=camera.identity
@@ -185,21 +209,22 @@ class Job:
         return raw
     def _prepare(self,camera,name,slot,second,raw):
         values=self._capture(camera,second)
-        ap,cp=values['appFw.so'],values['cpapp-b.bin'];self.state['layout']=device_layout.identify(ap,cp)
+        ap,cp=values['appFw.so'],values['cpapp-b.bin'];self.state['layout']=(device_layout.identify if self._hashes() else device_layout.structural)(ap,cp)
         for span in self.state['source_runtime']['spans']:
             expected=ap[span['offset']:span['offset']+span['length']].hex()
             if span['memory']!=expected or span['disk']!=expected:raise ValueError('Source AP RAM/disk differ; finish the previous reload before importing')
-        f,r,after=device_layout.replace(ap,cp,{slot:raw});write_json(self.root/'transition/forward.private.json',f);write_json(self.root/'transition/reverse.private.json',r)
+        f,r,after=(device_layout.deactivate(ap,cp,slot,raw,hash_checks=self._hashes()) if self.state.get('deactivate_slot') else device_layout.replace(ap,cp,{slot:raw},hash_checks=self._hashes()))
+        write_json(self.root/'transition/forward.private.json',f);write_json(self.root/'transition/reverse.private.json',r)
         self.state['source_hashes']={n:firmware.sha(values[n]) for n in PROGRAM_PATHS};self.state['target_hashes']={n:firmware.sha(after[n]) for n in PROGRAM_PATHS}
         self.state['settings_plan']=self._planned_settings(ap,camera.records(values['settings-ram.bin']),camera.records(values['settings-saved.bin']))
-        self.state['program_build']=nativebuild.build_program({n:values[n] for n in PROGRAM_PATHS},f,r,self.root/'worker/program',self.zig)
-        renamed,self.state['name_build']=nameworker.prepare({n:values['resources/'+n] for n in nameworker.filenames()},{slot:name},ap,self.state['job_id'],self.root/'worker/names',self.zig,target_ap=after['appFw.so'],label_ids=self.state['layout']['label_ids'])
+        self.state['program_build']=nativebuild.build_program({n:values[n] for n in PROGRAM_PATHS},f,r,self.root/'worker/program',self.zig,byte_only=not self._hashes())
+        renamed,self.state['name_build']=nameworker.prepare({n:values['resources/'+n] for n in nameworker.filenames()},{slot:name},ap,self.state['job_id'],self.root/'worker/names',self.zig,target_ap=after['appFw.so'],label_ids=self.state['layout']['label_ids'],byte_only=not self._hashes())
         del renamed
         # Targets are reproducible from the verified source and selected name;
         # do not keep another complete set of 68 resources on the host.
         checkpoint={'schema':'a7c2-lut-slot-backup/1','slot':slot,'job_id':self.state['job_id'],
             'body':self.state['backup_body'],'source_manifest_sha256':self.state['backup_manifest_sha256'],
-            'settings_before':self.state['settings_plan'],'before_table_hex':six.read_tables(cp)[slot-1].hex() if self.state['layout']['mask']&(1<<(slot-1)) else None,
+            'settings_before':self.state['settings_plan'],'before_table_hex':(six.read_tables(cp) if self._hashes() else device_layout.tables(cp))[slot-1].hex() if self.state['layout']['mask']&(1<<(slot-1)) else None,
             'name_records_before':{n:resources.decode(values['resources/'+n])['entries'].get(self.state['layout']['label_ids'][slot-1],{}).get('text') for n in nameworker.filenames()}}
         filename=f'slot-{slot}-before.private.json'
         for base,key in zip([self.root,second],['backup_manifest_sha256','backup_mirror_manifest_sha256']):
@@ -248,6 +273,7 @@ class Job:
         runtime=self._invoke(camera,'runtime',0)
         if not runtime['boot_id'].strip():raise ValueError('Read-only boot identity unavailable')
         self.state['reload_before_boot_id_sha256']=firmware.sha(runtime['boot_id'].encode('ascii'))
+        self.state['reload_before_boot_id']=runtime['boot_id']
         mode=runtime['image_mode'];backend=runtime['image_dev']
         if backend!='*wbi4\n':raise ValueError('Unknown retained-image backend')
         if mode=='2\n':self._invoke(camera,'wbi',1)
@@ -304,20 +330,22 @@ class Job:
     def restore_slot(self,original,battery,backup_copy):
         """New transaction restoring one previously imported slot over fresh state.
 
-        Native runtime removal on a slot's first import is a separate operation;
-        this method never removes shared code required by other slots.
+        First activation returns to the native base picker/recipe. Shared code
+        remains available for other slots; complete removal is Recovery's job.
         """
-        original.load()
+        original.load(hash_checks=False)
         if type(battery) is not int or not 50<=battery<=100:raise ValueError('Actual battery percentage 50..100 required')
         if original.state['phase'] not in ['COMPLETE','RELOAD_VERIFIED']:raise ValueError('Verify the original completed installation before slot restoration')
         slot=original.state['slot'];ap=original.source('appFw.so');cp=original.source('cpapp-b.bin')
-        old_layout=device_layout.identify(ap,cp)
-        if not old_layout['mask']&(1<<(slot-1)):
-            raise ValueError('This was the slot\'s first activation. Use exact restore before later imports; slot-only runtime removal is not implemented.')
-        raw=six.read_tables(cp)[slot-1]
-        titles={resources.decode(original.source('resources/'+n))['entries'][old_layout['label_ids'][slot-1]]['text'] for n in nameworker.filenames()}
-        if len(titles)!=1:raise ValueError('Slot restoration needs one consistent previous imported name across languages')
-        name=titles.pop();second=Path(backup_copy).resolve()
+        old_layout=device_layout.structural(ap,cp)
+        deactivate=not old_layout['mask']&(1<<(slot-1))
+        raw=device_layout.before_first_table(ap,cp,slot,hash_checks=False) if deactivate else device_layout.tables(cp)[slot-1]
+        if deactivate:name='ST'  # Unused project label; native getter follows the restored base recipe.
+        else:
+            titles={resources.decode(original.source('resources/'+n))['entries'][old_layout['label_ids'][slot-1]]['text'] for n in nameworker.filenames()}
+            if len(titles)!=1:raise ValueError('Slot restoration needs one consistent previous imported name across languages')
+            name=titles.pop()
+        second=Path(backup_copy).resolve()
         if second==self.root or second in self.root.parents or self.root in second.parents:raise ValueError('Separate original backup locations required')
         for path in [self.root,second]:
             if path.exists() and (not path.is_dir() or any(path.iterdir())):raise ValueError('Use new empty job and backup directories')
@@ -325,6 +353,7 @@ class Job:
         self.state={'schema':'a7c2-lut-device-job/1','job_id':uuid.uuid4().hex[:16],'backup_copy':str(second),
             'name':name,'slot':slot,'journal':[],'backup_files':{},'camera_writes_requested':True,
             'restore_recipe':{str(f['key']):f['before_saved'] for f in original.state['settings_plan']},
+            'deactivate_slot':deactivate,'byte_checks':True,
             'slot_restore_of':original.state['job_id'],'conversion_table_sha256':firmware.sha(raw)}
         candidate=self.root/'candidate';candidate.mkdir();(candidate/f'slot{slot}.bin').write_bytes(raw)
         write_json(candidate/'restore-recipe.private.json',self.state['restore_recipe'])
@@ -334,12 +363,11 @@ class Job:
                 original_fields=original._planned_settings(ap,camera.records(original.source('settings-ram.bin')),camera.records(original.source('settings-saved.bin')))
                 if original_fields!=original.state['settings_plan']:raise ValueError('Original recipe plan differs from its backup')
                 prior_table=(original.root/f'candidate/slot{slot}.bin').read_bytes()
-                if firmware.sha(prior_table)!=original.state['conversion_table_sha256']:raise ValueError('Original fitted table differs')
                 # Guard just the original job's selected result, so later
                 # updates to other slots do not block this new transaction.
                 current={n:camera.read(p) for n,p in PROGRAM_PATHS.items()}
-                layout=device_layout.identify(current['appFw.so'],current['cpapp-b.bin'])
-                if (not layout['mask']&(1<<(slot-1)) or six.read_tables(current['cpapp-b.bin'])[slot-1]!=prior_table):
+                layout=device_layout.structural(current['appFw.so'],current['cpapp-b.bin'])
+                if (not layout['mask']&(1<<(slot-1)) or device_layout.tables(current['cpapp-b.bin'])[slot-1]!=prior_table):
                     raise ValueError('This selected slot was changed later; preserve it and select its latest job')
                 for n in nameworker.filenames():
                     title=resources.decode(camera.read('/usr/share/app/'+n))['entries'][layout['label_ids'][slot-1]]['text']
@@ -377,7 +405,8 @@ class Job:
             programs=self._read_programs(camera,self.state['source_hashes'] if restore else self.state['target_hashes'])
             runtime=self._invoke(camera,'runtime',0);boot=runtime['boot_id'].encode('ascii')
             self._verify_runtime_ok=True
-            if not boot.strip() or firmware.sha(boot)==self.state['reload_before_boot_id_sha256']:raise ValueError('New boot not observed; do not repeat installation')
+            same_boot=(firmware.sha(boot)==self.state['reload_before_boot_id_sha256']) if self._hashes() else (runtime['boot_id']==self.state['reload_before_boot_id'])
+            if not boot.strip() or same_boot:raise ValueError('New boot not observed; do not repeat installation')
             self._resource_readback(camera,not restore)
             for span in runtime['spans']:
                 expected=programs['appFw.so'][span['offset']:span['offset']+span['length']].hex()
@@ -385,12 +414,28 @@ class Job:
             ram=camera.records(camera.snapshot(True));saved=camera.records(camera.snapshot(False))
             for f in self.state['settings_plan']:
                 if ram[0][f['key']].data!=bytes.fromhex(f['before_ram'] if restore else f['after']) or saved[0][f['key']].data!=bytes.fromhex(f['before_saved'] if restore else f['after']):raise ValueError('Reloaded selected recipe differs')
-            devicesettings.protected_equal(camera.records(self.source('settings-ram.bin')),ram)
-            devicesettings.protected_equal(camera.records(self.source('settings-saved.bin')),saved)
+            for snapshot,actual in [('settings-ram.bin',ram),('settings-saved.bin',saved)]:
+                before=camera.records(self.source(snapshot))
+                if not self._later_fl23:devicesettings.protected_equal(before,actual)
+                else:
+                    for key in (0x02a40000,0x02a40002):
+                        if before[1][key]!=actual[1][key]:raise ValueError('Protected CP unit changed')
+                    keys=(0x02a40001,0x02a4000d)
+                    old=tuple(before[1][k].data for k in keys);new=tuple(actual[1][k].data for k in keys)
+                    if old!=new and camera.core.merge_colors(*old)!=new:raise ValueError('CP changes exceed the native FL23 color addition')
             self.record('postreload_storage_and_settings_verified',boot_id_sha256=firmware.sha(boot),CP_running_memory_directly_read=False)
-            if accept_photos and not restore:
+            if accept_photos and not restore and self.state['phase']!='COMPLETE':
                 self.record('physical_acceptance_reported_by_user')
                 self._verify_runtime_ok=False
+                if self._later_fl23:
+                    # FL23 leaves resources intact; update only the cleanup
+                    # worker's AP target before removing this job's old links.
+                    _,self.state['name_build']=nameworker.prepare(
+                        {n:self.source('resources/'+n) for n in nameworker.filenames()},
+                        {self.state['slot']:self.state['name']},self.source('appFw.so'),self.state['job_id'],
+                        self.root/'worker/names',self.zig,target_ap=programs['appFw.so'],
+                        label_ids=self.state['layout']['label_ids'],byte_only=not self._hashes())
+                    self.artifacts();self.record('name_cleanup_retargeted_after_native_fl23')
                 self._invoke(camera,'names',3);self._resource_readback(camera,True)
                 self._verify_runtime_ok=True
         self.save(('RESTORED' if restore else 'COMPLETE') if accept_photos else ('RESTORED_AWAITING_RELOAD' if restore else 'RELOAD_VERIFIED'),user_photos_and_preview_confirmed=bool(accept_photos))
@@ -448,7 +493,7 @@ class Job:
         mode=intent['mode'];build=self.state.get('program_build' if kind=='program' else 'name_build',{})
         blob_path=self.root/('worker/program/program.so' if kind=='program' else 'worker/names/names.so') if kind in ['program','names'] else nativebuild.ROOT/('src/fl23/assets/'+kind+'.so')
         blob=blob_path.read_bytes()
-        if firmware.sha(blob)!=intent['worker_sha256']:raise ValueError('Pending worker differs; preserve original evidence')
+        if self._hashes() and firmware.sha(blob)!=intent['worker_sha256']:raise ValueError('Pending worker differs; preserve original evidence')
         with self.factory(self.state['identity']) as camera:
             raw=camera.temp_read(result,True)
             if raw is None:
@@ -557,13 +602,14 @@ class Job:
             v=nameworker.REPORT.unpack(raw)
             if v[:3]!=(b'A7NMR001',1,mode) or v[4]!=build['count'] or v[5]>=0 or any(v[i] for i in [6,8,9,10]):raise ValueError('Unverified resource rollback/read-only state')
             wanted=build['AP']
-            if v[18].hex()!=wanted:raise ValueError('Failed names report AP differs')
+            if self._hashes() and v[18].hex()!=wanted:raise ValueError('Failed names report AP differs')
             self._read_programs(camera,self.state['source_hashes'])
             classes=[]
             for spec in build['files']:
-                blob=camera.read('/usr/share/app/'+spec['file']);digest=firmware.sha(blob)
+                blob=camera.read('/usr/share/app/'+spec['file'])
                 candidates=['before'] if mode==1 else ['before','after']
-                which=next((k for k in candidates if len(blob)==spec[k+'_bytes'] and digest==spec[k+'_sha256']),None)
+                if self._hashes():which=next((k for k in candidates if len(blob)==spec[k+'_bytes'] and firmware.sha(blob)==spec[k+'_sha256']),None)
+                else:which=next((k for k in candidates if blob==(self.source('resources/'+spec['file']) if k=='before' else self.resource_target(spec['file']))),None)
                 if which is None:raise ValueError('Failed resource outcome is outside this job')
                 classes.append(which)
             self.record('known_resource_failure_classified',files=classes)

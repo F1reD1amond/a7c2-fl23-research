@@ -2,7 +2,7 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/fl23-ai.md) · [User installation guide](fl23.md)
 
-Goal: install FL2/FL3 on A7C II 2.01 under Windows, with duplicate backups, writing, independent readback, cold-load, capture/playback and restoration. **Use the CLI first; the desktop interface is an alternative to the same backend.** FL23 installation does not import LUTs; full initial-checkpoint rollback also removes later LUT changes to restore the selected initial state.
+Goal: install FL2/FL3 on A7C II 2.01 under Windows, with duplicate backups, writing, independent readback, cold-load, capture/playback and restoration. **Use the CLI first; the desktop interface is an alternative to the same backend.** FL23 installation does not import LUTs; independent Recovery performs full rollback to the selected initial state.
 
 ## 1. Starting point
 
@@ -18,7 +18,7 @@ Use 64-bit Python 3.10+ on Windows. The launcher installs dependencies, with no 
 
 | Source | Role |
 |---|---|
-| [app.py](../../src/fl23/app.py) | `Job.prepare/install/verify/restore`: stages, backups, candidates, transactions and verification |
+| [app.py](../../src/fl23/app.py) | `Job.prepare/install/verify`: stages, backups, candidates, transactions and verification |
 | [gui.py](../../src/fl23/gui.py) | Windows buttons dispatch to the same `app.py` commands |
 | [core.py](../../src/fl23/core.py) | `ORIGINAL/FINAL`, fixed patches, per-body merging, guards and native report validation |
 | [transport.py](../../src/fl23/transport.py) | `Session`: identity/authentication/bounded I/O, unknown-result stop, restricted staging/Backup writes |
@@ -72,17 +72,11 @@ These do not connect to the camera. Environment setup may install dependencies; 
 
 Persist intent before each native invocation, verify staging, invoke once and validate magic/version/mode/length/errors and write counts. New FL23 workers use `BYTE_WINDOWS_ONLY` and complete host byte readback, with no whole-firmware hash checks. After timeout/unknown session, stop further packets including repeated cleanup. Retain `state.json`, logs, existing results and temporary files; inspect the actual outcome first.
 
-## 6. Restoration and failures
+## 6. Independent recovery
 
-New prepare saves a complete private checkpoint in backup2 before candidate construction. Restore that target directly over later LUT modifications; do not compare the camera to an old job's output hash:
+FL23 exposes no restore command or desktop button. Use [Recovery](recovery.md) for complete rollback from the original backup2 or a new checkpoint. It does not require LUT jobs. Keep model/body binding, edited-byte checks, complete readback and unknown-result evidence; do not reintroduce whole-firmware hash gates.
 
-```text
-.\FL23.cmd rollback --backup-copy "E:/CameraBackup-A7C2-01" --workspace "D:/RollbackWork" --firmware-version 2.01 --battery-percent 82
-```
-
-Shared implementation: [checkpoint.py](../../src/looks/looktool/checkpoint.py), [checkpointjob.py](../../src/looks/looktool/checkpointjob.py) and [checkpointworker.py](../../src/looks/looktool/checkpointworker.py). The native worker keeps program inodes and edited-window byte guards. Name rollback reconstructs project append-only resources and compares the complete result to the archive before any writes. Unreconstructable external changes stop before writing. Restore only FL23 fields and six custom recipes, preserving other settings/calibration. Inspect retained-image mode; invalidate only 2→0. Cold restart, `rollback-verify --workspace ... --accept-photos` and physical checks remain separate.
-
-Legacy backup2 requires the original workspace and pre-custom name resources; [upgrade-checkpoint](custom-lut.md#8-restore-if-needed) records that a separate historical flash snapshot was never captured. Never invent missing originals or replay unknown native outcomes. New full rollback is not physically validated.
+Both install orders must preserve the other feature. `compat.plan` adds FL23 flags/parameters around existing LUT code; LUT's planner accepts stock or FL23 sources. FL23 verify reads current programs and checks its own activation plus live spans, allowing later LUT imports. Test both orders and selected-slot restoration after FL23 installation with real private program fixtures; offline results do not prove camera boot safety.
 
 ## 7. AI tests and handoff
 

@@ -6,7 +6,7 @@ from .devicejob import Job,write_json
 
 CONFIG=Path.home()/'.a7c2-lut/config.json'
 DEFAULT_MODEL=Path(__file__).resolve().parents[1]/'assets/rendering-model-v1.json'
-COMMANDS={'configure','import','install','verify','restore','restore-slot','recover','resume'}
+COMMANDS={'configure','import','install','verify','restore-slot','recover','resume'}
 
 def settings():
     if not CONFIG.exists():return {}
@@ -51,12 +51,11 @@ def main(argv):
         state=job.restore_slot(Job(args.job),args.battery_percent,backup)
     else:
         parser.add_argument('job',type=Path)
-        if action in ['install','restore','resume']:parser.add_argument('--battery-percent',type=int,required=True)
+        if action in ['install','resume']:parser.add_argument('--battery-percent',type=int,required=True)
         if action=='verify':parser.add_argument('--accept-photos',action='store_true',help='Record your actual successful preview/new-photo/playback checks')
         args=parser.parse_args(argv[1:]);job=Job(args.job)
         if action=='install':state=job.install(args.battery_percent)
         elif action=='verify':state=job.verify(args.accept_photos)
-        elif action=='restore':state=job.restore(args.battery_percent)
         elif action=='recover':state=job.recover()
         elif action=='resume':state=job.resume(args.battery_percent)
         else:raise ValueError('Unknown device operation')

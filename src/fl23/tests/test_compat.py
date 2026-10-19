@@ -57,11 +57,11 @@ class Guards(unittest.TestCase):
         def load():job.state={'phase':'prepared','compatibility':{'already_enabled':True}}
         with patch.object(job,'load',side_effect=load),patch('transport.Session',side_effect=AssertionError('No USB')):
             job.install(100)
-    def test_identification_only_job_cannot_restore_an_existing_install(self):
-        job=app.Job('.')
-        def load():job.state={'compatibility':{'already_enabled':True}}
-        with patch.object(job,'load',side_effect=load),patch('transport.Session',side_effect=AssertionError('No USB')):
-            with self.assertRaises(ValueError):job.restore(100)
+    def test_fl23_exposes_no_restore_or_rollback_commands(self):
+        for command in ('restore','rollback','rollback-verify'):
+            with patch.object(sys,'argv',['app.py',command]),patch.object(app,'Job') as job:
+                with self.assertRaises(SystemExit) as caught:app.main()
+                self.assertEqual(caught.exception.code,2);job.assert_not_called()
 
 
 @unittest.skipUnless(os.environ.get('A7C2_FIRMWARE_ROOT'),'Requires private original firmware')

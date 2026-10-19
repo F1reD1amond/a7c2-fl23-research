@@ -1,15 +1,15 @@
 # A7C II Tools
 
-**Development branch:** [return to the initial backup2 in one operation](docs/en/custom-lut.md#8-restore-if-needed), without reversing later LUT jobs. New FL23/rollback paths use byte comparisons rather than firmware SHA admission. Full physical rollback remains untested; these changes are not merged into main.
+**Development branch:** three independent entries: FL23 installs/checks, LUT imports/restores one slot, and [Recovery](docs/en/recovery.md) performs complete rollback. Both installation orders are supported. Offline validation only; not merged into main.
 
 **English** · [简体中文](README.zh-CN.md)
 
 For **Sony A7C II / ILCE-7CM2 firmware 2.01**, choose the workflow:
 
-| FL2 / FL3 | Custom LUT / DCP |
-|---|---|
-| [Install and restore](docs/en/fl23.md) | [Eight steps: reference file to camera](docs/en/custom-lut.md) |
-| Prefer **`.\FL23.cmd --help`** for CLI; double-click `FL23.cmd` for desktop | **`python lut.py import "look.dcp" --name "Classic Neg." --slot 1`** |
+| FL2 / FL3 | Custom LUT / DCP | Recovery |
+|---|---|---|
+| [Install and verify](docs/en/fl23.md) | [Reference file to camera / slot restore](docs/en/custom-lut.md) | [Complete rollback](docs/en/recovery.md) |
+| Prefer **`.\FL23.cmd --help`** for CLI; double-click `FL23.cmd` for desktop | **`python lut.py import "look.dcp" --name "Classic Neg." --slot 1`** | **`python recovery.py --help`** |
 
 **Current release: [v2.1](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.1).** `main` contains both FL23 and the custom LUT/DCP CLI, with separate entries below.
 
