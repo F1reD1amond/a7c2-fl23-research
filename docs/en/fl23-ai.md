@@ -2,13 +2,17 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/fl23-ai.md) · [User installation guide](fl23.md)
 
-Goal: install FL2/FL3 on the exact supported stock A7C II 2.01 under Windows, with duplicate backups, writing, independent readback, cold-load, capture/playback and restoration. **Use the CLI first; the desktop interface is an alternative to the same backend.** This task does not import custom LUTs or change LUT resources/settings.
+Goal: install FL2/FL3 on A7C II 2.01 under Windows, with duplicate backups, writing, independent readback, cold-load, capture/playback and restoration. **Use the CLI first; the desktop interface is an alternative to the same backend.** This task does not import custom LUTs or change LUT resources/settings.
 
 ## 1. Starting point
 
-Read [AGENTS](../../AGENTS.md), [the user guide](fl23.md), [manual commands](manual.md) and [validation](technical/validation.md). Only ILCE-7CM2 is supported; version text 2.01 is followed by whole-file identity checks. Stock AP SHA-256: `2ea02f7ecbc5bb917316fe8ef4ce5ffd87eb66efaae78ba2ce11420552df539b`; CP: `f5a477588698ef965748903b8959a39ce4f59ffd4aee4d4234ef1670f56a1428`.
+Read [AGENTS](../../AGENTS.md), [the user guide](fl23.md) and [compat.py](../../src/fl23/compat.py). Only ILCE-7CM2 is supported. The user enters 2.01 from the camera version screen; the version is not automatically queried.
 
-Use 64-bit Python 3.10+ with Tkinter on Windows. The launcher prepares `.venv`; GUI needs Tkinter and device dependencies are in `src/fl23/requirements.txt`. Normal/service USB IDs are `054C:0E8A` / `054C:0336`; prepare libusbK for those identities as documented. macOS USB is not validated.
+At the owner's request, FL23 has no stock/repository whole-firmware provenance whitelist. Changes outside actual patch positions do not disqualify a body. Instruction conflicts at write positions still stop with an address. Preserve existing LUT conversion and CP data; already enabled FL23 is backed up/verified without reinstalling.
+
+The desktop shows a pre-install provenance-risk warning and CLI prints the same warning. Keep duplicate actual-file backups, exact candidates/inverses and full post-write readback. Per-job integrity is distinct from stock provenance. This workflow awaits physical validation; USB behavior is unchanged.
+
+Use 64-bit Python 3.10+ on Windows. The launcher installs dependencies, with no separate compiler operation. Normal/service USB IDs are 054C:0E8A / 054C:0336.
 
 ## 2. Existing implementation and boundaries
 
@@ -23,7 +27,7 @@ Use 64-bit Python 3.10+ with Tkinter on Windows. The launcher prepares `.venv`; 
 | [native/wbi.c](../../src/fl23/native/wbi.c) | Retained-image inspection/invalidation from the known precondition |
 | [tests/test_offline.py](../../src/fl23/tests/test_offline.py) | Body isolation, occupied storage, unrelated changes, temp conflict and unknown-session checks |
 
-Do not invent offsets or apply the fixed FL23 worker to a different LUT manifest. Preserve native bytes and service/write transport. Unknown sources require diagnosis rather than weaker guards. Backups must belong to this target body.
+Use the reviewed offsets. New preparation generates a worker for the actual files instead of using the fixed stock worker on modified files. Do not gate provenance; report instruction conflicts separately. Backups must belong to this body.
 
 ## 3. Offline startup checks
 
@@ -43,7 +47,7 @@ These do not connect to the camera. Environment setup may install dependencies; 
 2. Run `prepare`, requiring phase `prepared` and explicit backup/candidate/native-preflight success:
 
 ```text
-.\FL23.cmd prepare --workspace "D:/CameraWork-A7C2-01" --backup-copy "E:/CameraBackup-A7C2-01"
+.\FL23.cmd prepare --firmware-version 2.01 --workspace "D:/CameraWork-A7C2-01" --backup-copy "E:/CameraBackup-A7C2-01"
 ```
 
 3. Check identity, both backups, candidates and native mode0 evidence. With actual battery at least 50% and continuous connection, install. Replace the example 82 with the real percentage:
@@ -62,7 +66,7 @@ These do not connect to the camera. Environment setup may install dependencies; 
 
 ## 5. Expected work at each stage
 
-`prepare` reads target programs/body data, checks stock identities, merges this body's parameters, rejects occupied storage, builds fixed candidates, verifies duplicate originals and runs native check-only. Temporary diagnostics execute; programs/saved recipes are not installed.
+`prepare` reads programs/body data, checks entered version and actual patch positions, merges this body's parameters, rejects occupied storage, builds candidates, verifies duplicate originals and runs native check-only. An already enabled FL23 inspection skips installer/WBI preflight and creates no new install. Temporary diagnostics execute; programs/saved recipes are not installed.
 
 `install` requires the same body and `prepared` phase, rechecks source/settings, applies fixed program windows/full readback, merges/saves target parameters, checks unrelated-property preservation and performs guarded retained-image handling. `verify` does not reinstall; it checks post-reload files/parameters and AP spans.
 
@@ -70,7 +74,7 @@ Persist intent before each native invocation, verify staging, invoke once and va
 
 ## 6. Restoration and failures
 
-Restore only to undo a supported FL23 installation with this body's complete verified backups and a recognized complete current program state. Follow the user's ST selection/full power-cycle/reconnection steps, then use the original workspace:
+Restore only to undo a supported FL23 installation with this body's complete verified backups and current programs matching this job's actual candidate. Follow the user's ST selection/full power-cycle/reconnection steps, then use the original workspace:
 
 ```text
 .\FL23.cmd restore --workspace "D:/CameraWork-A7C2-01" --battery-percent 82

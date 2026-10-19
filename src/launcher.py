@@ -32,7 +32,7 @@ def prepare(workflow,research=False):
         raise RuntimeError('Existing local Python is unsupported. No environment files or camera data were replaced.')
     if workflow=='fl23':
         requirement=ROOT/'src/fl23/requirements.txt'
-        imports='import usb,libusb_package,Cryptodome,yaml'
+        imports='import usb,libusb_package,Cryptodome,yaml,numpy,elftools,ziglang'
     else:
         requirement=ROOT/'src/looks'/('requirements-research.txt' if research else 'requirements.txt')
         imports='import numpy,scipy'+(',keystone,unicorn,capstone' if research else '')

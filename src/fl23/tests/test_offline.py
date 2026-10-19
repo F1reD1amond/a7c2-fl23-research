@@ -43,6 +43,7 @@ class OfflineTests(unittest.TestCase):
         with patch.object(core,'ORIGINAL',[core.sha(original)]),patch.object(core,'FINAL',[core.sha(final)]),patch.object(core,'read_json',return_value=data):
             self.assertEqual(core.patch_program(original,0),final)
             self.assertEqual(core.patch_program(final,0,True),original)
+            self.assertEqual(core.patch_program(b'abcdef-other-modification',0),b'aXYdef-other-modification')
             data[0]['writes'].append(dict(data[0]['writes'][0]))
             with self.assertRaises(ValueError):core.patch_program(original,0)
     def test_native_frame_rejects_failure_and_foreign_model(self):
@@ -80,5 +81,19 @@ class OfflineTests(unittest.TestCase):
             job=app.Job(folder);job.state={};session=S()
             with self.assertRaises(TimeoutError):job.module(session,'installer',0)
             self.assertFalse(any(remove for _,remove in session.operations))
+    def test_invalid_native_report_is_retained_even_if_usb_read_succeeded(self):
+        class S:
+            healthy=True
+            def __init__(self):self.files={};self.removals=[]
+            def read(self,path,missing=False):return self.files.get(path)
+            def temp(self,name,data=None,remove=False):
+                if remove:self.removals.append(name);return
+                self.files['/tmp/jiritsu/'+name]=data
+                if name=='libJit.so':self.files['/tmp/jiritsu/a7c2.install.result']=b'invalid report'
+        with tempfile.TemporaryDirectory(dir=core.BASE) as folder:
+            job=app.Job(folder);job.state={};session=S()
+            with self.assertRaises(ValueError):job.module(session,'installer',0)
+            self.assertFalse(session.healthy);self.assertEqual(session.removals,[])
+            self.assertEqual(session.files['/tmp/jiritsu/a7c2.install.result'],b'invalid report')
 
 if __name__=='__main__':unittest.main()

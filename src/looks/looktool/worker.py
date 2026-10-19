@@ -5,7 +5,7 @@ This does not authorize an unknown source or install a stock-to-six build.
 Generated headers contain private firmware-derived bytes; keep them private.
 """
 import struct
-from . import firmware, project, six
+from . import firmware, six
 
 NAMES=('appFw.so','cpapp-b.bin')
 REPORT=struct.Struct('<8sIIII7q4Q')
@@ -23,6 +23,7 @@ def prepare_table_worker(ap,cp,forward,reverse,bindings):
         raise ValueError('Expected unique selected slots 1..6')
     if plan.get('model')!='ILCE-7CM2' or plan.get('firmware')!='2.01':
         raise ValueError('Slot plan model/firmware differs')
+    from . import project
     project.check_bindings(plan,bindings)  # A host assertion, never live camera evidence.
     before=dict(zip(NAMES,[ap,cp]));after=firmware.apply(before,forward)
     if firmware.apply(after,reverse)!=before:

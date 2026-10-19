@@ -51,9 +51,7 @@ def backup_records(raw):
 
 def patch_program(original,chip,reverse=False):
     data=read_json(BASE/'assets/patches.json')[chip]
-    expected=FINAL[chip] if reverse else ORIGINAL[chip]
-    target=ORIGINAL[chip] if reverse else FINAL[chip]
-    if sha(original)!=expected:raise ValueError('不支援此程式版本，或已經修改／安裝')
+    # No firmware-provenance whitelist: guard only bytes we actually replace.
     spans=[]
     for w in data['writes']:
         offset=int(w['file_offset'],16)
@@ -66,7 +64,7 @@ def patch_program(original,chip,reverse=False):
     if any(a[0]+len(a[1])>b[0] for a,b in zip(spans,spans[1:])):raise ValueError('補丁窗口重疊')
     result=bytearray(original)
     for offset,before,after in spans:result[offset:offset+len(before)]=after
-    if len(result)!=len(original) or sha(result)!=target:raise ValueError('整體候選檔驗證失敗')
+    if len(result)!=len(original):raise ValueError('候選檔長度被改動')
     return bytes(result)
 
 def merge_colors(unit01,unit0d):

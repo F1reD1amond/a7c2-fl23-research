@@ -13,11 +13,11 @@ BASE=Path(__file__).resolve().parent
 def main():
     root=tk.Tk();root.title('A7C II · FL2 / FL3 預覽版');root.geometry('780x620')
     root.minsize(720,540);q=queue.Queue();running=[False]
-    work=tk.StringVar();backup=tk.StringVar();battery=tk.StringVar()
+    work=tk.StringVar();backup=tk.StringVar();battery=tk.StringVar();version=tk.StringVar()
     wrap=ttk.Frame(root,padding=22);wrap.pack(fill='both',expand=True)
     ttk.Label(wrap,text='A7C II · FL2 / FL3',font=('Microsoft JhengHei UI',22,'bold')).pack(anchor='w')
-    ttk.Label(wrap,text='僅限原版 2.01｜實驗預覽版｜一台機身通過基本拍攝及回放',wraplength=700).pack(anchor='w',pady=(5,14))
-    ttk.Label(wrap,text='先備份與檢查，完成後才可安裝。其他版本與已修改的程式會被拒絕。',wraplength=700).pack(anchor='w',pady=(0,12))
+    ttk.Label(wrap,text='A7C II 2.01｜不檢查韌體來源｜開發版待實機驗證',wraplength=700).pack(anchor='w',pady=(5,14))
+    ttk.Label(wrap,text='非本倉庫修改的韌體可能衝突。先備份，已啟用 FL23 時不會重複安裝。',wraplength=700).pack(anchor='w',pady=(0,12))
     controls=[]
     for title,var in [('機身工作目錄（首次請選空白資料夾）',work),('第二份備份（建議選另一顆磁碟的空白資料夾）',backup)]:
         ttk.Label(wrap,text=title).pack(anchor='w')
@@ -31,6 +31,9 @@ def main():
     ttk.Label(row,text='相機目前電量：').pack(side='left')
     entry=ttk.Entry(row,width=7,textvariable=battery);entry.pack(side='left')
     ttk.Label(row,text='%   寫入及回復至少需 50%，期間保持 USB 連接。').pack(side='left');controls.append(entry)
+    row=ttk.Frame(wrap);row.pack(fill='x',pady=(0,8))
+    ttk.Label(row,text='相機版本（按相機版本頁填寫）：').pack(side='left')
+    entry=ttk.Entry(row,width=8,textvariable=version);entry.pack(side='left');controls.append(entry)
     status=tk.StringVar(value='請先參閱說明，確認兩個 USB 身份的驅動已就緒。')
     ttk.Label(wrap,textvariable=status,wraplength=700).pack(anchor='w',pady=(0,8))
     progress=ttk.Progressbar(wrap,mode='indeterminate');progress.pack(fill='x')
@@ -42,12 +45,15 @@ def main():
         cmd=[sys.executable,'-u',str(BASE/'app.py'),command,'--workspace',work.get()]
         if command=='prepare':
             if not backup.get():messagebox.showinfo('選擇備份目錄','請先選擇第二份備份目錄。');return
-            cmd+=['--backup-copy',backup.get()]
+            if version.get().strip()!='2.01':messagebox.showinfo('相機版本','此工具只適用 2.01，請先查看相機版本頁並填寫。');return
+            cmd+=['--backup-copy',backup.get(),'--firmware-version',version.get().strip()]
         if command in ['install','restore']:
             try:value=int(battery.get())
             except ValueError:value=-1
             if not 50<=value<=100:messagebox.showinfo('確認電量','請輸入實際電量，至少需 50%。');return
             cmd+=['--battery-percent',str(value)]
+        if command=='install':
+            messagebox.showwarning('韌體相容性提醒','不驗證韌體來源。非本倉庫修改的韌體可能與 FL23 衝突，造成相機無法正常啟動。請保留本機備份。')
         running[0]=True;progress.start(12);status.set('處理中，請勿拔線、關機或關閉視窗。')
         for c in controls:c.configure(state='disabled')
         def worker():
@@ -60,7 +66,7 @@ def main():
                     q.put(('done',process.wait()))
             except Exception as exc:q.put(('log',str(exc)+'\n'));q.put(('done',1))
         threading.Thread(target=worker,daemon=True).start()
-    for title,command in [('1 備份與檢查','prepare'),('2 安裝預覽版','install'),('3 重開後核對','verify'),('回復原版','restore')]:
+    for title,command in [('1 備份與檢查','prepare'),('2 安裝預覽版','install'),('3 重開後核對','verify'),('回復本次安裝','restore')]:
         button=ttk.Button(buttons,text=title,command=lambda c=command:run(c));button.pack(side='left',padx=(0,7));controls.append(button)
     def tick():
         try:

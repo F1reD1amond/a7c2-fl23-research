@@ -13,8 +13,11 @@ Read `docs/en/ai.md` before implementation.
 - `lut.py`: portable LUT-only CLI with explicit device commands; no GUI/CMD or automatic dependency installation.
 
 Follow `src/looks/AGENTS.md` for custom-look work. Run offline validation
-before camera interaction. Never relax fingerprints or repeat a write with an
-unknown outcome. Offline manifests alone are not an installation. The new
+before camera interaction. FL23 admits model/user-confirmed version 2.01
+without a stock/repository firmware fingerprint whitelist, as requested by
+the owner. Keep actual patch-position conflict guards, per-job backup and
+readback integrity. LUT import adapters retain their source fingerprints.
+Never repeat a write with an unknown outcome. Offline manifests alone are not an installation. The new
 device importer passed two selected-slot updates on one Windows camera;
 stock first-install, physical restoration and Mac USB remain untested.
 Keep full firmware, body backups/calibration, photos and credentials private.
