@@ -2,7 +2,7 @@
 import argparse,hashlib,json,zipfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
-VERSION='2.2-backup-dev'
+VERSION='2.2-restore-diag-dev'
 def sha(data):return hashlib.sha256(data).hexdigest()
 def main():
     parser=argparse.ArgumentParser(description=__doc__)

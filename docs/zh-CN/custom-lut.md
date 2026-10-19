@@ -78,6 +78,10 @@ python lut.py verify "JOB路径" --accept-photos
 
 ## 8. 必要时还原
 
+若停在 `PROGRAMS_RESTORED` 后的 `NAME_RESTORE_INTENT`，表示程序阶段已记录完成，但名称还原仍需检查，不代表整个还原成功。不要连续换 Job 重跑 `restore`，也不要删除 `lut-names-staged.so`。先对首次失败的原 Job 执行 `recover`，只有它确认可续接状态后再 `resume`。
+
+开发版内置离线检查：`python lut.py diagnose-job "JOB路径"`。只读取本地状态和现有 `names-2.bin` 报告，显示阶段/返回状态，不连接相机、不认证、不修改 Job 或备份；旧 v2.1 的笼统错误无法仅凭截图定位原因。
+
 ```text
 python lut.py restore "JOB路径" --battery-percent 90
 ```

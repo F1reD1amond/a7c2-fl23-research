@@ -78,6 +78,10 @@ Use `--accept-photos` only after those physical checks succeed. The tool additio
 
 ## 8. Restore if needed
 
+Stopping at `NAME_RESTORE_INTENT` after `PROGRAMS_RESTORED` means the program stage was recorded as complete, while name restoration still needs inspection. It is not a complete restore. Do not switch jobs and repeat `restore` or delete `lut-names-staged.so`. Recover the original first-failing job, then resume only after recovery establishes a continuable state.
+
+Development includes offline inspection: `python lut.py diagnose-job "JOB"`. It only reads local state and an existing `names-2.bin` report, exposing phase/status without USB, authentication or job/backup changes. The old v2.1 generic error cannot establish the underlying cause from a screenshot alone.
+
 ```text
 python lut.py restore "JOB_PATH" --battery-percent 90
 ```

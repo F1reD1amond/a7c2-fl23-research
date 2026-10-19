@@ -3,8 +3,9 @@ import json,re,struct
 from pathlib import Path
 from . import firmware,resources
 from .nativebuild import ROOT,compile_worker
+from .jobdiagnostics import NAME_REPORT,name_failure_text
 
-REPORT=struct.Struct('<8sIIII7q6I32s')
+REPORT=NAME_REPORT
 
 def filenames():
     names=json.loads((ROOT/'src/looks/assets/resource-files.json').read_text(encoding='utf-8'))
@@ -51,7 +52,7 @@ def validate(raw,mode,build):
     if not 1<=count<=68 or len(build['files'])!=count:raise ValueError('Invalid pinned resource count')
     expected_ap=build.get('target_AP',build['AP']) if mode==3 else build['AP']
     if values[:5]!=(b'A7NMR001',1,mode,9,count) or any(values[i] for i in [5,6,7,8,9,10,17]) or values[18].hex()!=expected_ap:
-        raise ValueError('Native name transaction incomplete; inspect existing result without replay')
+        raise ValueError(name_failure_text(raw,mode,build))
     if values[11]<=0 or any(n>count for n in values[12:17]):raise ValueError('Native name PID/count bounds differ')
     if mode==0 and any(values[12:17]):raise ValueError('Read-only name preflight reported a write')
     if mode==1 and (values[12:15]!=(count,count,count) or any(values[15:17])):raise ValueError('Native name commit counts differ')
