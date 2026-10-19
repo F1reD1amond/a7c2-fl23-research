@@ -15,8 +15,11 @@ Read `docs/en/ai.md` before implementation.
 Follow `src/looks/AGENTS.md` for custom-look work. Run offline validation
 before camera interaction. FL23 admits model/user-confirmed version 2.01
 without a stock/repository firmware fingerprint whitelist, as requested by
-the owner. Keep actual patch-position conflict guards, per-job backup and
-readback integrity. LUT import adapters retain their source fingerprints.
+the owner. New FL23 and checkpoint workers use edited-byte checks and full
+host byte readback, without firmware SHA gates or repeated package SHA scans.
+Keep actual patch-position conflict guards and body-bound backups. Existing
+LUT import adapters retain their source fingerprints; checkpoint rollback
+is independent of their job order/output fingerprints.
 Never repeat a write with an unknown outcome. Offline manifests alone are not an installation. The new
 device importer passed two selected-slot updates on one Windows camera;
 stock first-install, physical restoration and Mac USB remain untested.

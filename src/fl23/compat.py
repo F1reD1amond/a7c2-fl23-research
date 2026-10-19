@@ -1,7 +1,6 @@
 """Version-scoped FL23 planning without a firmware-provenance whitelist.
 
-Only edited bytes have conflict guards. Complete job hashes describe the
-user's actual backup/readback, never membership in a stock/repository list.
+Only edited bytes have conflict guards; full readback compares bytes.
 """
 from pathlib import Path
 import sys
@@ -20,7 +19,7 @@ def modules():
     return device_layout,firmware,nativebuild,worker
 
 
-def plan(ap,cp,version=core.VERSION):
+def plan(ap,cp,version=core.VERSION,*,transitions=True):
     if version!=core.VERSION:raise ValueError('FL23 只適用於 ILCE-7CM2 2.01；請依相機版本頁填寫')
     layout,firmware,_,_=modules()
     before=dict(zip(core.PROGRAMS,[ap,cp]))
@@ -48,6 +47,7 @@ def plan(ap,cp,version=core.VERSION):
         after[name]=bytes(result);regions[name]=spans
     identity={'kind':'lut' if lut else 'version-2.01','mask':mask,'provenance_checked':False,'firmware_version':version,'version_source':'user-camera-version-screen'}
     if not changed:return identity,True,before,None,None
+    if not transitions:return identity,False,after,None,None
     forward=firmware.transition(before,after,regions)
     reverse=firmware.transition(after,before,regions)
     if firmware.apply(firmware.apply(before,forward),reverse)!=before:
@@ -56,12 +56,11 @@ def plan(ap,cp,version=core.VERSION):
 
 
 def prepare(root,ap,cp,version=core.VERSION):
-    identity,enabled,after,forward,reverse=plan(ap,cp,version)
-    result={'identity':identity,'already_enabled':enabled,
-            'before':[core.sha(ap),core.sha(cp)],'after':[core.sha(after[n]) for n in core.PROGRAMS]}
+    identity,enabled,after,_,_=plan(ap,cp,version,transitions=False)
+    result={'identity':identity,'already_enabled':enabled}
     if not enabled:
-        _,_,build,_=modules()
-        result['build']=build.build_program(dict(zip(core.PROGRAMS,[ap,cp])),forward,reverse,root/'compat-worker')
+        from looktool.checkpointworker import build_programs
+        result['byte_builds']=build_programs(dict(zip(core.PROGRAMS,[ap,cp])),after,root/'compat-worker',checkpoint_namespace=False)
     for n,data in after.items():(root/'candidate'/n).write_bytes(data)
     return result
 
@@ -69,19 +68,11 @@ def prepare(root,ap,cp,version=core.VERSION):
 def validate(root,state):
     spec=state['compatibility']
     ap,cp=[(root/'original'/(n+'.bin')).read_bytes() for n in core.PROGRAMS]
-    identity,enabled,after,forward,reverse=plan(ap,cp,state.get('version',core.VERSION))
-    if (spec['identity']!=identity or spec['already_enabled']!=enabled
-            or spec['before']!=[core.sha(ap),core.sha(cp)]
-            or spec['after']!=[core.sha(after[n]) for n in core.PROGRAMS]):
+    identity,enabled,after,_,_=plan(ap,cp,state.get('version',core.VERSION),transitions=False)
+    if spec['identity']!=identity or spec['already_enabled']!=enabled:
         raise ValueError('相容任務來源或目標已變')
     for n,data in after.items():
         if (root/'candidate'/n).read_bytes()!=data:raise ValueError('相容候選已變')
-    if not enabled:
-        _,_,build,_=modules()
-        header,contract=build.program_header(dict(zip(core.PROGRAMS,[ap,cp])),forward,reverse)
-        if spec['build']['contract']!=contract:raise ValueError('原生完整檔案契約已變')
-        if core.sha(header.encode('ascii'))!=spec['build']['manifest_sha256']:raise ValueError('原生清單已變')
-        if core.sha((root/'compat-worker/program.so').read_bytes())!=spec['build']['sha256']:raise ValueError('原生模組已變')
 
 
 def validate_enabled_colors(a,b):

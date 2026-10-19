@@ -1,5 +1,7 @@
 # A7C II Tools
 
+**Development branch:** [return to the initial backup2 in one operation](docs/en/custom-lut.md#8-restore-if-needed), without reversing later LUT jobs. New FL23/rollback paths use byte comparisons rather than firmware SHA admission. Full physical rollback remains untested; these changes are not merged into main.
+
 **English** · [简体中文](README.zh-CN.md)
 
 For **Sony A7C II / ILCE-7CM2 firmware 2.01**, choose the workflow:

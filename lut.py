@@ -9,10 +9,13 @@ import shutil
 
 ROOT=Path(__file__).resolve().parent
 DEVICE_COMMANDS={'configure':'Configure local calibration/backups once','import':'Back up, convert and preflight; --write performs installation',
+    'rollback':'Restore original backup2 over later FL23/LUT installations','rollback-verify':'Verify original checkpoint after cold restart',
     'install':'Install a prepared job','verify':'Verify after reload; record actual photo acceptance',
     'restore':'Restore this exact installation','restore-slot':'Restore a previous imported slot, preserving other later slots','recover':'Inspect an existing interrupted job without replay',
     'resume':'Explicitly continue a recovered known phase; never repeat program writes'}
-COMMANDS={'diagnose-job':'Explain a recorded failure without USB or changing the job','inspect':'Inspect a DCP/CUBE reference','plan':'View an existing project slot plan',
+COMMANDS={'upgrade-checkpoint':'Supplement legacy backup2 using its FL23 workspace and first LUT job; offline',
+          'inspect-checkpoint':'Show checkpoint scope and legacy limitations; offline',
+          'diagnose-job':'Explain a recorded failure without USB or changing the job','inspect':'Inspect a DCP/CUBE reference','plan':'View an existing project slot plan',
           'check-bindings':'Check host ST binding declarations','calibrate':'Generate calibration from measured inputs',
           'fit':'Fit native table candidates','prepare-transition':'Prepare exact-source forward/reverse manifests',
           'prepare-six-program':'Reproduce programs from the pinned historical three-look source',
@@ -24,16 +27,20 @@ def missing_packages():
 def main(argv=None):
     argv=list(sys.argv[1:] if argv is None else argv)
     parser=argparse.ArgumentParser(description=__doc__,epilog='Run from the extracted root: python lut.py inspect path/to/profile.dcp')
-    parser.add_argument('--version',action='version',version='2.2-restore-diag-dev')
+    parser.add_argument('--version',action='version',version='2.2-checkpoint-dev')
     parser.add_argument('--device',action='store_true',help='doctor: also check USB/native-build dependencies; never connect')
     parser.add_argument('command',nargs='?',choices=['doctor',*COMMANDS,*DEVICE_COMMANDS],help='doctor/offline conversion or explicit device job')
     if not argv or argv[0] in ['-h','--help']:
         parser.print_help()
         for name,description in {**COMMANDS,**DEVICE_COMMANDS}.items():print('  '+name+': '+description)
         return 0
-    if argv==['--version']:print('2.2-restore-diag-dev');return 0
+    if argv==['--version']:print('2.2-checkpoint-dev');return 0
     try:
         if argv[0] not in ['doctor',*COMMANDS,*DEVICE_COMMANDS]:raise ValueError('Unknown command; run python lut.py --help')
+        if argv[0] in ('rollback','rollback-verify','upgrade-checkpoint','inspect-checkpoint'):
+            sys.path.insert(0,str(ROOT/'src/looks'))
+            from looktool.checkpointcli import main as checkpoint_main
+            return checkpoint_main(argv)
         if argv[0]=='diagnose-job':
             sys.path.insert(0,str(ROOT/'src/looks'))
             from looktool.jobdiagnostics import main as explain_job

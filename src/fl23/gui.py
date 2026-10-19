@@ -66,7 +66,7 @@ def main():
                     q.put(('done',process.wait()))
             except Exception as exc:q.put(('log',str(exc)+'\n'));q.put(('done',1))
         threading.Thread(target=worker,daemon=True).start()
-    for title,command in [('1 備份與檢查','prepare'),('2 安裝預覽版','install'),('3 重開後核對','verify'),('回復本次安裝','restore')]:
+    for title,command in [('1 備份與檢查','prepare'),('2 安裝預覽版','install'),('3 重開後核對','verify'),('回到最初備份','restore')]:
         button=ttk.Button(buttons,text=title,command=lambda c=command:run(c));button.pack(side='left',padx=(0,7));controls.append(button)
     def tick():
         try:

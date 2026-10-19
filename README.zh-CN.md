@@ -2,6 +2,8 @@
 
 [English](README.md) · **简体中文**
 
+**本开发分支：**增加[一次回到最初 backup2](docs/zh-CN/custom-lut.md#8-必要时还原)，不要求逐个撤销后来的 LUT。新 FL23／回退使用字节核对，不做固件来源哈希校验；尚未实机验证完整回退，未合并 main。
+
 用于 **Sony A7C II／ILCE-7CM2 固件 2.01**，按需求选择入口：
 
 | FL2／FL3 | 自定义 LUT／DCP |

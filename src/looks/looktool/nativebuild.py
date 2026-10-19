@@ -15,7 +15,7 @@ def zig_command(explicit=None):
         return [sys.executable,'-m','ziglang']
     raise ValueError('Device preparation needs Zig: install requirements-device.txt or supply --zig')
 
-def compile_worker(source,header,destination,zig=None):
+def compile_worker(source,header,destination,zig=None,*,fingerprints=True):
     destination=Path(destination);destination.parent.mkdir(parents=True,exist_ok=True)
     env=os.environ.copy()
     cache=Path(os.environ.get('A7C2_ZIG_CACHE',Path.home()/'.cache/a7c2-lut/zig')).resolve()
@@ -38,6 +38,7 @@ def compile_worker(source,header,destination,zig=None):
         if any(s.name and s['st_shndx']=='SHN_UNDEF' for s in elf.get_section_by_name('.dynsym').iter_symbols()):raise ValueError('External native symbols')
         for section in elf.iter_sections():
             if section['sh_type']=='SHT_RELA' and any(r['r_info_type']!=1027 or r['r_info_sym']!=0 for r in section.iter_relocations()):raise ValueError('Unsupported native relocation')
+    if not fingerprints:return {'bytes':len(blob)}
     return {'sha256':firmware.sha(blob),'bytes':len(blob),'native_source_sha256':firmware.sha(Path(source).read_bytes()),'manifest_sha256':firmware.sha(Path(header).read_bytes())}
 
 def program_header(before,forward,reverse):

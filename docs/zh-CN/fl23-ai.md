@@ -2,7 +2,7 @@
 
 [返回首页](../../README.zh-CN.md) · [English](../en/fl23-ai.md) · [用户安装步骤](fl23.md)
 
-目标是在 Windows 为 A7C II 2.01 安装 FL2／FL3，完成双份备份、写入、独立读回、冷加载、拍照／回放和还原。**命令行为主，桌面版为同一后端的替代入口。** 本任务不导入自定义 LUT，也不改 LUT 的设置或资源。
+目标是在 Windows 为 A7C II 2.01 安装 FL2／FL3，完成双份备份、写入、独立读回、冷加载、拍照／回放和还原。**命令行为主，桌面版为同一后端的替代入口。** FL23 安装不导入 LUT；最初存档完整回退则会撤销后来的 LUT 修改，回到所选初始状态。
 
 ## 1. 从哪里开始
 
@@ -70,20 +70,22 @@ Windows 使用 64 位 Python 3.10+；启动器自动准备依赖，不需要独�
 
 `install` 要求仍是同一机身及 `prepared` 阶段，重新核对程序／目标设置，再执行固定程序窗口、完整读回、目标参数合并保存、无关设置保留检查，以及受条件保护的保留镜像步骤。`verify` 不重复安装，检查重载后的完整文件、目标参数和相应 AP 运行片段。
 
-所有原生模块都应在调用前记录意图，暂存读回后一次调用，按各自 magic／版本／模式／长度／错误／hash 校验结果。失败或超时后会话未知时停止继续发包，不连清理也反复发送。保留 `state.json`、日志、已有原生结果和临时文件，先查本次执行结果。
+所有原生模块都在调用前记录意图，暂存读回后一次调用，核对 magic／版本／模式／长度／错误和写入次数。新 FL23 程序用 `BYTE_WINDOWS_ONLY` 检查改写字节，主机完整字节读回，不检查完整固件哈希。结果未知时停止后续发包，保留 `state.json`、日志、原生结果和临时文件，先查实际结果。
 
 ## 6. 还原与故障处理
 
-只有明确要撤销受支持的本次 FL23 安装，保有本机完整双份备份且当前完整程序可识别时，才按用户说明选择 ST、正常完整重载、接回，再用原工作目录执行：
+新版 prepare 在构造候选之前保存完整私有 backup2。直接以它为目标回退，不要求当前程序符合旧 Job 输出哈希：
 
 ```text
-.\FL23.cmd restore --workspace "D:/CameraWork-A7C2-01" --battery-percent 82
+.\FL23.cmd rollback --backup-copy "E:/CameraBackup-A7C2-01" --workspace "D:/RollbackWork" --firmware-version 2.01 --battery-percent 82
 ```
 
-这会恢复本次程序和目标参数，不能作为任意循环重启、部分损坏或未知状态的通用恢复。结果未知时先检查已有结果和当前文件，不重发安装／还原。还原完成后同样需要完整读回、重载及实际新照片验证。
+共用后端：[checkpoint.py](../../src/looks/looktool/checkpoint.py)、[checkpointjob.py](../../src/looks/looktool/checkpointjob.py)、[checkpointworker.py](../../src/looks/looktool/checkpointworker.py)。原生程序保留 inode，检查实际改写窗口；名称只逆转本工具的追加式修改，写前生成完整结果并与存档比较，外部不可重建的改动在写前停止。设置只恢复 FL23 字段和六个配方，保留其他设置／校准；只在保留镜像实际为 2 时处理 2→0。断电、`rollback-verify --workspace ... --accept-photos` 和实测是独立阶段。
+
+旧 backup2 需原工作目录和自定义名称启用前的资源补齐；[upgrade-checkpoint](custom-lut.md#8-必要时还原)明确记录缺失历史闪存快照，不能虚构原档或重放未知写入。新完整回退尚未实机验证。
 
 ## 7. AI 的测试和交付
 
 运行 `python -m unittest discover -s src/fl23/tests -v` 及 `python -m unittest discover -s dev/usb/tests -v`；后者覆盖真实 Windows CMD／PowerShell 5.1／7 转发、中文／空格路径、退出码和 USB 状态边界，设备 I/O 为离线模拟。相机 native 完整启动、安全断电和第二台机身兼容性不能由这些测试代替。
 
-交付命令、退出码、源／目标及双备份哈希、`prepared`／写入／核对阶段、完整读回、保留设置和清理结果、加载检查、用户新照片／回放及还原证据。没有授权或相机可用时停在离线验证并明确剩余实机阶段，不虚构安装成功。
+交付命令、退出码、备份位置、准备／写入／核对阶段、完整字节读回、设置保留和清理结果、加载检查及用户新照片／回放。不再引入多余哈希门槛；没有授权或相机时完成离线工作并说明剩余实机阶段，不虚构成功。

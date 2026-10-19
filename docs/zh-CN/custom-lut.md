@@ -78,24 +78,35 @@ python lut.py verify "JOB路径" --accept-photos
 
 ## 8. 必要时还原
 
-若停在 `PROGRAMS_RESTORED` 后的 `NAME_RESTORE_INTENT`，表示程序阶段已记录完成，但名称还原仍需检查，不代表整个还原成功。不要连续换 Job 重跑 `restore`，也不要删除 `lut-names-staged.so`。先对首次失败的原 Job 执行 `recover`，只有它确认可续接状态后再 `resume`。
-
-开发版内置离线检查：`python lut.py diagnose-job "JOB路径"`。只读取本地状态和现有 `names-2.bin` 报告，显示阶段/返回状态，不连接相机、不认证、不修改 Job 或备份；旧 v2.1 的笼统错误无法仅凭截图定位原因。
+**一次回到最初 backup2（`feature/backup2-rollback` 开发版，旧 v2.1 不含）：**
 
 ```text
-python lut.py restore "JOB路径" --battery-percent 90
+python lut.py rollback "E:/CameraBackup-A7C2-01" --firmware-version 2.01 --battery-percent 90
 ```
 
-自动还原该次导入前的配方、程序和名称，完整读回后显示 `RESTORED_AWAITING_RELOAD`。重复第 6、7 步，再运行 `verify ... --accept-photos` 确认。多次导入应按相反顺序还原；后续导入会改变完整来源指纹，不能跳过它们强行还原旧 Job。
-
-**如果断线或结果未知：**保留目录，先运行 `python lut.py recover "JOB路径"`。它只读取已有结果、核对状态和清理可确认归属的临时文件，不重新刷写；只有恢复到明确阶段后才运行 `python lut.py resume "JOB路径" --battery-percent 90`。仍为 `NEEDS_REVIEW` 就停止，不能重新执行 import／install 碰运气。
-
-开发与复现细节见[AI 文档](lut-ai.md)，普通安装不需要阅读它。
-
-开发版还可撤销某个**已导入槽位的替换**，保留后来修改的其他槽位：
+直接恢复 backup2 中的程序、名称、FL23 绑定／参数和六个自订配方，不要求逐个撤销后来的 LUT Job。命令会打印新的回退工作目录；出现 `RESTORED_AWAITING_RELOAD` 后按第 6 步断电重开，亲自检查预览和照片，再执行：
 
 ```text
-python lut.py restore-slot "原导入的JOB路径" --battery-percent 90
+python lut.py rollback-verify "回退工作目录" --accept-photos
 ```
 
-它从当前状态新建还原任务，完成后仍按第 6、7 步重载/验证。若同一槽后来又改过，程序停止，不覆盖更新。首次启用前没有自定义色表时，暂不支持单槽移除共享功能；仍按上面的 `restore` 流程处理。压缩备份不依赖中间 Job 目录，但依赖共用基础数据。
+目标目录需有 `checkpoint.private.zip`。新版 FL23 prepare 自动在 backup2 保存它；仅用 LUT 的用户，首次导入会在第二备份父目录的 `initial-checkpoints` 下保存一次，以后更新不覆盖。该点若已包含 FL23，回退也会保留当时的 FL23。完整回退前另存当前状态，无关设置／计数器／校准保留。这项新回退尚未实机验证。
+
+**旧 backup2 先补齐一次（离线，不连相机）：**
+
+```text
+python lut.py upgrade-checkpoint "E:/CameraBackup-A7C2-01" --fl23-workspace "D:/CameraWork-A7C2-01" --first-lut-job "首次导入LUT的JOB" --output "E:/CameraBackup-A7C2-01/checkpoint.private.zip"
+```
+
+程序从旧 backup2 取原始程序和设置，从同一机身首次 LUT Job 取尚未改名的资源，不覆盖旧文件。旧版没保存独立闪存快照，因此初始配方以当时 RAM 为准，不能恢复未记录的 RAM／闪存差异；限制会写入新档。找不到原工作目录或首次资源，就不能把旧目录称为完整原始点。`inspect-checkpoint "backup2路径"` 可离线查看范围和限制。
+
+**仅撤销一个任务或槽位：**
+
+| 命令（前加 `python lut.py`） | 范围 |
+|---|---|
+| `restore JOB --battery-percent 90` | 撤销该次任务，多次导入按相反顺序 |
+| `restore-slot JOB --battery-percent 90` | 撤销已有自定义槽的替换，保留后来其他槽；不支持单槽移除首次启用功能 |
+| `diagnose-job JOB` | 离线解释已有错误，不连接 USB |
+| `recover JOB`／`resume JOB --battery-percent 90` | 先检查已有结果，确认可继续阶段后才续接 |
+
+还原后按第 6、7 步重载／验证。任务／单槽还原需保留共用压缩存储。结果未知或停在 `NAME_RESTORE_INTENT` 不等于完成：保留首次失败任务和临时证据，不换 Job 重复写入。[AI 实现说明](lut-ai.md)。

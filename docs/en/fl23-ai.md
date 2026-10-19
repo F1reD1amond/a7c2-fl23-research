@@ -2,7 +2,7 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/fl23-ai.md) · [User installation guide](fl23.md)
 
-Goal: install FL2/FL3 on A7C II 2.01 under Windows, with duplicate backups, writing, independent readback, cold-load, capture/playback and restoration. **Use the CLI first; the desktop interface is an alternative to the same backend.** This task does not import custom LUTs or change LUT resources/settings.
+Goal: install FL2/FL3 on A7C II 2.01 under Windows, with duplicate backups, writing, independent readback, cold-load, capture/playback and restoration. **Use the CLI first; the desktop interface is an alternative to the same backend.** FL23 installation does not import LUTs; full initial-checkpoint rollback also removes later LUT changes to restore the selected initial state.
 
 ## 1. Starting point
 
@@ -70,20 +70,22 @@ These do not connect to the camera. Environment setup may install dependencies; 
 
 `install` requires the same body and `prepared` phase, rechecks source/settings, applies fixed program windows/full readback, merges/saves target parameters, checks unrelated-property preservation and performs guarded retained-image handling. `verify` does not reinstall; it checks post-reload files/parameters and AP spans.
 
-Persist intent before each native invocation, verify staging, invoke once and validate each result's magic/version/mode/length/errors/hashes. After timeout/unknown session, stop further packets including repeated cleanup. Retain `state.json`, logs, existing results and temporary files; inspect the actual outcome first.
+Persist intent before each native invocation, verify staging, invoke once and validate magic/version/mode/length/errors and write counts. New FL23 workers use `BYTE_WINDOWS_ONLY` and complete host byte readback, with no whole-firmware hash checks. After timeout/unknown session, stop further packets including repeated cleanup. Retain `state.json`, logs, existing results and temporary files; inspect the actual outcome first.
 
 ## 6. Restoration and failures
 
-Restore only to undo a supported FL23 installation with this body's complete verified backups and current programs matching this job's actual candidate. Follow the user's ST selection/full power-cycle/reconnection steps, then use the original workspace:
+New prepare saves a complete private checkpoint in backup2 before candidate construction. Restore that target directly over later LUT modifications; do not compare the camera to an old job's output hash:
 
 ```text
-.\FL23.cmd restore --workspace "D:/CameraWork-A7C2-01" --battery-percent 82
+.\FL23.cmd rollback --backup-copy "E:/CameraBackup-A7C2-01" --workspace "D:/RollbackWork" --firmware-version 2.01 --battery-percent 82
 ```
 
-This restores this job's programs/target parameters, not arbitrary restart loops, partial damage or unknown states. Recover existing evidence before repeating a write/restore. After completion require readback, reload and new-photo acceptance again.
+Shared implementation: [checkpoint.py](../../src/looks/looktool/checkpoint.py), [checkpointjob.py](../../src/looks/looktool/checkpointjob.py) and [checkpointworker.py](../../src/looks/looktool/checkpointworker.py). The native worker keeps program inodes and edited-window byte guards. Name rollback reconstructs project append-only resources and compares the complete result to the archive before any writes. Unreconstructable external changes stop before writing. Restore only FL23 fields and six custom recipes, preserving other settings/calibration. Inspect retained-image mode; invalidate only 2→0. Cold restart, `rollback-verify --workspace ... --accept-photos` and physical checks remain separate.
+
+Legacy backup2 requires the original workspace and pre-custom name resources; [upgrade-checkpoint](custom-lut.md#8-restore-if-needed) records that a separate historical flash snapshot was never captured. Never invent missing originals or replay unknown native outcomes. New full rollback is not physically validated.
 
 ## 7. AI tests and handoff
 
 Run `python -m unittest discover -s src/fl23/tests -v` and `python -m unittest discover -s dev/usb/tests -v`. The host suite includes actual CMD/PowerShell 5.1/7 forwarding, Unicode/spaced paths, exit codes and simulated USB states. These are not full camera boot, power-loss recovery or second-body validation.
 
-Deliver commands/exit codes, source/target/duplicate-backup hashes, preparation/write/verify phases, full readbacks, preservation/cleanup, load evidence, user capture/playback and restoration results. Without device access/authorization, complete offline checks and state remaining physical stages rather than inventing installation success.
+Deliver commands/exit codes, backup locations, preparation/write/verify phases, complete byte readbacks, preservation/cleanup, load evidence, user capture/playback and restoration results. Do not reintroduce unnecessary hash gates. Without device access/authorization, complete offline checks and state remaining physical stages rather than inventing installation success.

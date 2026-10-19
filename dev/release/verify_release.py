@@ -2,7 +2,7 @@
 import hashlib,json,zipfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]
-VERSION='2.2-restore-diag-dev'
+VERSION='2.2-checkpoint-dev'
 def sha(data):return hashlib.sha256(data).hexdigest()
 def main():
     tools=ROOT/f'dist/a7c2-tools-{VERSION}.zip';profiles=ROOT/'dist/a7c2-dcp-profiles-2026-10-18.zip';standalone=ROOT/'dist/lut.py'

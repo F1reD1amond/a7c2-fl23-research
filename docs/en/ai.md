@@ -11,4 +11,4 @@ Read [AGENTS](../../AGENTS.md), then use the guide matching the requested projec
 
 The [LUT user guide](custom-lut.md) follows eight stages; the [AI guide](lut-ai.md) maps the implemented device commands, exact sources and recovery evidence.
 
-Keep a private phase log containing commands/exit codes, source/target hashes, backups, reports, unresolved outcomes and next action. Protect body calibration and unrelated recipes. Test before device work; distinguish offline reproduction, full readback, loaded state and physical behavior. Mac offline support does not establish Mac USB writing. No AI can guarantee first-attempt installation on arbitrary firmware.
+Keep a private phase log containing commands/exit codes, source/target descriptions, backups, byte-readback results, unresolved outcomes and next action. Do not add unnecessary hash gates. Protect body calibration and unrelated recipes. Test before device work; distinguish offline reproduction, full readback, loaded state and physical behavior. Mac offline support does not establish Mac USB writing. No AI can guarantee first-attempt installation on arbitrary firmware.

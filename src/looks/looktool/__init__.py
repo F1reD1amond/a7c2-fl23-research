@@ -1,3 +1,3 @@
 """Offline tools for AI-assisted A7C II Creative Look research."""
 
-__version__ = "2.2-restore-diag-dev"
+__version__ = "2.2-checkpoint-dev"

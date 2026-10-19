@@ -1,11 +1,43 @@
 """Version-only source admission, LUT preservation and conflict tests. No USB."""
-import os,sys,tempfile,unittest
+import os,sys,tempfile,unittest,struct
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import core,app,compat
 
 class Guards(unittest.TestCase):
+    def test_prepare_keeps_complete_initial_checkpoint_when_candidate_conflicts(self):
+        from types import SimpleNamespace
+        from collections import namedtuple
+        compat.modules()
+        from looktool import checkpoint
+        Prop=namedtuple('Prop','data attr')
+        count=2860
+        raw=bytearray(b'uxc\x07\0\0\0\0'+struct.pack('<HHI',8,5,count|(count<<12))+b'\xff\xff'*count)
+        struct.pack_into('<H',raw,16,0);raw.extend(struct.pack('<I',0x1e00a000)+b'Native\0\0')
+        resource=bytes(raw);units={k:bytes(n) for k,n in zip(core.CP_KEYS,(8192,28672))}
+        records=[{k:Prop(b'\0',0) for k in core.AP_KEYS},{k:Prop(v,0) for k,v in units.items()}]
+        class S:
+            identity={'model':core.MODEL,'serial_sha256':'test-body'}
+            camera=SimpleNamespace(getBackupPresetData=lambda memory:b'initial-live' if memory else b'initial-saved')
+            def __enter__(self):return self
+            def __exit__(self,*a):pass
+            def call(self,f,*a):return f(*a)
+            def cp_read(self,k):return units[k]
+            def read(self,p,*a):
+                if p.endswith('/usr/lib/appFw.so'):return b'unsupported-AP'
+                if p.endswith('/cp/cpapp-b.bin'):return b'unsupported-CP'
+                return resource
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);job=app.Job(root/'work')
+            with patch('transport.Session',return_value=S()),patch.object(core,'backup_records',return_value=records),patch.object(core,'sha',side_effect=AssertionError('No SHA')):
+                with self.assertRaises(ValueError):job.prepare(root/'backup2')
+            manifest,data=checkpoint.read(root/'backup2')
+            self.assertEqual(data['appFw.so'],b'unsupported-AP')
+            self.assertEqual(data['settings-saved.bin'],b'initial-saved')
+            self.assertEqual((root/'backup2/appFw.so.bin').read_bytes(),b'unsupported-AP')
+            self.assertTrue(all(isinstance(v,int) for v in job.state['backup_files'].values()))
+            self.assertNotIn('compatibility',job.state)
     def test_unknown_pair_rejected(self):
         with self.assertRaises(ValueError):compat.plan(b'unknown',b'unknown')
     def test_wrong_version_stops_before_program_inspection(self):
@@ -87,22 +119,25 @@ class OriginalFirmware(unittest.TestCase):
         self.assertEqual(after['appFw.so'][0x70000],changed_ap[0x70000])
         self.assertEqual(after['cpapp-b.bin'][0x70000],changed_cp[0x70000])
         self.assertEqual(self.firmware.apply(after,r),{'appFw.so':bytes(changed_ap),'cpapp-b.bin':bytes(changed_cp)})
-    def test_job_worker_compiles_with_exact_forward_and_inverse_hashes(self):
+    def test_job_worker_compiles_without_firmware_hash_checks(self):
+        from looktool import checkpointworker
         source=self.layout._ap_target(self.ap,1)
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);(root/'candidate').mkdir();(root/'original').mkdir()
             # Supply Zig explicitly for local verification without installation.
-            original_build=self.build.build_program
+            original_build=checkpointworker.build_programs
             zig=os.environ.get('A7C2_ZIG')
             def build(*args,**kwargs):return original_build(*args,**dict(kwargs,zig=zig))
-            with patch.object(self.build,'build_program',side_effect=build):spec=compat.prepare(root,source,self.lutcp)
+            with patch.object(checkpointworker,'build_programs',side_effect=build),patch.object(core,'sha',side_effect=AssertionError('No firmware SHA')):
+                spec=compat.prepare(root,source,self.lutcp)
             for name,data in [('appFw.so',source),('cpapp-b.bin',self.lutcp)]:
                 (root/'original'/(name+'.bin')).write_bytes(data)
             compat.validate(root,{'compatibility':spec})
-            contract=spec['build']['contract']
-            self.assertEqual(contract['before']['cpapp-b.bin'],contract['after']['cpapp-b.bin'])
-            self.assertNotEqual(contract['before']['appFw.so'],contract['after']['appFw.so'])
-            blob=root/'compat-worker/program.so';blob.write_bytes(blob.read_bytes()+b'x')
-            with self.assertRaises(ValueError):compat.validate(root,{'compatibility':spec})
+            self.assertEqual(len(spec['byte_builds']),1)
+            header=(root/'compat-worker/program-0.private.h').read_text()
+            self.assertIn('#define BYTE_WINDOWS_ONLY 1',header)
+            self.assertNotIn('original_hashes',header)
+            candidate=root/'candidate/appFw.so';candidate.write_bytes(b'changed')
+            with self.assertRaisesRegex(ValueError,'候選'):compat.validate(root,{'compatibility':spec})
 
 if __name__=='__main__':unittest.main()

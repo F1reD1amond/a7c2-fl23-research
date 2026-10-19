@@ -78,24 +78,35 @@ Use `--accept-photos` only after those physical checks succeed. The tool additio
 
 ## 8. Restore if needed
 
-Stopping at `NAME_RESTORE_INTENT` after `PROGRAMS_RESTORED` means the program stage was recorded as complete, while name restoration still needs inspection. It is not a complete restore. Do not switch jobs and repeat `restore` or delete `lut-names-staged.so`. Recover the original first-failing job, then resume only after recovery establishes a continuable state.
-
-Development includes offline inspection: `python lut.py diagnose-job "JOB"`. It only reads local state and an existing `names-2.bin` report, exposing phase/status without USB, authentication or job/backup changes. The old v2.1 generic error cannot establish the underlying cause from a screenshot alone.
+**Return to the initial backup2 in one operation (`feature/backup2-rollback` development branch; not in v2.1):**
 
 ```text
-python lut.py restore "JOB_PATH" --battery-percent 90
+python lut.py rollback "E:/CameraBackup-A7C2-01" --firmware-version 2.01 --battery-percent 90
 ```
 
-The job restores its original recipes/programs/names and reads them back, then reports `RESTORED_AWAITING_RELOAD`. Repeat steps 6–7 and `verify ... --accept-photos`. Restore multiple imports in reverse order: later jobs change complete-source fingerprints, so an older job cannot be forced over them.
-
-**Disconnect or unknown result:** keep the folders and first run `python lut.py recover "JOB_PATH"`. It reads existing results, classifies state and cleans confirmed owned temporary files without reexecuting a loader. Only a proven phase permits `python lut.py resume "JOB_PATH" --battery-percent 90`. If it remains `NEEDS_REVIEW`, stop; do not repeat import/install blindly.
-
-[The AI guide](lut-ai.md) covers implementation/reproduction; ordinary installation does not require it.
-
-The development version can also undo the replacement of a **previously imported slot**, preserving later changes to other slots:
+Restores programs, names, FL23 bindings/parameters and six custom-look recipes from backup2, without undoing later LUT jobs individually. The command prints a new rollback work directory. After `RESTORED_AWAITING_RELOAD`, follow step 6, test preview/photos yourself, then run:
 
 ```text
-python lut.py restore-slot "ORIGINAL_JOB" --battery-percent 90
+python lut.py rollback-verify "ROLLBACK_WORK" --accept-photos
 ```
 
-This creates a fresh restoration job over current state; reload/verify using steps 6–7. A subsequent change to the same slot stops restoration rather than overwriting it. Slot-only removal of shared functionality after a slot's first activation is not implemented; use the exact `restore` flow above. Compressed snapshots do not depend on intermediate job directories, but retain their shared foundation.
+The target needs `checkpoint.private.zip`. New FL23 prepare creates it in backup2. LUT-only users get one initial archive under `initial-checkpoints` beside the second backup directories; later updates do not overwrite it. If this point already included FL23, rollback retains that FL23 state. Full rollback separately saves the current state and preserves unrelated settings/counters/calibration. This new restoration has not been tested on a physical camera.
+
+**Supplement legacy backup2 once (offline, no camera access):**
+
+```text
+python lut.py upgrade-checkpoint "E:/CameraBackup-A7C2-01" --fl23-workspace "D:/CameraWork-A7C2-01" --first-lut-job "FIRST_LUT_JOB" --output "E:/CameraBackup-A7C2-01/checkpoint.private.zip"
+```
+
+Uses the original programs/settings from backup2 and pre-custom name resources from the same body's first LUT job, retaining old files. Legacy FL23 did not save a separate flash snapshot: original recipes use the historical RAM snapshot, and unrecorded RAM/flash differences cannot be recovered. The archive records this limitation. Missing original workspace/resources prevent a complete legacy checkpoint. `inspect-checkpoint "BACKUP2"` shows scope/limitations offline.
+
+**Undo only a job or slot:**
+
+| Command (after `python lut.py`) | Scope |
+|---|---|
+| `restore JOB --battery-percent 90` | Undo that exact job; multiple imports require reverse order |
+| `restore-slot JOB --battery-percent 90` | Undo an existing slot replacement, retaining later other slots; first-activation removal is unsupported |
+| `diagnose-job JOB` | Explain recorded failures offline; no USB |
+| `recover JOB` / `resume JOB --battery-percent 90` | Inspect existing results, then continue only a proven phase |
+
+After either restoration, follow steps 6–7. Retain shared compressed stores for job/slot restoration. Unknown completion or `NAME_RESTORE_INTENT` is not success: preserve the first failing job and temporary evidence; do not switch jobs and repeat writes. [AI implementation guide](lut-ai.md).

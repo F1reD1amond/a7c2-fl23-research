@@ -35,8 +35,8 @@ def assets():
     manifest=read_json(BASE/'assets/manifest.json')
     names={'installer.so','probe.so','wbi.so','runtime.so','patches.json','colors.json'}
     if set(manifest['files'])!=names:raise ValueError('套件資產清單不符')
-    for name,expected in manifest['files'].items():
-        if sha((BASE/'assets'/name).read_bytes())!=expected:raise ValueError('套件檔案雜湊不符：'+name)
+    for name in manifest['files']:
+        if not (BASE/'assets'/name).is_file():raise ValueError('套件缺少檔案：'+name)
     return manifest
 
 def backup_records(raw):

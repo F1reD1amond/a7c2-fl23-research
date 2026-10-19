@@ -44,6 +44,10 @@ Names/paths with spaces need quotes. Unsupported firmware, missing dependencies,
 | `install JOB --battery-percent N` | Install a prepared job |
 | `verify JOB --accept-photos` | Check reload and record completed physical acceptance |
 | `restore JOB --battery-percent N` | Restore this job exactly |
+| `rollback BACKUP2 --firmware-version 2.01 --battery-percent N` | Return to the initial complete checkpoint over later LUT changes (development) |
+| `rollback-verify WORK --accept-photos` | Verify the full rollback after cold restart and physical checks |
+| `upgrade-checkpoint BACKUP2 --fl23-workspace WORK --first-lut-job JOB --output ARCHIVE` | Supplement a legacy checkpoint offline; records missing historical data |
+| `inspect-checkpoint BACKUP2` | Show archived scope and limitations without USB |
 | `diagnose-job JOB` | Explain recorded failures/name reports offline, with no camera access |
 | `restore-slot JOB --battery-percent N` | Undo a previously imported slot replacement, preserving later other slots (development) |
 | `recover JOB` | Recover existing evidence without loader execution |

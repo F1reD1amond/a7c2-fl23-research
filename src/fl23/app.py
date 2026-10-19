@@ -21,24 +21,26 @@ class Job:
     def load(self):
         core.assets();self.state=core.read_json(self.state_path)
         if self.state.get('format')!=1 or self.state.get('model')!=core.MODEL:raise ValueError('不是有效機身工作目錄')
-        for name,expected in self.state['backup_files'].items():
-            for parent in [self.root/'original',Path(self.state['backup_copy'])]:
-                if core.sha((parent/name).read_bytes())!=expected:raise ValueError('備份副本雜湊不符：'+name)
+        for name in self.state['backup_files']:
+            if (self.root/'original'/name).read_bytes()!=(Path(self.state['backup_copy'])/name).read_bytes():
+                raise ValueError('兩份備份內容不同：'+name)
         core.backup_records((self.root/'original/backup.private.bin').read_bytes())
         if 'compatibility' in self.state:
             import compat
             compat.validate(self.root,self.state)
         return self
-    def hashes(self,after):
-        return self.state['compatibility']['after' if after else 'before'] if 'compatibility' in self.state else (core.FINAL if after else core.ORIGINAL)
-    def module(self,session,name,mode=None):
+    def module(self,session,name,mode=None,byte_build=None):
         blob=(core.BASE/'assets'/f'{name}.so').read_bytes()
         dynamic=name=='installer' and 'compatibility' in self.state
         if dynamic:
             import compat
             compat.validate(self.root,self.state)
             if self.state['compatibility']['already_enabled']:raise ValueError('已啟用狀態不應執行安裝器')
-            blob=(self.root/'compat-worker/program.so').read_bytes()
+            if 'byte_builds' in self.state['compatibility']:
+                if byte_build is None:
+                    return [self.module(session,name,mode,build) for build in self.state['compatibility']['byte_builds']]
+                blob=Path(byte_build['path']).read_bytes()
+            else:blob=(self.root/'compat-worker/program.so').read_bytes()
         result={'installer':'a7c2.install.result','probe':'a7c2.probe.result',
                 'wbi':'a7c2.wbi.result','runtime':'a7c2.runtime.result'}[name]
         request={'installer':('a7c2.install.request',b'A7INS001'),
@@ -67,8 +69,12 @@ class Job:
             dest=self.root/'evidence'/f'{datetime.now():%Y%m%d-%H%M%S-%f}-{name}.bin'
             dest.parent.mkdir(exist_ok=True);dest.write_bytes(raw)
             if dynamic:
-                from compat import modules
-                parsed=modules()[3].validate_worker_report(raw,mode,self.state['compatibility']['build']['contract'])
+                if byte_build is not None:
+                    from looktool.checkpointworker import program_report
+                    parsed=program_report(raw,mode,byte_build)
+                else:
+                    from compat import modules
+                    parsed=modules()[3].validate_worker_report(raw,mode,self.state['compatibility']['build']['contract'])
             else:parsed=core.parse_native(name,raw,mode)
             self.audit('native_verified',module=name,mode=mode,result=parsed)
             return parsed
@@ -103,15 +109,31 @@ class Job:
                 event('讀取完整 '+name)
                 data=session.read('/tmp/jiritsu/../..'+path)
                 originals[name+'.bin']=data
-            import compat
-            self.state['compatibility']=compat.prepare(self.root,originals['appFw.so.bin'],originals['cpapp-b.bin.bin'],firmware_version)
-            self.audit('version_and_patch_positions_checked',**self.state['compatibility']['identity'])
-            enabled=self.state.get('compatibility',{}).get('already_enabled',False)
             originals['backup.private.bin']=backup
             for key in core.CP_KEYS:
                 data=session.cp_read(key)
                 if data!=records[1][key].data:raise ValueError('原生色彩讀回與機身備份不符')
                 originals[f'unit-{key:08x}.bin']=data
+            # Capture the initial rollback point before building candidates.
+            # A later LUT job must not invalidate this independent archive.
+            import compat
+            compat.modules()
+            from looktool import checkpoint
+            saved=session.call(session.camera.getBackupPresetData,False)
+            values=checkpoint.capture(session,{name:originals[name+'.bin'] for name in core.PROGRAMS},backup,saved)
+            archive=self.root/'original/checkpoint.private.zip'
+            checkpoint.write(archive,values,session.identity,provenance={'type':'fl23-prepare-before-changes'})
+            checkpoint.copy(archive,second/'checkpoint.private.zip')
+            self.state['checkpoint']=str(second/'checkpoint.private.zip')
+            for name,data in originals.items():
+                for parent in [self.root/'original',second]:
+                    target=parent/name;target.write_bytes(data)
+                    if target.read_bytes()!=data:raise ValueError('備份寫回驗證不符')
+                self.state['backup_files'][name]=len(data)
+            self.save('backups_verified')
+            self.state['compatibility']=compat.prepare(self.root,originals['appFw.so.bin'],originals['cpapp-b.bin.bin'],firmware_version)
+            self.audit('version_and_patch_positions_checked',**self.state['compatibility']['identity'])
+            enabled=self.state.get('compatibility',{}).get('already_enabled',False)
             for i,key in enumerate(core.AP_KEYS):
                 expected=bytes([10+i]) if enabled else b'\0'
                 if session.call(session.camera.readBackup,key)!=expected or records[0][key].data!=expected:
@@ -121,11 +143,6 @@ class Job:
                 compat.validate_enabled_colors(*units);merged=units
             else:merged=core.merge_colors(*units)
             for key,data in zip(core.CP_KEYS,merged):(self.root/'candidate'/f'unit-{key:08x}.bin').write_bytes(data)
-            for name,data in originals.items():
-                for parent in [self.root/'original',second]:
-                    target=parent/name;target.write_bytes(data)
-                    if core.sha(target.read_bytes())!=core.sha(data):raise ValueError('備份寫回驗證不符')
-                self.state['backup_files'][name]=core.sha(data)
             self.save('backups_verified')
             self.module(session,'probe')
             if not enabled:
@@ -138,15 +155,19 @@ class Job:
         originals={k:(self.root/'original'/f'unit-{k:08x}.bin').read_bytes() for k in core.CP_KEYS}
         merged=core.merge_colors(originals[core.CP_KEYS[0]],originals[core.CP_KEYS[1]])
         return originals,dict(zip(core.CP_KEYS,merged))
-    def files(self,session,expected):
+    def files(self,session,after):
         for chip,name,path in [(1,core.PROGRAMS[1],'/cp/cpapp-b.bin'),(0,core.PROGRAMS[0],'/usr/lib/appFw.so')]:
             event('完整讀回 '+name)
             data=session.read('/tmp/jiritsu/../..'+path)
             folder=self.root/'readback';folder.mkdir(exist_ok=True)
             stamp=f'{datetime.now():%Y%m%d-%H%M%S-%f}-{name}'
             (folder/stamp).write_bytes(data)
-            if core.sha(data)!=expected[chip]:raise ValueError('程式完整讀回不符；停止後續操作')
-        self.audit('host_full_file_readback_verified',hashes=expected)
+            original=(self.root/'original'/(name+'.bin')).read_bytes()
+            if not after:expected=original
+            elif 'compatibility' in self.state:expected=(self.root/'candidate'/name).read_bytes()
+            else:expected=core.patch_program(original,chip)
+            if data!=expected:raise ValueError('程式完整讀回不符；停止後續操作')
+        self.audit('host_full_file_readback_verified',after=after)
     def settings(self,session,restore=False):
         originals,merged=self.units();target=originals if restore else merged
         desired=dict(zip(core.AP_KEYS,[b'\0',b'\0'] if restore else [b'\x0a',b'\x0b']))
@@ -200,7 +221,7 @@ class Job:
             self.module(session,'wbi',0)
             self.save('writing_programs');event('正在寫入固定窗口；請勿拔線或關機。')
             self.module(session,'installer',1)
-            self.save('programs_written');self.files(session,self.hashes(True))
+            self.save('programs_written');self.files(session,True)
             self.save('writing_settings');self.settings(session)
             self.save('settings_verified');event('程式及保存設定已驗證，正在處理舊開機快照。')
             self.module(session,'wbi',1)
@@ -208,10 +229,19 @@ class Job:
         event('安裝及讀回完成。拔線、正常關機，等存取燈熄滅後取出電池10秒，再裝回開機。')
         event('請分別重設FL2/FL3、拍新照片及回放；目前是實驗預覽版。')
     def verify(self):
+        saved_state=core.read_json(self.state_path)
+        if saved_state.get('rollback_workspace'):
+            import compat
+            compat.modules()
+            from looktool.checkpointjob import Rollback
+            result=Rollback(saved_state['rollback_workspace']).verify()
+            self.state=saved_state;self.save('restored_loaded')
+            event('最初備份已讀回，AP 執行片段已載入；仍請確認取景、拍攝及回放。')
+            return result
         from transport import Session
         self.load()
         with Session(self.state['identity']) as session:
-            self.files(session,self.hashes(True))
+            self.files(session,True)
             current=core.backup_records(session.call(session.camera.getBackupPresetData,True))
             if self.state.get('compatibility',{}).get('already_enabled'):
                 new={k:(self.root/'original'/f'unit-{k:08x}.bin').read_bytes() for k in core.CP_KEYS}
@@ -227,6 +257,21 @@ class Job:
         self.audit('post_restart_files_and_targets_verified')
         event('磁碟程式與保存參數符合預期；選單、照片及回放仍需實際檢查。')
     def restore(self,battery):
+        # New full checkpoint is independent of the last installed LUT job.
+        archive=self.root/'original/checkpoint.private.zip'
+        if self.state_path.exists():
+            state=core.read_json(self.state_path)
+            second=Path(state['backup_copy'])/'checkpoint.private.zip'
+            if second.exists():archive=second
+        if archive.exists():
+            import compat
+            compat.modules()
+            from looktool.checkpointjob import Rollback
+            self.state=core.read_json(self.state_path)
+            folder=self.root/f'rollback-{datetime.now():%Y%m%d-%H%M%S-%f}'
+            result=Rollback(folder).run(archive,battery,core.VERSION)
+            self.save('restored_pending_cold_start',rollback_workspace=str(folder))
+            return result
         from transport import Session
         self.load()
         if self.state.get('compatibility',{}).get('already_enabled'):
@@ -235,25 +280,37 @@ class Job:
         with Session(self.state['identity']) as session:
             # Native full-candidate check occurs inside restore worker before
             # writes. Independent readback here also rejects partial images.
-            self.files(session,self.hashes(True));self.module(session,'wbi',0)
+            self.files(session,True);self.module(session,'wbi',0)
             self.save('restoring_settings');self.settings(session,True)
             self.save('restoring_programs');self.module(session,'installer',2)
-            self.files(session,self.hashes(False));self.module(session,'wbi',1)
+            self.files(session,False);self.module(session,'wbi',1)
         self.save('restored_pending_cold_start')
         event('已回復到本次 prepare 前的程式與目標設定，並完整讀回。正常關機後完整斷電再開機。')
 
 def main():
     p=argparse.ArgumentParser(description='A7C II 2.01 FL2/FL3 實驗預覽版')
-    p.add_argument('command',choices=['prepare','install','verify','restore','check-package'])
+    p.add_argument('command',choices=['prepare','install','verify','restore','rollback','rollback-verify','check-package'])
     p.add_argument('--workspace',type=Path);p.add_argument('--backup-copy',type=Path)
-    p.add_argument('--firmware-version',help='prepare: firmware version from the camera version screen, e.g. 2.01')
+    p.add_argument('--firmware-version',help='prepare/rollback: firmware version from the camera version screen, e.g. 2.01')
     p.add_argument('--battery-percent',type=int,default=-1)
+    p.add_argument('--accept-photos',action='store_true')
+    p.add_argument('--zig')
     args=p.parse_args()
     if args.command=='check-package':core.assets();event('套件資產完整；此檢查不連線相機。');return
     if not args.workspace:p.error('必須指定機身工作目錄')
     job=Job(args.workspace)
     try:
-        if args.command=='prepare':
+        if args.command in ('rollback','rollback-verify'):
+            import compat
+            compat.modules()
+            from looktool.checkpointjob import Rollback
+            rollback=Rollback(args.workspace,zig=args.zig)
+            if args.command=='rollback':
+                if not args.backup_copy:p.error('rollback 需要 --backup-copy 指向原始 backup2')
+                if not args.firmware_version:p.error('請用 --firmware-version 2.01 填寫相機版本')
+                rollback.run(args.backup_copy,args.battery_percent,args.firmware_version)
+            else:rollback.verify(args.accept_photos)
+        elif args.command=='prepare':
             if not args.backup_copy:p.error('準備時需指定第二份備份目錄')
             if not args.firmware_version:p.error('請用 --firmware-version 2.01 填寫相機版本頁的版本')
             job.prepare(args.backup_copy,args.firmware_version)

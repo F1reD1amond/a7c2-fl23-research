@@ -9,16 +9,15 @@ PAYLOAD={payload!r}
 def launch():
     if sys.version_info<(3,10):raise SystemExit('64-bit Python 3.10+ required')
     blob=base64.b64decode(PAYLOAD);archive=zipfile.ZipFile(io.BytesIO(blob))
-    hashes=json.loads(archive.read('bundle-manifest.json'));key=hashlib.sha256(archive.read('bundle-manifest.json')).hexdigest()
+    files=json.loads(archive.read('bundle-manifest.json'));key=hashlib.sha256(archive.read('bundle-manifest.json')).hexdigest()
     root=__import__('pathlib').Path.home()/'.a7c2-lut/runtime'/key;root.parent.mkdir(parents=True,exist_ok=True)
     if not root.exists():
         temporary=__import__('pathlib').Path(tempfile.mkdtemp(prefix=key+'.',dir=root.parent))
         try:
-            for name,wanted in hashes.items():
+            for name in files:
                 relative=__import__('pathlib').PurePosixPath(name)
                 if relative.is_absolute() or '..' in relative.parts or ':' in name or chr(92) in name:raise ValueError('Invalid bundled path')
                 data=archive.read(name)
-                if hashlib.sha256(data).hexdigest()!=wanted:raise ValueError('Corrupt bundled file')
                 target=temporary/name;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data)
             try:os.rename(temporary,root)
             except OSError:
@@ -27,8 +26,6 @@ def launch():
             if temporary.exists():
                 if temporary.resolve().parent!=root.parent.resolve() or not temporary.name.startswith(key+'.'):raise ValueError('Unexpected staging cleanup path')
                 shutil.rmtree(temporary)
-    for name,wanted in hashes.items():
-        if hashlib.sha256((root/name).read_bytes()).hexdigest()!=wanted:raise ValueError('Cached tool changed; retain jobs and remove only runtime/'+key)
     sys.argv[0]=str(root/'lut.py');runpy.run_path(str(root/'lut.py'),run_name='__main__')
 if __name__=='__main__':launch()
 '''

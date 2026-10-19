@@ -15,6 +15,10 @@ static int same(const u8*a,const u8*b,u32 n) {for(u32 i=0;i<n;i++)if(a[i]!=b[i])
 #include "sha256.h"
 struct Asset {const char*name;u32 size;u8 before[32],after[32];};
 #include PATCH_MANIFEST
+#ifndef NAMES_REQUEST
+#define NAMES_REQUEST "/tmp/jiritsu/a7c2.names.request"
+#define NAMES_RESULT "/tmp/jiritsu/a7c2.names.result"
+#endif
 struct Stat {u64 dev,ino;u32 mode,nlink,uid,gid;u64 rdev,pad1;i64 size;u32 blksize,pad2;u64 blocks,rest[7];};
 _Static_assert(sizeof(struct Stat)==128,"stat ABI");
 struct Request {u8 magic[8];u32 mode,reserved;};
@@ -59,7 +63,14 @@ static i64 hash_path(const char*p,u64 size,u8*out,struct Stat*st) {
  i64 c=cl(&fd);if(!status)status=c;if(!status) {sha_end(&h,out);if(st)*st=s;}return status;
 }
 static i64 verify(const char*p,u64 size,const u8*hash,struct Stat*st) {
+#ifdef CHECKPOINT_BYTES
+ i64 fd=op(p,0x20000,0);if(fd<0)return fd;
+ struct Stat s;i64 v=sc(80,fd,(i64)&s,0,0,0,0),c=cl(&fd);
+ if(!v&&((s.mode&0170000)!=0100000||s.size!=(i64)size||s.uid!=original_uid||s.gid!=original_gid))v=-22;
+ if(!v&&st)*st=s;return v?v:c;
+#else
  u8 actual_hash[32];i64 v=hash_path(p,size,actual_hash,st);return v?v:same(actual_hash,hash,32)?0:-84;
+#endif
 }
 static i64 absent(const char*p) {i64 fd=op(p,0x20000,0);if(fd==-2)return 0;if(fd<0)return fd;cl(&fd);return -17;}
 static i64 mount_state(int ro) {
@@ -130,8 +141,10 @@ static i64 recreate_original(u32 i) {
   if(p+2>a->size)return -22;
   assetbuf[p]=old_pointers[i][j];assetbuf[p+1]=old_pointers[i][j]>>8;
  }
+#ifndef CHECKPOINT_BYTES
  SHA256 h;u8 hash[32];sha_init(&h);sha_add(&h,assetbuf,a->size);sha_end(&h,hash);
  if(!same(hash,a->before,32))return -84;
+#endif
  fd=op(backup,0x200c1,st.mode&07777);if(fd<0)return fd;backup_created[i]=1;
  v=sc(55,fd,st.uid,st.gid,0,0,0);if(!v)v=sc(52,fd,st.mode&07777,0,0,0,0);if(!v)v=write_exact(fd,assetbuf,a->size);
  if(!v)v=sc(82,fd,0,0,0,0,0);c=cl(&fd);if(!v)v=c;if(v)return v;
@@ -147,18 +160,25 @@ static i64 rollback_install(void) {
  if(!status)status=sync_dir();return status;
 }
 static void work(void) {
- i64 fd=op("/tmp/jiritsu/a7c2.names.request",0,0);if(fd<0){r.status=fd;return;}
+ i64 fd=op(NAMES_REQUEST,0,0);if(fd<0){r.status=fd;return;}
  r.status=read_exact(fd,(u8*)&req,sizeof(req),0);i64 c=cl(&fd);if(!r.status)r.status=c;
  if(r.status)return;
- if(!same(req.magic,(const u8*)"A7NAM001",8)||req.mode>3||req.reserved||!asset_count||asset_count>68){r.status=-22;return;}
+ if(!same(req.magic,(const u8*)"A7NAM001",8)||req.mode>4||req.reserved||!asset_count||asset_count>68){r.status=-22;return;}
+#ifndef CHECKPOINT_BYTES
+ if(req.mode==4){r.status=-22;return;}
+#else
+ if(req.mode!=2&&req.mode!=4){r.status=-22;return;}
+#endif
  r.mode=req.mode;r.count=asset_count;if(r.euid){r.status=-13;return;}
  r.phase=1;r.status=mount_state(1);if(r.status)return;
+#ifndef CHECKPOINT_BYTES
  r.status=hash_path("/usr/lib/appFw.so",ap_size,r.ap_hash,0);if(r.status)return;
  if(!same(r.ap_hash,req.mode==3?ap_named_hash:ap_plain_hash,32)){r.status=-84;return;}
+#endif
  for(u32 i=0;i<asset_count;i++) {paths(i);const struct Asset*a=&assets[i];
   r.status=absent(temp);if(r.status)return;
   if(req.mode<2) {r.status=verify(actual,a->size,a->before,&initial[i]);if(!r.status)r.status=absent(backup);}
-  else if(req.mode==2) {
+  else if(req.mode==2||req.mode==4) {
    r.status=verify(actual,after_sizes[i],a->after,0);
    if(r.status) {r.status=verify(actual,a->size,a->before,0);restore_needed[i]=0;}
    else restore_needed[i]=1;
@@ -169,7 +189,7 @@ static void work(void) {
     if(missing!=0)r.status=verify(backup,a->size,a->before,0);}}
   if(r.status)return;
  }
- r.phase=2;if(!req.mode){r.phase=9;return;}
+ r.phase=2;if(!req.mode||req.mode==4){r.phase=9;return;}
  mounted_rw=1;r.remount=remount(0);if(r.remount){r.status=r.remount;return;}
  if(req.mode==1) {
   r.phase=3;for(u32 i=0;i<asset_count;i++){r.status=stage_one(i);if(r.status)return;}
@@ -212,6 +232,6 @@ __attribute__((visibility("default"))) void _init(void) {
  }
  if(mounted_rw){r.readonly=remount(1);if(!r.status)r.status=r.readonly;}
  else r.readonly=mount_state(1);
- i64 out=op("/tmp/jiritsu/a7c2.names.result",0x241,0644);
+ i64 out=op(NAMES_RESULT,0x241,0644);
  if(out>=0){write_exact(out,(const u8*)&r,sizeof(r));sc(82,out,0,0,0,0,0);cl(&out);}
 }

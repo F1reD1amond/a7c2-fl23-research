@@ -139,6 +139,13 @@ class Job:
         self.state['settings_preservation_scope']=devicesettings.PRESERVATION_SCOPE
         values['settings-ram.bin']=ram;values['settings-saved.bin']=saved
         for filename in nameworker.filenames():values['resources/'+filename]=camera.read('/usr/share/app/'+filename)
+        # One initial self-contained checkpoint per body/store, never one
+        # extra full archive for every later slot update.
+        from . import checkpoint
+        initial=second.parent/'initial-checkpoints'/backupstore.body_key(camera.identity)/'checkpoint.private.zip'
+        if not initial.exists():
+            checkpoint.write(initial,values,camera.identity,provenance={'type':'before-first-lut-import','source_layout':self.state['layout']['kind'] if 'kind' in self.state['layout'] else self.state['layout']})
+        self.state['initial_checkpoint']=str(initial)
         values['boot-id.bin']=runtime['boot_id'].encode('ascii')
         self.state.update(backup_format=2,backup_body=backupstore.body_key(camera.identity),
             backup_stores=[str(self.root.parent/'.a7c2-lut-work-store'),str(second.parent/'.a7c2-lut-backup-store')],backup_objects={},backup_mirror_objects={},backup_files={})

@@ -44,6 +44,10 @@ Mac 使用 libusb，不安装 Zadig。遇到设备占用，关闭“照片”／
 | `install JOB --battery-percent N` | 写入已准备的工作 |
 | `verify JOB --accept-photos` | 核对重新加载，记录已完成的实机验收 |
 | `restore JOB --battery-percent N` | 精确还原这次导入 |
+| `rollback BACKUP2 --firmware-version 2.01 --battery-percent N` | 越过后续 LUT 修改，一次回到最初完整备份点（开发版） |
+| `rollback-verify WORK --accept-photos` | 断电重开并实测后，核对完整回退 |
+| `upgrade-checkpoint BACKUP2 --fl23-workspace WORK --first-lut-job JOB --output ARCHIVE` | 离线补齐旧存档，记录无法补回的历史数据 |
+| `inspect-checkpoint BACKUP2` | 离线查看存档范围和限制 |
 | `diagnose-job JOB` | 离线解释已有错误及名称还原报告，不连接相机 |
 | `restore-slot JOB --battery-percent N` | 还原之前已导入槽位的替换，保留其他后续槽位（开发版） |
 | `recover JOB` | 读取已有证据，不重新执行加载器 |

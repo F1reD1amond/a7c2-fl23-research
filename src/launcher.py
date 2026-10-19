@@ -62,7 +62,7 @@ def main(argv=None):
         args,remaining=p.parse_known_args(argv)
         if remaining==['--check']:
             info['workflow']=args.workflow;print(json.dumps(info,indent=2));return 0
-        if args.workflow=='fl23' and remaining and remaining[0] not in ['prepare','install','verify','restore','check-package','--help','-h']:
+        if args.workflow=='fl23' and remaining and remaining[0] not in ['prepare','install','verify','restore','rollback','rollback-verify','check-package','--help','-h']:
             raise RuntimeError('Unknown FL2/FL3 command. Use FL23.cmd --help.')
         python=prepare(args.workflow,args.research)
         if args.setup_only:
