@@ -1,5 +1,9 @@
 # A7C II 工具
 
+**交流群：**[Telegram（推荐加入）](https://t.me/sonyfwlab) · [Discord](https://discord.gg/SwPdfSd9c)。**更推荐大家加入 Telegram 群。**
+
+**作者：**小红书 [QAQLeonard（读研版）](https://www.xiaohongshu.com/user/profile/660501f7000000000600d03c) · 抖音 **LeonardZ**（抖音号：`90860261487`）。
+
 [English](README.md) · **简体中文**
 
 **v2.2-preview.1（main）：**三个独立入口：FL23 安装／核对，LUT 导入／单槽恢复，[Recovery](docs/zh-CN/recovery.md) 完整回退。支持两种安装顺序，已集成直接服务认证的 USB 连接修复；见[更新与验证记录](docs/zh-CN/changelog.md)。

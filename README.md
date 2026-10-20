@@ -1,5 +1,9 @@
 # A7C II Tools
 
+**Community:** [Telegram — recommended](https://t.me/sonyfwlab) · [Discord](https://discord.gg/SwPdfSd9c). We recommend joining the Telegram group.
+
+**Author:** Xiaohongshu: [QAQLeonard（读研版）](https://www.xiaohongshu.com/user/profile/660501f7000000000600d03c) · Douyin: **LeonardZ** (ID: `90860261487`).
+
 **v2.2-preview.1 (main):** three independent entries: FL23 installs/checks, LUT imports/restores one slot, and [Recovery](docs/en/recovery.md) performs complete rollback. Both installation orders are supported. Includes the service-first USB connection fix; [changes and validation](docs/en/changelog.md).
 
 **English** · [简体中文](README.zh-CN.md)
