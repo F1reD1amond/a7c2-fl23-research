@@ -5,6 +5,7 @@ bridge's broker shares an existing plugin connection instead of replacing it.
 This client owns and closes only its own subprocess, never another process.
 """
 import json
+import os
 from pathlib import Path
 import queue
 import subprocess
@@ -17,7 +18,8 @@ class Lightroom:
         self.timeout=timeout;self.serial=0;self.responses=queue.Queue()
         self.log=Path(log).open('a',encoding='utf-8')
         self.process=subprocess.Popen(command,stdin=subprocess.PIPE,stdout=subprocess.PIPE,
-            stderr=self.log,text=True,encoding='utf-8',bufsize=1)
+            stderr=self.log,text=True,encoding='utf-8',bufsize=1,
+            creationflags=0x08000000 if os.name=='nt' else 0)
         def read():
             try:
                 for line in self.process.stdout:

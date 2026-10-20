@@ -30,4 +30,6 @@ The body must still support service communication. This is not recovery for an u
 
 Keep failed workspaces and export diagnostics. Complete tracebacks and original errors are retained; unknown writes are never automatically replayed. Diagnostic bundles contain local paths and device information: review before posting publicly.
 
+**Uninstall Windows drivers:** use the connection page's uninstall button, confirm and accept elevation. The tool exports the packages first, then removes only third-party packages exclusively targeting Sony `054C:0E8A/0336`. Windows native drivers are retained. Reconnect in Mass Storage mode to let Windows bind its default storage driver. No camera firmware is written; prepare drivers again when service access is needed.
+
 For source execution, install `desktop-requirements.txt`, then run `python desktop.py`. Packaging and offline tests are separate from physical Windows/macOS USB acceptance.

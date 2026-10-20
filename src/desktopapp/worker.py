@@ -40,7 +40,7 @@ def register_backup(path):
 
 def run(action, args, job):
     setup_runtime()
-    if action in ('driver_scan', 'driver_install', 'usb_prepare', 'mac_unmount'):
+    if action in ('driver_scan', 'driver_install', 'driver_uninstall', 'usb_prepare', 'mac_unmount'):
         from . import drivers
         if action == 'driver_scan':
             result = drivers.scan()
@@ -48,6 +48,8 @@ def run(action, args, job):
             return result
         if action == 'driver_install':
             return drivers.install(args, job)
+        if action == 'driver_uninstall':
+            return drivers.uninstall(args, job)
         if action == 'usb_prepare':
             return drivers.prepare(job)
         return drivers.unmount_camera_volume(args['volume'])

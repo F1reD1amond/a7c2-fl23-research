@@ -10,7 +10,7 @@ import zipfile
 from .paths import data_root, write_json
 from . import VERSION
 
-CAMERA_ACTIONS = {'connect', 'usb_prepare', 'fl23_prepare', 'fl23_install', 'fl23_verify',
+CAMERA_ACTIONS = {'connect', 'usb_prepare', 'driver_uninstall', 'fl23_prepare', 'fl23_install', 'fl23_verify',
                   'restore', 'restore_auto', 'restore_verify', 'look_prepare', 'look_install',
                   'look_verify', 'look_restore', 'vertical_enable', 'vertical_disable',
                   'vertical_status', 'vertical_remove', 'sound_on', 'sound_off',

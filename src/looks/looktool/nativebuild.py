@@ -31,7 +31,8 @@ def compile_worker(source,header,destination,zig=None,*,fingerprints=True):
         '-nostdlib','-g0','-Wl,--strip-debug','-Wl,--no-undefined','-Wl,-Bsymbolic','-Wl,-z,noexecstack',
         '-I',str(ROOT/'src/fl23/native'),'-I',str(Path(header).parent),
         '-DPATCH_MANIFEST="'+Path(header).resolve().as_posix()+'"','-o',str(destination),str(source)]
-    result=subprocess.run(command,env=env,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=180)
+    result=subprocess.run(command,env=env,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=180,
+        creationflags=0x08000000 if os.name=='nt' else 0)
     if result.returncode:raise ValueError('Native compilation failed: '+result.stderr[-4000:])
     blob=destination.read_bytes()
     if len(blob)>65536:raise ValueError('Native worker exceeds current staging limit')

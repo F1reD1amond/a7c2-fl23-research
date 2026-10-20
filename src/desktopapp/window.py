@@ -181,7 +181,8 @@ class Window(W.QMainWindow):
         self.driver_identity = W.QComboBox()
         self.driver_identity.addItems(['普通连接 · 054C:0E8A', '服务连接 · 054C:0336'])
         form.addRow('驱动目标', self.driver_identity)
-        self.field(form, 'mac_volume', 'macOS 相机存储卷', kind='folder', value='/Volumes/')
+        if sys.platform == 'darwin':
+            self.field(form, 'mac_volume', 'macOS 相机存储卷', kind='folder', value='/Volumes/')
         self.button(layout, '检测相机与驱动', 'driver_scan', primary=True)
         self.button(layout, '准备两阶段驱动并测试连接' if sys.platform == 'win32' else '准备 USB 服务连接', 'usb_prepare', primary=True)
         self.button(layout, '安装／保留可用驱动（Windows 管理员确认）' if sys.platform == 'win32'
@@ -190,6 +191,9 @@ class Window(W.QMainWindow):
         if sys.platform == 'darwin':
             self.button(layout, '推出选中的相机存储卷', 'mac_unmount', lambda: {'volume': self.text('mac_volume')})
         self.button(layout, '测试服务连接（不写固件）', 'connect')
+        if sys.platform == 'win32':
+            self.button(layout, '卸载相机驱动，恢复 Windows 默认连接', 'driver_uninstall',
+                        lambda: {'pids': ['0e8a', '0336']})
         hint = W.QLabel('连接中断后先查看完整日志。报错不会触发重新刷写或自动重装驱动。')
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -355,6 +359,13 @@ class Window(W.QMainWindow):
     def launch(self, action, arguments):
         if self.process is not None:
             return
+        if action == 'driver_uninstall':
+            answer = W.QMessageBox.question(self, '卸载相机驱动',
+                '将备份并卸载 Sony 054C:0E8A／0336 的第三方驱动，让 Windows 重新识别相机。\n'
+                '完成后可能需要拔插 USB，重新选择海量存储模式。此操作不修改相机固件。\n现在卸载？',
+                W.QMessageBox.Yes | W.QMessageBox.Cancel, W.QMessageBox.Cancel)
+            if answer != W.QMessageBox.Yes:
+                return
         writing = action in {'restore', 'restore_auto', 'fl23_install', 'look_install', 'look_restore',
                               'vertical_enable', 'vertical_disable', 'vertical_remove',
                               'sound_on', 'sound_off', 'sound_audition', 'sound_install', 'sound_restore_sound'}

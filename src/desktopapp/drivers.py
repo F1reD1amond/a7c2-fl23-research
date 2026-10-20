@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -80,14 +81,14 @@ def driver_arguments(executable, pid, folder):
             '--type', '0', '--name', PIDS[pid], '--dest', str(folder), '--log', '0']
 
 
-def elevate_request(arguments, job):
+def elevate_request(arguments, job, action='driver_install'):
     """Elevate a fixed driver action, with a real process handle and full log."""
     from .jobs import worker_command
-    request = job / ('elevated-' + str(arguments.get('pid', '0e8a'))) / 'request.private.json'
+    request = job / ('elevated-' + action + '-' + str(arguments.get('pid', 'camera'))) / 'request.private.json'
     elevated = request.parent
     elevated.mkdir(parents=True)
     write_json(request, {'schema': 'a7c2-desktop-job/1', 'job_dir': str(elevated),
-                        'action': 'driver_install', 'arguments': dict(arguments, elevated=True)})
+                        'action': action, 'arguments': dict(arguments, elevated=True)})
     command = worker_command(request)
     from ctypes import wintypes
     class SHELLEXECUTEINFO(ctypes.Structure):
@@ -218,3 +219,97 @@ def prepare(job):
                     'camera_firmware_written': False}
     finally:
         transport.SERVICE_DRIVER_SETUP = None
+
+
+def driver_inventory():
+    """All signed PnP bindings, including other devices sharing an OEM INF."""
+    script = r"$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); Get-CimInstance Win32_PnPSignedDriver | ForEach-Object {[pscustomobject]@{id=$_.DeviceID;name=$_.DeviceName;inf=$_.InfName;provider=$_.DriverProviderName}} | ConvertTo-Json -Compress"
+    done = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', script],
+                          capture_output=True, text=True, encoding='utf-8', errors='replace',
+                          timeout=60, creationflags=0x08000000)
+    if done.returncode:
+        print(done.stdout, flush=True)
+        print(done.stderr, file=sys.stderr, flush=True)
+        raise RuntimeError('Windows driver inventory failed, exit code ' + str(done.returncode))
+    if done.stderr:
+        print(done.stderr, file=sys.stderr, flush=True)
+    try:
+        rows = json.loads(done.stdout) if done.stdout.strip() else []
+    except ValueError:
+        print('Raw Windows driver inventory:', done.stdout, flush=True)
+        raise
+    return rows if isinstance(rows, list) else [rows]
+
+
+def is_camera_id(value, pids):
+    match = re.match(r'^USB\\VID_054C&PID_([0-9A-F]{4})(?:[\\&]|$)', str(value), re.I)
+    return bool(match and match[1].lower() in pids)
+
+
+def uninstall_plan(rows, pids, inf_folder):
+    """Never remove a native INF or a package used by another type of device."""
+    selected = [row for row in rows if is_camera_id(row.get('id'), pids)]
+    names = sorted({str(row.get('inf') or '').lower() for row in selected
+                    if re.fullmatch(r'oem\d+\.inf', str(row.get('inf') or ''), re.I)})
+    for name in names:
+        users = [row for row in rows if str(row.get('inf') or '').lower() == name]
+        if any(not is_camera_id(row.get('id'), pids) for row in users):
+            raise ValueError('Driver package is shared with a non-selected device; not removed: ' + name)
+        raw = (Path(inf_folder) / name).read_bytes()
+        text = raw.decode('utf-16' if raw.startswith((b'\xff\xfe', b'\xfe\xff')) else 'utf-8', errors='replace')
+        ids = re.findall(r'USB\\VID_([0-9a-f]{4})&PID_([0-9a-f]{4})', text, re.I)
+        if not ids or any(vid.lower() != '054c' or pid.lower() not in pids for vid, pid in ids):
+            raise ValueError('Package does not exclusively target the selected camera IDs; not removed: ' + name)
+    return names
+
+
+def run_pnputil(arguments):
+    exe = Path(os.environ.get('WINDIR', 'C:/Windows')) / 'System32/pnputil.exe'
+    command = [str(exe), *map(str, arguments)]
+    print('Windows driver command:', subprocess.list2cmdline(command), flush=True)
+    done = subprocess.run(command, capture_output=True, text=True,
+                          encoding='oem', errors='replace', creationflags=0x08000000)
+    print(done.stdout, flush=True)
+    print(done.stderr, file=sys.stderr, flush=True)
+    print('PnPUtil exit code:', done.returncode, flush=True)
+    if done.returncode not in (0, 3010):
+        raise RuntimeError('Windows driver operation stopped, exit code ' + str(done.returncode))
+    return done.returncode
+
+
+def uninstall(arguments, job):
+    """User-requested Windows driver removal. Never opens a camera session."""
+    if sys.platform != 'win32':
+        raise ValueError('macOS uses libusb and has no camera driver to uninstall')
+    pids = {str(pid).lower() for pid in arguments.get('pids', PIDS)}
+    if not pids or not pids <= set(PIDS):
+        raise ValueError('Driver removal is limited to Sony 054C:0E8A and 054C:0336')
+    if not ctypes.windll.shell32.IsUserAnAdmin():
+        if arguments.get('elevated'):
+            raise PermissionError('Windows administrator permission was not granted')
+        return elevate_request(arguments, job, action='driver_uninstall')
+    before = driver_inventory()
+    write_json(job / 'driver-uninstall-before.private.json', before)
+    plans = uninstall_plan(before, pids, Path(os.environ.get('WINDIR', 'C:/Windows')) / 'INF')
+    removed, reboot = [], False
+    for name in plans:
+        # Preserve the actual driver package before removing it. No forced
+        # package deletion, global driver cleanup or automatic reboot.
+        exported = job / 'exported-drivers' / name.removesuffix('.inf')
+        exported.mkdir(parents=True)
+        run_pnputil(['/export-driver', name, exported])
+        code = run_pnputil(['/delete-driver', name, '/uninstall'])
+        removed.append(name)
+        reboot |= code == 3010
+        write_json(job / 'driver-uninstall-progress.private.json',
+                   {'removed': removed, 'reboot_required': reboot})
+    if removed:
+        reboot |= run_pnputil(['/scan-devices']) == 3010
+    after = driver_inventory()
+    write_json(job / 'driver-report.private.json', {'before': before, 'after': after,
+               'removed': removed, 'reboot_required': reboot})
+    return {'removed_packages': removed, 'reboot_required': reboot,
+            'camera_firmware_written': False, 'driver_backup': str(job / 'exported-drivers'),
+            'next_step': ('Windows requests a system restart to finish removal; no restart was initiated.' if reboot else
+                         'Unplug/reconnect USB in Mass Storage mode so Windows can bind its default storage driver.')
+                         if removed else 'No third-party camera driver package found; Windows native bindings were retained.'}

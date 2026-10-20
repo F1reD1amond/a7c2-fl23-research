@@ -17,6 +17,16 @@ def install(arguments):
             tool = str(bundled)
     if not tool or not Path(tool).is_file():
         raise ValueError('Choose ExifTool first. It reads the custom-look marker without modifying RAW files.')
+    if sys.platform == 'win32':
+        source = Path(tool).resolve()
+        local = data_root() / 'helpers/exiftool'
+        local.mkdir(parents=True, exist_ok=True)
+        target = local / 'exiftool.exe'
+        if source != target:
+            shutil.copy2(source, target)
+        if (source.parent / 'exiftool_files').is_dir() and source.parent != local:
+            shutil.copytree(source.parent / 'exiftool_files', local / 'exiftool_files', dirs_exist_ok=True)
+        tool = str(target)
     if not getattr(sys, 'frozen', False):
         from looktool.rawauto import install as original_install
         return original_install(tool, root=Path(arguments.get('data_root') or data_root() / 'raw-profiles'))
