@@ -135,13 +135,19 @@ def elevate_request(arguments, job, action='driver_install'):
     log = elevated / 'worker.log'
     if log.exists():
         print(log.read_text(encoding='utf-8', errors='replace'), flush=True)
-    status = elevated / 'status.private.json'
-    if code.value or not status.exists():
-        raise RuntimeError('Administrator driver process did not complete: ' + str(code.value))
-    value = json.loads(status.read_text(encoding='utf-8'))
-    if value.get('phase') != 'SUCCEEDED':
-        raise RuntimeError(value.get('error', 'Driver installation failed'))
-    return value['result']
+    return elevated_result(elevated, code.value)
+
+
+def elevated_result(folder, code):
+    """Preserve the administrator worker's actual error instead of hiding it."""
+    status = Path(folder) / 'status.private.json'
+    if status.exists():
+        value = json.loads(status.read_text(encoding='utf-8'))
+        if value.get('phase') == 'SUCCEEDED' and code == 0:
+            return value['result']
+        if value.get('error'):
+            raise RuntimeError(value['error'])
+    raise RuntimeError('Administrator driver process did not complete: ' + str(code))
 
 
 def install(arguments, job):
@@ -246,6 +252,40 @@ def is_camera_id(value, pids):
     return bool(match and match[1].lower() in pids)
 
 
+def inf_hardware_ids(text):
+    r"""Resolve libusbK/libwdi INF [Strings] references before reading USB IDs.
+
+    Zadig libusbK uses USB\%DeviceID%; WinUSB commonly uses a literal ID.
+    Both describe the same device. Comments and unused string values do not
+    constitute model bindings.
+    """
+    section, strings, content = '', {}, []
+    for line in text.lstrip('\ufeff').splitlines():
+        # INF comments start outside quoted strings; quoted semicolons belong
+        # to string values, not comments.
+        line = re.split(r';(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)', line, maxsplit=1)[0].strip()
+        if not line:
+            continue
+        if line.startswith('[') and line.endswith(']'):
+            section = line[1:-1].strip().casefold()
+        elif section == 'strings' and '=' in line:
+            key, value = line.split('=', 1)
+            strings[key.strip().casefold()] = value.strip().strip('"').replace('""', '"')
+        else:
+            content.append(line)
+
+    def expand(value, seen=frozenset()):
+        def replace(match):
+            key = match[1].casefold()
+            if key not in strings or key in seen:
+                return match[0]
+            return expand(strings[key], seen | {key})
+        return re.sub(r'%([^%]+)%', replace, value)
+
+    expanded = expand('\n'.join(content))
+    return re.findall(r'USB\\VID_([0-9a-f]{4})&PID_([0-9a-f]{4})(?=[\\&,\s\"]|$)', expanded, re.I)
+
+
 def uninstall_plan(rows, pids, inf_folder):
     """Never remove a native INF or a package used by another type of device."""
     selected = [row for row in rows if is_camera_id(row.get('id'), pids)]
@@ -257,9 +297,13 @@ def uninstall_plan(rows, pids, inf_folder):
             raise ValueError('Driver package is shared with a non-selected device; not removed: ' + name)
         raw = (Path(inf_folder) / name).read_bytes()
         text = raw.decode('utf-16' if raw.startswith((b'\xff\xfe', b'\xfe\xff')) else 'utf-8', errors='replace')
-        ids = re.findall(r'USB\\VID_([0-9a-f]{4})&PID_([0-9a-f]{4})', text, re.I)
-        if not ids or any(vid.lower() != '054c' or pid.lower() not in pids for vid, pid in ids):
-            raise ValueError('Package does not exclusively target the selected camera IDs; not removed: ' + name)
+        ids = inf_hardware_ids(text)
+        if not ids:
+            raise ValueError('Could not resolve USB hardware IDs in driver INF; not removed: ' + name)
+        if any(vid.lower() != '054c' or pid.lower() not in pids for vid, pid in ids):
+            raise ValueError('Driver INF targets another device; not removed: ' + name)
+        print('Camera driver package:', name, 'resolved USB IDs:',
+              ', '.join(sorted({vid.upper() + ':' + pid.upper() for vid, pid in ids})), flush=True)
     return names
 
 
