@@ -59,11 +59,6 @@ class Window(W.QMainWindow):
         self.firmware = W.QComboBox()
         self.firmware.addItems(['2.01'])
         heading.addWidget(self.firmware)
-        heading.addWidget(W.QLabel('实际电量'))
-        self.battery = W.QSpinBox()
-        self.battery.setRange(0, 100)
-        self.battery.setSuffix(' %')
-        heading.addWidget(self.battery)
         right.addLayout(heading)
         self.description = W.QLabel('Windows / macOS · 六个独立操作入口 · ' + VERSION)
         self.description.setProperty('hint', True)
@@ -105,7 +100,7 @@ class Window(W.QMainWindow):
         bottom.addWidget(self.stop)
         right.addLayout(bottom)
         self.timer = QtCore.QTimer(self)
-        self.timer.timeout.connect(self.tail_log)
+        self.timer.timeout.connect(self.poll_job)
         self.timer.start(250)
 
     def page(self, title, detail):
@@ -170,7 +165,7 @@ class Window(W.QMainWindow):
         return self.fields[key].text().strip()
 
     def common(self):
-        return {'firmware': self.firmware.currentText(), 'battery': self.battery.value()}
+        return {'firmware': self.firmware.currentText()}
 
     def work(self, label):
         return str(data_root() / 'work' / (datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + label + '-' + uuid.uuid4().hex[:5]))
@@ -366,20 +361,18 @@ class Window(W.QMainWindow):
                 W.QMessageBox.Yes | W.QMessageBox.Cancel, W.QMessageBox.Cancel)
             if answer != W.QMessageBox.Yes:
                 return
-        writing = action in {'restore', 'restore_auto', 'fl23_install', 'look_install', 'look_restore',
-                              'vertical_enable', 'vertical_disable', 'vertical_remove',
-                              'sound_on', 'sound_off', 'sound_audition', 'sound_install', 'sound_restore_sound'}
-        if writing and self.battery.value() < 50:
-            W.QMessageBox.information(self, '填写实际电量', '请先填写相机实际电量；写入至少需要 50%。')
-            return
+        writing = action in jobs.POWER_ACTIONS
         if writing:
             target = ('自动选择已连接机身最早可用的完整备份' if action == 'restore_auto' else
                       arguments.get('backup') if action == 'restore' else arguments.get('look') or arguments.get('workspace'))
             answer = W.QMessageBox.question(self, '开始相机写入',
-                '目标：' + str(target) + '\n写入和完整读回期间保持相机开机、USB 连接。现在开始？',
+                '目标：' + str(target) + '\n请确认相机电池电量充足（建议至少 50%）。\n'
+                '操作和完整读回期间保持供电、USB 连接，不要关机或拔线。\n确认供电充足并开始？',
                 W.QMessageBox.Yes | W.QMessageBox.Cancel, W.QMessageBox.Cancel)
             if answer != W.QMessageBox.Yes:
                 return
+            arguments = dict(arguments, power_confirmed=True)
+            arguments.pop('battery', None)
         for key, field in self.fields.items():
             self.settings[key] = field.text()
         write_json(data_root() / 'desktop.json', self.settings)
@@ -423,7 +416,15 @@ class Window(W.QMainWindow):
             if text:
                 self.log.appendPlainText(text.decode('utf-8', errors='replace').rstrip())
 
+    def poll_job(self):
+        self.tail_log()
+        # The status file also recovers completion if Qt missed its signal.
+        if self.process is not None and self.process.state() == QtCore.QProcess.NotRunning:
+            self.finished(self.process.exitCode(), self.process.exitStatus())
+
     def finished(self, code, exit_status):
+        if self.process is None:
+            return
         self.tail_log()
         status_path = self.current_job / 'status.private.json'
         status = json.loads(status_path.read_text(encoding='utf-8')) if status_path.exists() else {}

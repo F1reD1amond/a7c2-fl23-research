@@ -204,7 +204,7 @@ class Job:
         for (chip,key),value in expected.items():
             if stored[chip][key].data!=value:raise ValueError('儲存後讀回不符')
         self.audit('settings_storage_verified',restore=restore,**preservation)
-    def install(self,battery):
+    def install(self,battery=None,*,power_confirmed=False):
         from transport import Session
         self.load()
         if self.state['phase']!='prepared':raise ValueError('需先完成準備；狀態未知時不允許重跑')
@@ -212,7 +212,8 @@ class Job:
             event('準備時已確認 FL2／FL3 存在；未執行任何安裝。請執行 verify。');return
         import compat
         event('提醒：'+compat.WARNING)
-        if not 50<=battery<=100:raise ValueError('請確認電量至少50%，並保持連線')
+        from looktool.power import require_power
+        self.state['power_confirmation']=require_power(battery,confirmed=power_confirmed)
         with Session(self.state['identity']) as session:
             # Recheck every per-body target before any program-file write.
             originals,_=self.units();current=core.backup_records(session.call(session.camera.getBackupPresetData,True))

@@ -100,12 +100,12 @@ def operate(root, state, command, job, operation):
     return result
 
 
-def on(root, state, battery, zig=None):
+def on(root, state, battery, zig=None, *, power_confirmed=False):
     import trial
     require_idle(state)
     require_recovered_trial(state)
-    if not 50 <= battery <= 100:
-        raise ValueError('Provide the current battery percentage, at least 50')
+    from looktool.power import require_power
+    state['power_confirmation'] = require_power(battery, confirmed=power_confirmed)
     if state.get('native_job') and load_job(state['native_job'])['phase'] != 'restored':
         raise ValueError('Existing support is enabled or unresolved; inspect status instead of writing again')
     job = new_path(root, 'native-on')
@@ -200,11 +200,11 @@ def confirm_recovery(root, state):
     return buffer_trial.confirm_recovery(Path(state['audio_job']))
 
 
-def install(root, state, battery, zig=None):
+def install(root, state, battery, zig=None, *, power_confirmed=False):
     import boot_trial
     require_idle(state)
-    if not 50 <= battery <= 100:
-        raise ValueError('Provide the current battery percentage, at least 50')
+    from looktool.power import require_power
+    state['power_confirmation'] = require_power(battery, confirmed=power_confirmed)
     original, _ = native_job(state)
     require_recovered_trial(state)
     if not state.get('audio_job'):
@@ -220,8 +220,9 @@ def install(root, state, battery, zig=None):
     # Reuse the exact accepted payload, never reconvert the source during install.
     job = new_path(root, 'persistent')
     state['boot_job'] = str(job)
+    options = {'power_confirmed': True} if power_confirmed else {}
     result = operate(root, state, 'install', job, lambda: boot_trial.install(job,
-        Path(state['backup_root']) / job.name, original, audio, payload, battery, zig))
+        Path(state['backup_root']) / job.name, original, audio, payload, battery, zig, **options))
     print(RELOAD)
     return result
 
@@ -295,7 +296,9 @@ def parser():
         if name in ('on', 'attach', 'import'):
             s.add_argument('--backup-copy', type=Path)
         if name in ('on', 'install'):
-            s.add_argument('--battery-percent', required=True, type=int)
+            power = s.add_mutually_exclusive_group(required=True)
+            power.add_argument('--battery-percent', type=int)
+            power.add_argument('--power-confirmed', action='store_true')
         if name in ('on', 'off', 'audition', 'install', 'restore-sound'):
             s.add_argument('--zig')
         if name == 'on':
@@ -328,7 +331,7 @@ def main(argv=None):
             root, state = workspace(args.workspace, args.command in ('on', 'attach', 'import'),
                                     getattr(args, 'backup_copy', None))
             command = args.command
-            if command == 'on': result = on(root, state, args.battery_percent, args.zig)
+            if command == 'on': result = on(root, state, args.battery_percent, args.zig, power_confirmed=args.power_confirmed)
             elif command == 'off': result = off(root, state, args.zig)
             elif command == 'attach': result = attach(root, state, args.native_job, args.audio_job)
             elif command == 'import': result = import_audio(root, state, args.source, start=args.start,
@@ -336,7 +339,7 @@ def main(argv=None):
             elif command == 'audition': result = audition(root, state, args.zig)
             elif command == 'confirm': result = confirm_audio(root, state, args.result)
             elif command == 'confirm-recovery': result = confirm_recovery(root, state)
-            elif command == 'install': result = install(root, state, args.battery_percent, args.zig)
+            elif command == 'install': result = install(root, state, args.battery_percent, args.zig, power_confirmed=args.power_confirmed)
             elif command == 'restore-sound': result = restore_sound(root, state, args.zig)
             elif command == 'verify': result = verify(root, state, args.heard_correct)
             else: result = status(state)

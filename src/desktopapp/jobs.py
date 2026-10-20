@@ -16,6 +16,10 @@ CAMERA_ACTIONS = {'connect', 'usb_prepare', 'driver_uninstall', 'fl23_prepare', 
                   'vertical_status', 'vertical_remove', 'sound_on', 'sound_off',
                   'sound_audition', 'sound_install', 'sound_verify', 'sound_restore_sound'}
 
+POWER_ACTIONS = {'restore', 'restore_auto', 'fl23_install', 'look_install', 'look_restore',
+                 'vertical_enable', 'vertical_disable', 'vertical_remove',
+                 'sound_on', 'sound_off', 'sound_audition', 'sound_install', 'sound_restore_sound'}
+
 
 def new_job(action, arguments):
     root = data_root() / 'runs' / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')

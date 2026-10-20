@@ -4,6 +4,7 @@ No automatic driver changes on startup. Only Sony VID 054C, PIDs 0E8A/0336
 are accepted. Existing usable WinUSB/libusbK/libusb0 bindings are retained.
 """
 import ctypes
+import codecs
 import json
 import os
 from pathlib import Path
@@ -110,8 +111,10 @@ def elevate_request(arguments, job, action='driver_install'):
     shell = ctypes.WinDLL('shell32', use_last_error=True)
     shell.ShellExecuteExW.argtypes = [ctypes.POINTER(SHELLEXECUTEINFO)]
     shell.ShellExecuteExW.restype = wintypes.BOOL
+    print('等待 Windows 管理员确认…', flush=True)
     if not shell.ShellExecuteExW(ctypes.byref(info)):
         raise ctypes.WinError(ctypes.get_last_error())
+    print('管理员进程已启动；正在实时读取进度。', flush=True)
     kernel = ctypes.WinDLL('kernel32', use_last_error=True)
     kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
     kernel.WaitForSingleObject.restype = wintypes.DWORD
@@ -119,9 +122,11 @@ def elevate_request(arguments, job, action='driver_install'):
     kernel.GetExitCodeProcess.restype = wintypes.BOOL
     kernel.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel.CloseHandle.restype = wintypes.BOOL
+    tail = LiveLog(elevated / 'worker.log')
     try:
         while True:
             wait = kernel.WaitForSingleObject(info.hProcess, 500)
+            tail.forward()
             if wait == 258:
                 continue
             if wait != 0:
@@ -132,10 +137,26 @@ def elevate_request(arguments, job, action='driver_install'):
             raise ctypes.WinError(ctypes.get_last_error())
     finally:
         kernel.CloseHandle(info.hProcess)
-    log = elevated / 'worker.log'
-    if log.exists():
-        print(log.read_text(encoding='utf-8', errors='replace'), flush=True)
+    tail.forward(final=True)
     return elevated_result(elevated, code.value)
+
+
+class LiveLog:
+    """Forward new administrator log bytes without duplicating finished output."""
+    def __init__(self, path):
+        self.path, self.offset = Path(path), 0
+        self.decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
+
+    def forward(self, *, final=False):
+        raw = b''
+        if self.path.exists():
+            with self.path.open('rb') as stream:
+                stream.seek(self.offset)
+                raw = stream.read()
+                self.offset = stream.tell()
+        text = self.decoder.decode(raw, final=final)
+        if text:
+            print(text, end='', flush=True)
 
 
 def elevated_result(folder, code):
@@ -229,6 +250,7 @@ def prepare(job):
 
 def driver_inventory():
     """All signed PnP bindings, including other devices sharing an OEM INF."""
+    print('正在读取 Windows 驱动绑定…', flush=True)
     script = r"$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); Get-CimInstance Win32_PnPSignedDriver | ForEach-Object {[pscustomobject]@{id=$_.DeviceID;name=$_.DeviceName;inf=$_.InfName;provider=$_.DriverProviderName}} | ConvertTo-Json -Compress"
     done = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', script],
                           capture_output=True, text=True, encoding='utf-8', errors='replace',
@@ -307,14 +329,38 @@ def uninstall_plan(rows, pids, inf_folder):
     return names
 
 
-def run_pnputil(arguments):
+def decode_windows_output(raw):
+    if not raw:
+        return ''
+    if raw.startswith((b'\xff\xfe', b'\xfe\xff')):
+        return raw.decode('utf-16', errors='replace')
+    if b'\0' in raw[:64]:
+        return raw.decode('utf-16-le', errors='replace')
+    encodings = ['utf-8-sig', 'mbcs', 'oem']
+    for encoding in encodings:
+        try:
+            return raw.decode(encoding)
+        except (UnicodeError, LookupError):
+            continue
+    return raw.decode('utf-8', errors='replace')
+
+
+def run_pnputil(arguments, *, log_dir=None):
     exe = Path(os.environ.get('WINDIR', 'C:/Windows')) / 'System32/pnputil.exe'
     command = [str(exe), *map(str, arguments)]
     print('Windows driver command:', subprocess.list2cmdline(command), flush=True)
-    done = subprocess.run(command, capture_output=True, text=True,
-                          encoding='oem', errors='replace', creationflags=0x08000000)
-    print(done.stdout, flush=True)
-    print(done.stderr, file=sys.stderr, flush=True)
+    try:
+        done = subprocess.run(command, capture_output=True, timeout=180, creationflags=0x08000000)
+    except subprocess.TimeoutExpired as exc:
+        print(decode_windows_output(exc.stdout or b''), flush=True)
+        print(decode_windows_output(exc.stderr or b''), file=sys.stderr, flush=True)
+        raise RuntimeError('Windows driver command timed out after 180 seconds. Inspect driver status before retrying.') from exc
+    if log_dir:
+        label = str(arguments[0]).lstrip('/') + '-' + str(time.time_ns())
+        for name, raw in [('stdout', done.stdout), ('stderr', done.stderr)]:
+            (Path(log_dir) / (label + '-' + name + '.raw')).write_bytes(raw)
+    print(decode_windows_output(done.stdout), flush=True)
+    print(decode_windows_output(done.stderr), file=sys.stderr, flush=True)
     print('PnPUtil exit code:', done.returncode, flush=True)
     if done.returncode not in (0, 3010):
         raise RuntimeError('Windows driver operation stopped, exit code ' + str(done.returncode))
@@ -341,14 +387,17 @@ def uninstall(arguments, job):
         # package deletion, global driver cleanup or automatic reboot.
         exported = job / 'exported-drivers' / name.removesuffix('.inf')
         exported.mkdir(parents=True)
-        run_pnputil(['/export-driver', name, exported])
-        code = run_pnputil(['/delete-driver', name, '/uninstall'])
+        print('正在备份驱动包：' + name, flush=True)
+        run_pnputil(['/export-driver', name, exported], log_dir=job)
+        print('正在卸载相机驱动包：' + name, flush=True)
+        code = run_pnputil(['/delete-driver', name, '/uninstall'], log_dir=job)
         removed.append(name)
         reboot |= code == 3010
         write_json(job / 'driver-uninstall-progress.private.json',
                    {'removed': removed, 'reboot_required': reboot})
     if removed:
-        reboot |= run_pnputil(['/scan-devices']) == 3010
+        print('正在让 Windows 重新识别设备…', flush=True)
+        reboot |= run_pnputil(['/scan-devices'], log_dir=job) == 3010
     after = driver_inventory()
     write_json(job / 'driver-report.private.json', {'before': before, 'after': after,
                'removed': removed, 'reboot_required': reboot})

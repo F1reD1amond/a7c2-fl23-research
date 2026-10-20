@@ -75,7 +75,7 @@ class DriverUninstallTests(unittest.TestCase):
              patch.object(drivers.ctypes, 'windll', fake, create=True), \
              patch.dict(os.environ, {'WINDIR': str(self.root)}), \
              patch.object(drivers, 'driver_inventory', side_effect=[self.rows, []]), \
-             patch.object(drivers, 'run_pnputil', side_effect=lambda a: commands.append(a) or 0):
+             patch.object(drivers, 'run_pnputil', side_effect=lambda a, **kw: commands.append(a) or 0):
             result = drivers.uninstall({}, self.root / 'job')
         self.assertEqual([row[0] for row in commands], ['/export-driver', '/delete-driver', '/scan-devices'])
         self.assertEqual(commands[1], ['/delete-driver', 'oem42.inf', '/uninstall'])

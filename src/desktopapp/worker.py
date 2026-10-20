@@ -40,6 +40,12 @@ def register_backup(path):
 
 def run(action, args, job):
     setup_runtime()
+    from .jobs import POWER_ACTIONS
+    if action in POWER_ACTIONS:
+        from looktool.power import require_power
+        power = require_power(args.get('battery'), confirmed=args.get('power_confirmed', False))
+        write_json(job / 'power-confirmation.private.json', power)
+        print('Power:', json.dumps(power), flush=True)
     if action in ('driver_scan', 'driver_install', 'driver_uninstall', 'usb_prepare', 'mac_unmount'):
         from . import drivers
         if action == 'driver_scan':
@@ -71,7 +77,7 @@ def run(action, args, job):
                 register_backup(Path(args['backup']) / 'checkpoint.private.zip')
             elif action == 'fl23_install':
                 obj.load()
-                obj.install(int(args['battery']))
+                obj.install(args.get('battery'), power_confirmed=args.get('power_confirmed', False))
             else:
                 obj.verify()
         return {'workspace': str(work), 'phase': obj.state.get('phase')}
@@ -88,7 +94,8 @@ def run(action, args, job):
         from looktool.checkpointjob import Rollback
         obj = Rollback(Path(args['workspace']))
         if action == 'restore':
-            result = obj.run(args['backup'], int(args['battery']), args['firmware'])
+            result = obj.run(args['backup'], args.get('battery'), args['firmware'],
+                             power_confirmed=args.get('power_confirmed', False))
         else:
             result = obj.verify(accept_photos=bool(args.get('accepted')))
         return {'workspace': str(obj.root), 'phase': result.get('phase')}
@@ -100,11 +107,12 @@ def run(action, args, job):
                     '--name', args['name'], '--work-dir', work,
                     '--backup-dir', args['backup']]
         elif action == 'look_install':
-            argv = ['install', work, '--battery-percent', str(args['battery'])]
+            argv = ['install', work]
+            argv += ['--power-confirmed'] if args.get('power_confirmed') else ['--battery-percent', str(args['battery'])]
         elif action == 'look_restore':
             restored_work = str(data_root() / 'work' / ('slot-restore-' + uuid.uuid4().hex[:12]))
-            argv = ['restore-slot', work, '--battery-percent', str(args['battery']),
-                    '--work-dir', restored_work, '--backup-dir', args['backup']]
+            argv = ['restore-slot', work, '--work-dir', restored_work, '--backup-dir', args['backup']]
+            argv += ['--power-confirmed'] if args.get('power_confirmed') else ['--battery-percent', str(args['battery'])]
             work = restored_work
         else:
             argv = ['verify', work] + (['--accept-photos'] if args.get('accepted') else [])
@@ -147,10 +155,9 @@ def run(action, args, job):
                      '--peak', str(args.get('peak', .4))]
         argv += ['--workspace', args['workspace']]
         if command == 'on':
-            argv += ['--backup-copy', args['backup'], '--firmware', args['firmware'],
-                     '--battery-percent', str(args['battery'])]
-        elif command in ('install',):
-            argv += ['--battery-percent', str(args['battery'])]
+            argv += ['--backup-copy', args['backup'], '--firmware', args['firmware']]
+        if command in ('on', 'install'):
+            argv += ['--power-confirmed'] if args.get('power_confirmed') else ['--battery-percent', str(args['battery'])]
         elif command == 'confirm':
             argv += ['--result', args.get('result', 'correct')]
         elif command == 'verify' and args.get('accepted'):

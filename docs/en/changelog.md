@@ -6,6 +6,7 @@
 - Integrated explicit two-stage Windows driver preparation; macOS uses libusb without Zadig.
 - Added manual camera driver removal with package export and Windows native-driver rebinding; no automatic system restart.
 - Fixed rejection of Zadig/libusbK INF files using `USB\%DeviceID%` references; elevated worker failures now preserve the original error.
+- Replaced the desktop battery field with per-operation power confirmation; stream administrator progress, retain raw Windows output and recover the finished GUI state.
 - Added same-body automatic initial-checkpoint selection alongside manual complete recovery and independent LUT slot restoration.
 - Connected FL23, A7Look import/compiler/LrC plugin installation, session-only Vertical Display and custom electronic shutter sound workflows.
 - Retained the unchanged-name no-op fix and restored the byte-window native installer interface needed by recovery.

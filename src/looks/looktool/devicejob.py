@@ -407,14 +407,15 @@ class Job:
             prior=self.state['phase'];self.save('NEEDS_REVIEW',failed_during=prior,error=str(exc));raise
         return self.state
     @serialized
-    def restore_slot(self,original,battery,backup_copy):
+    def restore_slot(self,original,battery,backup_copy,*,power_confirmed=False):
         """New transaction restoring one previously imported slot over fresh state.
 
         First activation returns to the native base picker/recipe. Shared code
         remains available for other slots; complete removal is Recovery's job.
         """
         original.load(hash_checks=False)
-        if type(battery) is not int or not 50<=battery<=100:raise ValueError('Actual battery percentage 50..100 required')
+        from .power import require_power
+        power=require_power(battery,confirmed=power_confirmed)
         if original.state['phase'] not in ['COMPLETE','RELOAD_VERIFIED']:raise ValueError('Verify the original completed installation before slot restoration')
         slot=original.state['slot'];ap=original.source('appFw.so');cp=original.source('cpapp-b.bin')
         old_layout=device_layout.structural(ap,cp)
@@ -433,7 +434,7 @@ class Job:
         self.state={'schema':'a7c2-lut-device-job/1','job_id':uuid.uuid4().hex[:16],'backup_copy':str(second),
             'name':name,'slot':slot,'journal':[],'backup_files':{},'camera_writes_requested':True,
             'restore_recipe':{str(f['key']):f['before_saved'] for f in original.state['settings_plan']},
-            'deactivate_slot':deactivate,'byte_checks':True,
+            'deactivate_slot':deactivate,'byte_checks':True,'power_confirmation':power,
             'raw_profile_binding':original.state.get('raw_profile_before'),
             'slot_restore_of':original.state['job_id'],'conversion_table_sha256':firmware.sha(raw)}
         candidate=self.root/'candidate';candidate.mkdir();(candidate/f'slot{slot}.bin').write_bytes(raw)
@@ -469,9 +470,10 @@ class Job:
             prior=self.state['phase'];self.save('NEEDS_REVIEW',failed_during=prior,error=str(exc));raise
         return self.state
     @serialized
-    def install(self,battery):
+    def install(self,battery=None,*,power_confirmed=False):
         self.load()
-        if type(battery) is not int or not 50<=battery<=100:raise ValueError('Actual battery percentage 50..100 required')
+        from .power import require_power
+        self.state['power_confirmation']=require_power(battery,confirmed=power_confirmed)
         if self.state['phase']!='PREFLIGHT_VERIFIED':raise ValueError('Inspect existing transaction; do not replay')
         try:
             with self.factory(self.state['identity']) as camera:self._install(camera)

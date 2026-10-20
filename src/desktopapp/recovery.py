@@ -91,8 +91,10 @@ def select(rows, identity):
 
 def restore_auto(arguments, job, *, factory=None, rollback_type=None):
     from looktool.checkpointjob import CheckpointCamera, Rollback
-    if arguments['firmware'] != '2.01' or not 50 <= int(arguments['battery']) <= 100:
-        raise ValueError('Confirm firmware 2.01 and actual battery percentage of at least 50')
+    from looktool.power import require_power
+    require_power(arguments.get('battery'), confirmed=arguments.get('power_confirmed', False))
+    if arguments['firmware'] != '2.01':
+        raise ValueError('Confirm firmware 2.01')
     rows = discover(arguments.get('roots', []))
     if not rows:
         raise ValueError('No complete initial backup found. Select the original backup manually.')
@@ -110,5 +112,6 @@ def restore_auto(arguments, job, *, factory=None, rollback_type=None):
             yield camera
 
         obj = (rollback_type or Rollback)(Path(arguments['workspace']), factory=reuse)
-        result = obj.run(row['path'], int(arguments['battery']), arguments['firmware'])
+        options = {'power_confirmed': True} if arguments.get('power_confirmed') else {}
+        result = obj.run(row['path'], arguments.get('battery'), arguments['firmware'], **options)
     return {'workspace': str(obj.root), 'backup': row['path'], 'phase': result['phase']}

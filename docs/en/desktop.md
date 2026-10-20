@@ -4,7 +4,7 @@ For ILCE-7CM2 firmware 2.01. One window groups connection/driver setup, Recovery
 
 ## One-click recovery
 
-Open **完整恢复 (Recovery) → 一键还原 (One-click recovery)**, enter the actual battery percentage, and confirm. In one service session, the application identifies the connected body and selects its **earliest available complete checkpoint** from registered/configured backup locations. It preserves the current state, restores programs, names and project look settings, then reads back the complete files. Later FL23/LUT/program modifications do not require uninstalling in reverse order. No stock firmware hash whitelist is used.
+Open **完整恢复 (Recovery) → 一键还原 (One-click recovery)**, confirm adequate power in the dialog. In one service session, the application identifies the connected body and selects its **earliest available complete checkpoint** from registered/configured backup locations. It preserves the current state, restores programs, names and project look settings, then reads back the complete files. Later FL23/LUT/program modifications do not require uninstalling in reverse order. No stock firmware hash whitelist is used.
 
 This cannot invent a missing original backup. “Earliest available” only covers indexed/configured locations. Select a backup directory or ZIP manually for archives stored elsewhere. Original legacy FL23 backup2 directories are supported through manual recovery without a LUT job.
 
@@ -33,3 +33,5 @@ Keep failed workspaces and export diagnostics. Complete tracebacks and original 
 **Uninstall Windows drivers:** use the connection page's uninstall button, confirm and accept elevation. The tool exports the packages first, then removes only third-party packages exclusively targeting Sony `054C:0E8A/0336`. Windows native drivers are retained. Reconnect in Mass Storage mode to let Windows bind its default storage driver. No camera firmware is written; prepare drivers again when service access is needed.
 
 For source execution, install `desktop-requirements.txt`, then run `python desktop.py`. Packaging and offline tests are separate from physical Windows/macOS USB acceptance.
+
+The desktop has no battery-percentage field. Each write prompts for adequate power (at least 50% recommended) and continuous USB/power; confirmation applies only to that operation. No validated service-mode charge reader is used, and no numeric percentage is invented. Administrator logs stream live; Windows driver commands have timeouts and retain raw output.

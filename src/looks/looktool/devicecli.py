@@ -48,20 +48,28 @@ def main(argv):
         state=job.create(args.source,args.name,args.slot,model,backup,write=args.write,battery=args.battery_percent,input_space=args.input_space,bridge=args.bridge)
     elif action=='restore-slot':
         parser.add_argument('job',type=Path,help='Completed original slot import to undo')
-        parser.add_argument('--battery-percent',type=int,required=True);parser.add_argument('--work-dir',type=Path)
+        power=parser.add_mutually_exclusive_group(required=True)
+        power.add_argument('--battery-percent',type=int);power.add_argument('--power-confirmed',action='store_true')
+        parser.add_argument('--work-dir',type=Path)
         parser.add_argument('--backup-dir',type=Path);parser.add_argument('--zig')
         args=parser.parse_args(argv[1:]);config=settings()
         identifier=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid.uuid4().hex[:8]
         folder=args.work_dir or Path.home()/'.a7c2-lut/jobs'/identifier
         backup=args.backup_dir or Path(config.get('backup_root',Path.home()/'.a7c2-lut/backups'))/identifier
         job=Job(folder,zig=args.zig)
-        state=job.restore_slot(Job(args.job),args.battery_percent,backup)
+        options={'power_confirmed':True} if args.power_confirmed else {}
+        state=job.restore_slot(Job(args.job),args.battery_percent,backup,**options)
     else:
         parser.add_argument('job',type=Path)
-        if action in ['install','resume']:parser.add_argument('--battery-percent',type=int,required=True)
+        if action=='install':
+            power=parser.add_mutually_exclusive_group(required=True)
+            power.add_argument('--battery-percent',type=int);power.add_argument('--power-confirmed',action='store_true')
+        elif action=='resume':parser.add_argument('--battery-percent',type=int,required=True)
         if action=='verify':parser.add_argument('--accept-photos',action='store_true',help='Record your actual successful preview/new-photo/playback checks')
         args=parser.parse_args(argv[1:]);job=Job(args.job)
-        if action=='install':state=job.install(args.battery_percent)
+        if action=='install':
+            options={'power_confirmed':True} if args.power_confirmed else {}
+            state=job.install(args.battery_percent,**options)
         elif action=='verify':state=job.verify(args.accept_photos)
         elif action=='recover':state=job.recover()
         elif action=='resume':state=job.resume(args.battery_percent)

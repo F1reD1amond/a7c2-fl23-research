@@ -112,9 +112,9 @@ def check_settings(camera, before):
         devicesettings.compare(camera.records(before[name]), camera.records(camera.snapshot(ram)), {}, camera.core)
 
 
-def install(root, backup_copy, native_job, audio_job, payload, battery, zig=None, camera_factory=trial.factory):
-    if not 50 <= battery <= 100:
-        raise ValueError('Provide the current battery percentage, at least 50')
+def install(root, backup_copy, native_job, audio_job, payload, battery, zig=None, camera_factory=trial.factory, *, power_confirmed=False):
+    from looktool.power import require_power
+    power = require_power(battery, confirmed=power_confirmed)
     original = json.loads((Path(native_job) / 'job.private.json').read_text(encoding='utf-8'))
     evidence = json.loads((Path(audio_job) / 'job.private.json').read_text(encoding='utf-8'))
     if not evidence.get('owner_audio_correct') or evidence.get('wire_format') != 0:
@@ -125,7 +125,7 @@ def install(root, backup_copy, native_job, audio_job, payload, battery, zig=None
     root.mkdir(parents=True, exist_ok=False)
     state = {'schema': 'a7c2-native-boot-sound-job/1', 'phase': 'preparing',
              'identity': original['identity'], 'camera_firmware_written': False,
-             'battery_percent_reported': battery, 'journal': [],
+             'battery_percent_reported': power['battery_percent'], 'power_confirmation': power, 'journal': [],
              'owner_audio_job': str(Path(audio_job).resolve()),
              'original_file_absence_required': list(PATHS)}
     trial.save(root, state)

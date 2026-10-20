@@ -30,6 +30,11 @@ Windows/macOS runners without publishing a Release.
   per-job journals. `src/camera_runtime` retains the flexible FL23 planner and uses
   merged PR #5 color/curve assets; existing `src/fl23` GUI is independent. The native
   installer also supports byte-window manifests and request/result namespaces.
+- Power is confirmed in a fresh dialog for each write, without a numeric field.
+  `looktool.power.require_power` records the confirmation with a null percentage,
+  never a fabricated USB measurement. The old CLI percentage option still works.
+  Administrator logs stream while running; PnPUtil has a timeout and raw output
+  preservation. The GUI also polls finished worker state to clear its busy display.
 - `drivers.py`: explicit preparation of only Sony `054C:0E8A` and `054C:0336`, with
   Windows elevation only when a binding needs installation. The optional transport
   callback runs between the two authentication stages, not after firmware writing.

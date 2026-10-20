@@ -122,15 +122,16 @@ class Rollback:
                             {k:v for k,v in r[1].items() if k>>16==0x02a4}]
             camera.core.verify_preservation(scope(previous),scope(actual),expected)
         self.record('saved_and_live_look_settings_restored')
-    def run(self,archive,battery,firmware_version):
+    def run(self,archive,battery,firmware_version,*,power_confirmed=False):
         if firmware_version!='2.01':raise ValueError('Read the camera version page: rollback supports 2.01 only')
-        if not 50<=battery<=100:raise ValueError('Actual battery percentage must be at least 50')
+        from .power import require_power
+        power=require_power(battery,confirmed=power_confirmed)
         manifest,target=checkpoint.load_target(archive)
         if self.root.exists() and any(self.root.iterdir()):raise ValueError('Use a new rollback work directory; preserve previous results')
         self.root.mkdir(parents=True,exist_ok=True)
         print('Rollback work:',self.root,flush=True)
         self.state={'schema':'a7c2-checkpoint-rollback/1','identity':manifest['identity'],'journal':[],
-            'target':str(Path(archive).resolve()),'limitations':manifest['limitations']}
+            'target':str(Path(archive).resolve()),'limitations':manifest['limitations'],'power_confirmation':power}
         self.save('READING')
         try:
             with self.factory(manifest['identity']) as camera:
