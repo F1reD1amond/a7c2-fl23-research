@@ -1,37 +1,37 @@
-# A7C II desktop tools (development preview)
+# A7C II desktop tools (Windows development preview)
 
-For ILCE-7CM2 firmware 2.01. One window groups connection/driver setup, Recovery, FL23, custom looks, Vertical Display and electronic shutter sounds. Starting the application never opens the camera. The integrated desktop workflows still require physical testing.
+For **ILCE-7CM2 firmware 2.01**. Startup never opens the camera. All device actions require a manual click. macOS builds are deferred.
 
-## One-click recovery
+## Connection
 
-Open **完整恢复 (Recovery) → 一键还原 (One-click recovery)**, confirm adequate power in the dialog. In one service session, the application identifies the connected body and selects its **earliest available complete checkpoint** from registered/configured backup locations. It preserves the current state, restores programs, names and project look settings, then reads back the complete files. Later FL23/LUT/program modifications do not require uninstalling in reverse order. No stock firmware hash whitelist is used.
+Use Mass Storage mode. Prefer **准备两阶段驱动并测试连接** to prepare the normal `0E8A` and service `0336` identities. Compatible driver bindings are retained; WinUSB is installed when required. The separate selected-identity installer is an advanced shortcut.
 
-This cannot invent a missing original backup. “Earliest available” only covers indexed/configured locations. Select a backup directory or ZIP manually for archives stored elsewhere. Original legacy FL23 backup2 directories are supported through manual recovery without a LUT job.
+Driver removal exports camera driver packages, removes only camera-specific third-party packages and preserves Windows native drivers. Reconnect USB afterward. No camera firmware is changed. A `0336` timeout means service access was not established; missing drivers are one possible cause, not a proven explanation for every timeout.
 
-After all USB I/O finishes, follow the log: disconnect USB/external power, shut down normally, wait for the access lamp, remove the battery for at least one minute, then restart. Check shooting, photographs and playback; reconnect and verify loaded state. Full readback alone is not boot acceptance.
+## FL23 and custom looks
 
-**Scope:** AP/CP programs, captured name resources and project look fields, preserving body calibration, counters and unrelated settings. This is not a sector image of the entire flash. Legacy backup2 lacks an independent historical saved-settings snapshot and uses its recorded RAM recipes. Additional sound files and vertical aliases are outside old checkpoints; restoring old programs disables their added code paths, while their respective tools handle file cleanup.
+**Enable/re-enable FL23** applies the desired configuration and does not repeat an already satisfied write. **Remove FL23 from the list** disables its menu entries while retaining custom looks and shared color code, allowing re-enabling later.
 
-The body must still support service communication. This is not recovery for an unreachable camera. Official `BODYDATA.DAT` packages are not supported backup inputs.
+Select an `.a7look`, slot and title, then write directly. No backup directory or re-fitting is required. **Reset the selected slot to ST defaults** needs neither its original import job nor its former recipe. Other slots and FL23 remain. Legacy six-slot layouts retain a neutral shared runtime; newer layouts deactivate the selected imported-slot bit. Physical title/preview/photo acceptance remains separate.
 
-## Fake downgrade?
+The companion compiler accepts DCP/CUBE. DCP compilation requires Lightroom and its renderer bridge. Direct Sony-ST/sRGB CUBE compilation does not. The Lightroom plugin routes later RAW development; it does not bake DCP processing into RAW sensor samples.
 
-[a7c2-service-preload](https://github.com/YuuLuo/a7c2-service-preload) documents authentication, temporary root execution and preloading. Its public repository currently provides no fake-downgrade recovery utility or demonstrated official same-version reflash workflow. Temporary execution does not permanently disable signature checks. One-click recovery therefore uses your body backup; official firmware downgrade/reflash is not implemented.
+## Restore factory functionality without an old backup
 
-## Other workflows
+Use **恢复原厂 2.01 功能（无需旧备份）**. Original bytes for supported project regions are included, so old backups and a full firmware download are unnecessary.
 
-| Page | Operation |
-| --- | --- |
-| Connection | Windows retains usable WinUSB/libusbK/libusb0 bindings and installs camera-specific WinUSB when requested. macOS uses libusb without Zadig. |
-| FL23 | Prepare backups → install → cold restart → verify. |
-| Custom looks | Select `.a7look`, title and slot → prepare → install → cold restart and check preview/photos. Single-slot restoration, a compiler and Lightroom plugin installer are included. |
-| Vertical Display | Shooting information/icons/layout follow portrait orientation. This is not full MENU rotation; the current switch is session-only. |
-| Shutter sound | Enable native sound; custom clips require conversion, camera audition, confirmation and audition recovery before persistent installation. |
+This restores supported FL23, LUT/preview/name and shutter-sound program changes and sets all six custom slots to ST defaults. Body calibration, counters and unrelated settings are preserved. Former personal recipes are not recovered. This covers supported program regions and project color fields, not an entire flash image. Unreferenced project audio files/vertical aliases may remain.
 
-Keep failed workspaces and export diagnostics. Complete tracebacks and original errors are retained; unknown writes are never automatically replayed. Diagnostic bundles contain local paths and device information: review before posting publicly.
+Historical-backup recovery is an optional collapsed workflow. Advanced users can import an original same-model/version `BODYDATA.DAT` as a complete program reference. Service communication must still work; this is not an official updater downgrade or a guarantee of recovery for unreachable bodies.
 
-**Uninstall Windows drivers:** use the connection page's uninstall button, confirm and accept elevation. The tool exports the packages first, then removes only third-party packages exclusively targeting Sony `054C:0E8A/0336`. Windows native drivers are retained. Reconnect in Mass Storage mode to let Windows bind its default storage driver. No camera firmware is written; prepare drivers again when service access is needed.
+## Operation and verification
 
-For source execution, install `desktop-requirements.txt`, then run `python desktop.py`. Packaging and offline tests are separate from physical Windows/macOS USB acceptance.
+Each write prompts for adequate power; no numeric battery entry or invented USB percentage is used. No complete body backup is automatically created. Transaction logs, required byte windows and operation results are retained; unknown writes are never replayed automatically.
 
-The desktop has no battery-percentage field. Each write prompts for adequate power (at least 50% recommended) and continuous USB/power; confirmation applies only to that operation. No validated service-mode charge reader is used, and no numeric percentage is invented. Administrator logs stream live; Windows driver commands have timeouts and retain raw output.
+After all I/O finishes, shut down normally, disconnect USB/external power, wait for the access lamp and remove the battery for at least one minute. Restart, check preview/new photographs/playback/titles, then reconnect and verify. Offline reconstruction, complete readback, loaded-state checks and physical behavior are separate evidence.
+
+Administrator driver logs stream live. Export diagnostics when needed; review local paths and device details before public sharing.
+
+Vertical Display rotates shooting information/layout for the current session, not the entire MENU. Custom sounds still require audition, confirmation and recovery of the temporary audition before persistent installation.
+
+The new backup-free workflows passed offline planning/preservation checks but **have not passed physical acceptance**. Development branch only; main and formal Releases remain unchanged. Install `desktop-requirements.txt` and run `python desktop.py` for source execution. [Developer/AI notes](../../dev/desktop/README.md).

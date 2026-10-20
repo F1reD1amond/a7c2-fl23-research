@@ -46,6 +46,31 @@ def run(action, args, job):
         power = require_power(args.get('battery'), confirmed=args.get('power_confirmed', False))
         write_json(job / 'power-confirmation.private.json', power)
         print('Power:', json.dumps(power), flush=True)
+    if action == 'factory_prepare':
+        from . import official
+        return official.prepare(args['source'])
+    if action.startswith('direct_'):
+        from looktool.direct import DirectJob
+        mode = action.removeprefix('direct_')
+        obj = DirectJob(Path(args['workspace']))
+        if not args.get('workspace'):
+            raise ValueError('先完成一次本页操作，再核对重新加载状态。')
+        reference, reference_path = None, args.get('factory') or 'builtin'
+        if mode == 'verify':
+            prior = json.loads(obj.state_path.read_text(encoding='utf-8'))
+            if prior['mode'] == 'factory_reset':
+                from .official import load
+                reference = load(prior['factory_path'])
+            result = obj.verify_direct(factory_values=reference, accepted=bool(args.get('accepted')))
+        else:
+            if mode == 'factory_reset':
+                from .official import load
+                reference = load(reference_path)
+            result = obj.run_direct(mode, version=args['firmware'], power_confirmed=args.get('power_confirmed', False),
+                factory_values=reference, factory_path=reference_path if reference else None,
+                slot=args.get('slot'), look_path=args.get('look'), name=args.get('name') or None)
+        return {'workspace': str(obj.root), 'phase': result['phase'], 'mode': result['mode'],
+                'backup_created': False}
     if action in ('driver_scan', 'driver_install', 'driver_uninstall', 'usb_prepare', 'mac_unmount'):
         from . import drivers
         if action == 'driver_scan':

@@ -1,2 +1,2 @@
 """Desktop integration; importing this package never opens a camera."""
-VERSION = '3.0.0-desktop-preview.1'
+VERSION = '3.0.0-desktop-preview.2'

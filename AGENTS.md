@@ -6,6 +6,16 @@ v2.2-preview.1 commit/release. Main has three independent entries. Develop
 future changes on feature branches; further release rewrites need authorization.
 Read `docs/en/ai.md` before implementation.
 
+Desktop exception authorized by the owner on October 21: `desktop.py` now uses
+`looktool.direct` for FL23 enable/menu removal, A7Look import, selected-slot ST
+defaults and factory-function reset without mandatory complete body backups.
+Keep transaction evidence and exact byte readback; do not reintroduce backup
+directories or old-recipe requirements into these GUI actions. Historical
+backup restoration and existing CLI behavior remain separate, optional paths.
+The built-in factory reference holds generic original Sony bytes only for
+supported project regions, with no body calibration or full firmware. This is
+development-branch work pending manual physical acceptance, not a main release.
+
 - `src/fl23/`: exact-source FL2/FL3 installation, backup and verification.
 - `src/looks/`: Independent DCP/LUT CLI, exact-source device jobs and offline research tools.
 - `docs/en/` and `docs/zh-CN/`: matching English/Simplified Chinese guides.

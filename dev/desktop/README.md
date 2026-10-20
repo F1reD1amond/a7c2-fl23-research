@@ -60,3 +60,31 @@ Before the owner's physical test, complete source tests, packaged offline native
 compilation, GUI startup and DMG verification. None proves camera boot safety or
 real preview/photo/color correctness. Do not ship private firmware, backups, photos,
 DCP inputs, credentials or body calibration in source/build artifacts.
+
+
+## Direct workflows (preview.2)
+
+The owner explicitly removed mandatory backups for the new GUI workflows.
+Legacy CLI/historical-backup restoration remains available; do not silently
+reintroduce its two-backup prerequisite into the direct actions.
+
+`looktool/direct.py` plans fresh current bytes, uses the existing bounded native
+workers, verifies complete readback, preserves independent saved/live calibration
+and keeps transaction evidence. It creates no full body archive or source-program
+copy. FL23 removal changes only the two menu product flags; shared runtime remains.
+Legacy single-slot ST reset neutralizes its correction and native stage, retaining
+the legacy shared runtime. Standalone layouts also clear the imported-slot mask.
+
+`factory-regions-2.01.json` contains only generic original bytes for supported
+project regions and FL23 color subranges. It contains no full firmware, body data,
+DCP data, photos or private paths. Its regions are derived from the current FL23,
+LUT/native-photo and sound implementations plus reviewed legacy program diffs.
+The default restoration preserves bytes outside those regions. Optional original
+DAT import uses the vendored MIT fwtool decoder and checks model/version.
+
+To regenerate the reference, use original 2.01 components and the optional private
+legacy fixture index with `dev/desktop/build_factory_reference.py`; the build needs
+`keystone-engine` for deriving the real sound windows. Do not publish the inputs.
+Reference regression tests must prove exact restoration for supported variants,
+per-body calibration preservation and no changes outside the owned regions.
+None of these offline checks proves camera boot safety.

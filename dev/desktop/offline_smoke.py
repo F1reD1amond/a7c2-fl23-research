@@ -17,9 +17,14 @@ def run():
     core.merge_colors(bytes(8192), bytes(28672))
     assert device_layout.runtime()['schema'] == 'a7c2-lut-runtime/1'
     assert (ROOT / 'src/looks/assets/native-photo-v2.json').is_file()
-    for name in ('compilelook', 'lookfile', 'rawauto', 'rawprofiles', 'checkpointjob', 'devicejob'):
+    for name in ('compilelook', 'lookfile', 'rawauto', 'rawprofiles', 'checkpointjob', 'devicejob', 'direct'):
         importlib.import_module('looktool.' + name)
     import sys
+    sys.path.insert(0, str(ROOT / 'src/desktopapp/vendor'))
+    from fwtool.sony import dat, fdat
+    from fwtool.archive import ext2, fat
+    from desktopapp.official import builtin
+    assert builtin()['version'] == '2.01'
     sys.path[:0] = [str(ROOT / 'src/vertical'), str(ROOT / 'dev/shutter_sound')]
     importlib.import_module('verticaltool.device')
     importlib.import_module('sound_cli')
@@ -43,5 +48,5 @@ def run():
         target = {'resources/' + name: original for name in nameworker.filenames()}
         names = checkpointworker.build_names(current, target, Path(folder), 'smoke')
         assert Path(names['path']).read_bytes()[:4] == b'\x7fELF'
-    return {'camera_io': False, 'project_imports': 'passed', 'assets': 'passed',
+    return {'camera_io': False, 'project_imports': 'passed', 'assets': 'passed', 'builtin_factory_reference': 'passed',
             'native_cross_compile': 'passed', 'numpy': np.__version__}

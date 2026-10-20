@@ -1,5 +1,11 @@
 # AI implementation contract
 
+The owner's October 21 desktop requirement overrides mandatory-backup guidance
+below for `looktool.direct`: direct operations do not create full body backups;
+ST-default reset does not recover former recipes. Preserve current calibration,
+unselected slots, transaction evidence and full byte readback. Existing CLI/job
+backup restoration retains its separate contract. See `dev/desktop/README.md`.
+
 Before camera work read [the workflow](../../docs/en/custom-lut.md), [integration](../../docs/en/technical/integration.md), [formats](../../docs/en/technical/formats.md), [validation](../../docs/en/technical/validation.md) and [failures](../../docs/en/technical/failures.md).
 
 - Only explicit device commands open USB; doctor/offline commands never do. Run tests first; a candidate, USB transfer, title, emulation result or full disk readback is not a successful boot or physical test.

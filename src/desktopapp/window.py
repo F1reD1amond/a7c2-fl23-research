@@ -45,7 +45,7 @@ class Window(W.QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         self.nav = W.QListWidget()
         self.nav.setFixedWidth(205)
-        self.nav.addItems(['连接与驱动', '完整恢复', 'FL2 / FL3', '自定义创意外观', '竖屏显示', '电子快门声音'])
+        self.nav.addItems(['连接与驱动', '恢复原厂功能', 'FL2 / FL3', '自定义创意外观', '竖屏显示', '电子快门声音'])
         layout.addWidget(self.nav)
         right = W.QVBoxLayout()
         right.setContentsMargins(22, 18, 22, 16)
@@ -60,7 +60,7 @@ class Window(W.QMainWindow):
         self.firmware.addItems(['2.01'])
         heading.addWidget(self.firmware)
         right.addLayout(heading)
-        self.description = W.QLabel('Windows / macOS · 六个独立操作入口 · ' + VERSION)
+        self.description = W.QLabel(('Windows 测试版' if sys.platform == 'win32' else '桌面开发版') + ' · 六个功能入口 · ' + VERSION)
         self.description.setProperty('hint', True)
         right.addWidget(self.description)
         self.pages = W.QStackedWidget()
@@ -127,6 +127,29 @@ class Window(W.QMainWindow):
         layout.addWidget(group)
         return form
 
+    def advanced(self, layout, title):
+        toggle = W.QToolButton()
+        toggle.setText(title)
+        toggle.setCheckable(True)
+        toggle.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        toggle.setArrowType(QtCore.Qt.RightArrow)
+        content = W.QWidget()
+        content.setVisible(False)
+        inner = W.QVBoxLayout(content)
+        inner.setContentsMargins(0, 0, 0, 0)
+        toggle.toggled.connect(content.setVisible)
+        toggle.toggled.connect(lambda open: toggle.setArrowType(QtCore.Qt.DownArrow if open else QtCore.Qt.RightArrow))
+        layout.addWidget(toggle)
+        layout.addWidget(content)
+        return inner
+
+    def direct_args(self, group, **values):
+        work = self.work(group)
+        return dict(self.common(), workspace=work, **{key: value for key, value in values.items() if key != 'mode'})
+
+    def direct_verify_args(self, group, accepted=False):
+        return {'workspace': self.settings.get(group + '_direct_work', ''), 'accepted': accepted}
+
     def field(self, form, key, label, *, kind=None, filter='All files (*)', value=''):
         line = W.QLineEdit(str(self.settings.get(key, value)))
         line.setObjectName(key)
@@ -180,7 +203,7 @@ class Window(W.QMainWindow):
             self.field(form, 'mac_volume', 'macOS 相机存储卷', kind='folder', value='/Volumes/')
         self.button(layout, '检测相机与驱动', 'driver_scan', primary=True)
         self.button(layout, '准备两阶段驱动并测试连接' if sys.platform == 'win32' else '准备 USB 服务连接', 'usb_prepare', primary=True)
-        self.button(layout, '安装／保留可用驱动（Windows 管理员确认）' if sys.platform == 'win32'
+        self.button(layout, '单独安装所选身份的驱动（高级）' if sys.platform == 'win32'
                     else '检查 USB 访问（macOS 无需 Zadig）', 'driver_install',
                     lambda: {'pid': ['0e8a', '0336'][self.driver_identity.currentIndex()]})
         if sys.platform == 'darwin':
@@ -195,7 +218,26 @@ class Window(W.QMainWindow):
         layout.addStretch()
 
     def recovery_page(self):
-        layout = self.page('完整恢复', '选择这台机身的首次备份，将程序和项目设置恢复到该备份时间点。后续安装 FL23、外观或声音不要求按顺序卸载。')
+        layout = self.page('恢复原厂功能', '已内置本项目修改区域的原厂 2.01 基准。移除已支持的项目修改，六个自订栏位设为 ST 默认，保留机身校准。无需旧备份或下载完整固件；旧配方不找回。')
+        self.button(layout, '恢复原厂 2.01 功能（无需旧备份）', 'direct_factory_reset',
+                    lambda: self.direct_args('factory', mode='factory_reset', factory='builtin'), primary=True)
+        self.factory_accept = W.QCheckBox('已断电重开，确认取景、拍照和回放正常')
+        layout.addWidget(self.factory_accept)
+        self.button(layout, '核对原厂功能恢复后的加载状态', 'direct_verify',
+                    lambda: self.direct_verify_args('factory', self.factory_accept.isChecked()))
+        layout.addWidget(W.QLabel('相机仍需能够进入 USB 服务通信；此操作不是索尼更新器的降级重刷。'))
+        expert = self.advanced(layout, '导入完整原厂 2.01 参考文件（高级、可选）')
+        reference = self.box(expert, '原厂文件')
+        self.field(reference, 'factory_file', 'Sony BODYDATA.DAT', kind='file', filter='Sony firmware (*.DAT *.bin);;All files (*)')
+        self.button(expert, '准备所选原厂文件（不连接相机）', 'factory_prepare',
+                    lambda: {'source': self.text('factory_file') or str(data_root() / 'factory-2.01')})
+        self.button(expert, '使用导入的完整原厂文件恢复', 'direct_factory_reset',
+                    lambda: self.direct_args('factory', mode='factory_reset', factory=str(data_root() / 'factory-2.01')))
+        legacy = self.advanced(layout, '使用旧备份回到过去的状态（可选）')
+        self.backup_recovery_controls(legacy)
+        layout.addStretch()
+
+    def backup_recovery_controls(self, layout):
         form = self.box(layout, '恢复来源')
         self.field(form, 'restore_backup', '备份目录', kind='folder')
         choose_zip = W.QPushButton('或选择完整备份 ZIP…')
@@ -217,17 +259,17 @@ class Window(W.QMainWindow):
         note = W.QLabel('相机需要仍可进入服务通信。此入口使用机身备份；不把官方 BODYDATA.DAT 当作备份刷入。')
         note.setWordWrap(True)
         layout.addWidget(note)
-        layout.addStretch()
 
     def fl23_page(self):
-        layout = self.page('FL2 / FL3', '备份 → 安装 → 完整读回 → 断电重开 → 核对。使用已合并 PR 的曲线／色彩数据，保留独立恢复入口。')
-        form = self.box(layout, '本次 FL23 任务')
-        self.field(form, 'fl23_work', '工作目录', kind='folder', value=self.work('fl23'))
-        self.field(form, 'fl23_backup', '第二份备份目录', kind='folder', value=str(data_root() / 'backups' / uuid.uuid4().hex[:8]))
-        args = lambda: dict(self.common(), workspace=self.text('fl23_work'), backup=self.text('fl23_backup'))
-        self.button(layout, '1  备份与准备', 'fl23_prepare', args)
-        self.button(layout, '2  安装 FL2 / FL3', 'fl23_install', args, primary=True)
-        self.button(layout, '3  重开后核对', 'fl23_verify', args)
+        layout = self.page('FL2 / FL3', '直接启用／移除，不要求创建备份。移除只关闭 FL2／FL3 的列表入口，保留自定义外观所需的共用色彩代码；之后可以重新启用。')
+        self.button(layout, '启用／重新启用 FL2 / FL3', 'direct_fl23_enable',
+                    lambda: self.direct_args('fl23', mode='fl23_enable'), primary=True)
+        self.button(layout, '从列表移除 FL2 / FL3，保留自定义外观', 'direct_fl23_disable',
+                    lambda: self.direct_args('fl23', mode='fl23_disable'))
+        self.fl23_accept = W.QCheckBox('已断电重开，确认菜单、拍照和回放正常')
+        layout.addWidget(self.fl23_accept)
+        self.button(layout, '重开后核对', 'direct_verify',
+                    lambda: self.direct_verify_args('fl23', self.fl23_accept.isChecked()))
         layout.addStretch()
 
     def look_page(self):
@@ -238,22 +280,15 @@ class Window(W.QMainWindow):
         self.look_slot = W.QSpinBox()
         self.look_slot.setRange(1, 6)
         form.addRow('自订栏位', self.look_slot)
-        self.field(form, 'look_work', '当前外观任务', kind='folder', value=self.work('look'))
-        self.field(form, 'look_backup', '备份目录', kind='folder', value=str(data_root() / 'look-backups'))
-        fresh = W.QPushButton('新建外观任务（保留旧任务）')
-        fresh.clicked.connect(lambda: (self.fields['look_work'].setText(self.work('look')), self.look_accept.setChecked(False)))
-        self.buttons.append(fresh)
-        layout.addWidget(fresh)
-        args = lambda: dict(self.common(), look=self.text('look_file'), name=self.text('look_name'),
-            slot=self.look_slot.value(), workspace=self.text('look_work'), backup=self.text('look_backup'))
-        row = W.QHBoxLayout()
-        layout.addLayout(row)
-        self.button(row, '1  备份与准备', 'look_prepare', args)
-        self.button(row, '2  写入所选栏位', 'look_install', args, primary=True)
+        self.button(layout, '写入所选栏位（无需备份）', 'direct_look_import',
+                    lambda: self.direct_args('look', mode='look_import', look=self.text('look_file'),
+                        name=self.text('look_name'), slot=self.look_slot.value()), primary=True)
+        self.button(layout, '所选栏位恢复 ST 默认（不找回旧配方）', 'direct_slot_default',
+                    lambda: self.direct_args('look', mode='slot_default', slot=self.look_slot.value()))
         self.look_accept = W.QCheckBox('已断电重开，确认预览、拍照和回放正常')
         layout.addWidget(self.look_accept)
-        self.button(layout, '核对加载状态', 'look_verify', lambda: dict(args(), accepted=self.look_accept.isChecked()))
-        self.button(layout, '恢复这个任务写入前的单个栏位', 'look_restore', args)
+        self.button(layout, '核对加载状态', 'direct_verify',
+                    lambda: self.direct_verify_args('look', self.look_accept.isChecked()))
         tools = W.QHBoxLayout()
         layout.addLayout(tools)
         compiler = W.QPushButton('生成 A7Look…')
@@ -346,7 +381,7 @@ class Window(W.QMainWindow):
     def one_click_restore(self):
         roots = [str(data_root() / 'backups'), str(data_root() / 'initial-checkpoints')]
         for key in ('fl23_backup', 'look_backup', 'restore_backup'):
-            if self.text(key):
+            if key in self.fields and self.text(key):
                 roots.append(self.text(key))
         self.fields['restore_work'].setText(self.work('recovery'))
         self.launch('restore_auto', dict(self.common(), roots=roots, workspace=self.text('restore_work')))
@@ -365,14 +400,27 @@ class Window(W.QMainWindow):
         if writing:
             target = ('自动选择已连接机身最早可用的完整备份' if action == 'restore_auto' else
                       arguments.get('backup') if action == 'restore' else arguments.get('look') or arguments.get('workspace'))
+            if action in jobs.DIRECT_ACTIONS:
+                target = ('原厂 2.01 功能' if action == 'direct_factory_reset' else
+                          'FL2／FL3：启用' if action == 'direct_fl23_enable' else
+                          'FL2／FL3：从列表移除' if action == 'direct_fl23_disable' else
+                          '自订 %s：%s' % (arguments.get('slot'), 'ST 默认' if action == 'direct_slot_default'
+                                           else arguments.get('name') or Path(arguments.get('look', '')).stem))
+            scope = ('将移除项目程序修改、将六个自订栏位设为 ST 默认；旧配方不找回。请先在相机选择 ST。\n' if action == 'direct_factory_reset' else
+                     '只关闭 FL2／FL3 列表入口，保留 LUT 与共用代码。请先在相机选择 ST。\n' if action == 'direct_fl23_disable' else
+                     '将所选自订栏位设为 ST 默认，保留其他栏位。\n' if action == 'direct_slot_default' else '')
             answer = W.QMessageBox.question(self, '开始相机写入',
-                '目标：' + str(target) + '\n请确认相机电池电量充足（建议至少 50%）。\n'
+                scope + '目标：' + str(target) + '\n请确认机身为 ILCE-7CM2、固件 2.01，电量充足（建议至少 50%）。\n'
                 '操作和完整读回期间保持供电、USB 连接，不要关机或拔线。\n确认供电充足并开始？',
                 W.QMessageBox.Yes | W.QMessageBox.Cancel, W.QMessageBox.Cancel)
             if answer != W.QMessageBox.Yes:
                 return
             arguments = dict(arguments, power_confirmed=True)
             arguments.pop('battery', None)
+        if action in jobs.DIRECT_ACTIONS:
+            group = 'factory' if action == 'direct_factory_reset' else 'fl23' if 'fl23' in action else 'look'
+            self.settings[group + '_direct_work'] = arguments['workspace']
+            getattr(self, group + '_accept').setChecked(False)
         for key, field in self.fields.items():
             self.settings[key] = field.text()
         write_json(data_root() / 'desktop.json', self.settings)
@@ -432,7 +480,7 @@ class Window(W.QMainWindow):
         if success and status.get('action') == 'restore_auto':
             self.fields['restore_backup'].setText(status['result']['backup'])
             self.fields['restore_work'].setText(status['result']['workspace'])
-        if success and status.get('action') == 'look_restore':
+        if success and status.get('action') == 'look_restore' and 'look_work' in self.fields:
             self.fields['look_work'].setText(status['result']['workspace'])
         for key, field in self.fields.items():
             self.settings[key] = field.text()

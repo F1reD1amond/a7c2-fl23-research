@@ -2,6 +2,8 @@
 
 ## Desktop development preview — 2026-10-21
 
+**preview.2:** direct FL23 enable/removal and custom-slot import/ST-default reset no longer require complete backups. Factory functionality restoration uses included original 2.01 project regions, preserving body calibration without old backups or a full firmware download. Former recipes are not recovered. New flows have offline validation only and await manual physical acceptance.
+
 - Added a six-page Windows/macOS desktop front end, native packaging and complete background-job error logs.
 - Integrated explicit two-stage Windows driver preparation; macOS uses libusb without Zadig.
 - Added manual camera driver removal with package export and Windows native-driver rebinding; no automatic system restart.

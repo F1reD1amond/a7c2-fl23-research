@@ -3,7 +3,8 @@ import sys
 from PyInstaller.utils.hooks import collect_all
 
 root = Path(SPECPATH).parents[1]
-datas, binaries, hidden = [], [], ['PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets']
+datas, binaries, hidden = [], [], ['PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets',
+                                 'tarfile', 'lzma', 'bz2', 'zlib', 'urllib.request']
 for package in ('numpy', 'scipy', 'PIL', 'tifffile', 'yaml', 'elftools', 'usb',
                 'libusb_package', 'Cryptodome', 'imageio_ffmpeg', 'ziglang'):
     d, b, h = collect_all(package)

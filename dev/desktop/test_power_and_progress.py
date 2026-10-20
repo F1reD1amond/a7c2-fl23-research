@@ -54,7 +54,7 @@ class PowerProgressTests(unittest.TestCase):
         with patch.object(W.QMessageBox, 'question', return_value=W.QMessageBox.Cancel) as question, \
              patch.object(jobs, 'new_job') as job:
             window.launch('look_install', {'workspace': 'not-opened'})
-        self.assertIn('电池电量充足', question.call_args.args[2])
+        self.assertIn('电量充足', question.call_args.args[2])
         job.assert_not_called()
 
     def test_each_write_requires_a_fresh_popup_and_records_confirmation(self):
@@ -85,6 +85,14 @@ class PowerProgressTests(unittest.TestCase):
         for action in jobs.POWER_ACTIONS:
             with self.subTest(action=action), self.assertRaises(ValueError):
                 worker.run(action, {}, self.root)
+
+    def test_cancelled_direct_action_keeps_previous_verification_job(self):
+        window = self.window()
+        window.settings['fl23_direct_work'] = 'previous-completed-job'
+        args = window.direct_args('fl23', mode='fl23_enable')
+        with patch.object(W.QMessageBox, 'question', return_value=W.QMessageBox.Cancel):
+            window.launch('direct_fl23_enable', args)
+        self.assertEqual(window.direct_verify_args('fl23')['workspace'], 'previous-completed-job')
 
     def test_live_log_streams_partial_utf8_without_duplicates(self):
         path = self.root / 'log'

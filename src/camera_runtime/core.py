@@ -68,19 +68,6 @@ def patch_program(original,chip,reverse=False):
     if len(result)!=len(original):raise ValueError('候選檔長度被改動')
     return bytes(result)
 
-def colour_record(row):
-    """PR #5's per-slot donor records, without replacing body calibration."""
-    chroma=bytes.fromhex(row['chroma']);matrix=bytes.fromhex(row['matrix'])
-    if len(chroma)!=64 or len(matrix)!=576 or any(chroma[48:]):
-        raise ValueError('色彩記錄長度／尾端不符')
-    for look in read_json(BASE/'assets/fx2_fl23_donor.json')['looks']:
-        if (look['target_parameter'],look['target_slot'])!=(row['parameter'],row['slot']):continue
-        expected_chroma=b''.join(struct.pack('<8h',*group) for group in look['cc1_int16'])+bytes(16)
-        expected_matrix=b''.join(struct.pack('<6h',*values) for name in ('B','A1','A2') for values in look['matrix_slots'][name])
-        if chroma!=expected_chroma or matrix!=expected_matrix:
-            raise ValueError('色彩記錄與供體逐槽資料不符')
-        return chroma,matrix
-    raise ValueError('未知的色彩參數／槽組合')
 
 def merge_colors(unit01,unit0d):
     if len(unit01)!=8192 or len(unit0d)!=28672:raise ValueError('色彩單元長度不符')
@@ -160,7 +147,8 @@ def parse_native(name,raw,mode=None):
         for i,(offset,n) in enumerate([(0x3528804,112),(0x4b2ed19,2),(0x59892b8,40),(0x5989370,40),(0x4b4a5e4,12),(0x4b3b544,12)]):
             spans.append({'offset':offset,'length':n,'memory':raw[56+i*256:56+i*256+n].hex(),
                           'disk':raw[56+i*256+128:56+i*256+128+n].hex()})
-        return {'spans':spans,'image_mode':raw[1592:1608].split(b'\0')[0].decode('ascii','replace')}
+        return {'spans':spans,'image_mode':raw[1592:1608].split(b'\0')[0].decode('ascii','replace'),
+                'boot_id':raw[1768:1832].split(b'\0')[0].decode('ascii','replace')}
     raise ValueError('未知原生模組')
 
 def slot_row_sums(block):

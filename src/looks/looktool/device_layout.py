@@ -125,7 +125,7 @@ def identify(ap,cp):
     return dict(a,layout='full7-v4' if a['kind']=='legacy-six' else 'standalone-v1',AP=firmware.sha(ap),CP=c,
         physical_first_install_tested=False if a['kind']!='legacy-six' else None)
 
-def replace(ap,cp,replacements,*,hash_checks=True,native_photo=None,native_bank=None):
+def replace(ap,cp,replacements,*,hash_checks=True,native_photo=None,native_bank=None,transitions=True):
     identify_current=identify if hash_checks else structural
     identity=identify_current(ap,cp)
     if not replacements or any(type(s) is not int or s not in range(1,7) for s in replacements):raise ValueError('Select custom slots 1..6')
@@ -164,10 +164,11 @@ def replace(ap,cp,replacements,*,hash_checks=True,native_photo=None,native_bank=
         from .checkpointworker import differences
         spans=[(at,len(old)) for at,old,_ in differences(cp,result)]
     after={'appFw.so':ap_result,'cpapp-b.bin':bytes(result)};before={'appFw.so':ap,'cpapp-b.bin':cp}
+    identify_current(after['appFw.so'],after['cpapp-b.bin'])
+    if not transitions:return None,None,after
     regions={'appFw.so':ap_spans,'cpapp-b.bin':spans}
     f=firmware.transition(before,after,regions)
     r=firmware.transition(after,before,regions)
-    identify_current(after['appFw.so'],after['cpapp-b.bin'])
     if firmware.apply(after,r,hash_checks=hash_checks)!=before:raise ValueError('Complete table inverse differs')
     return f,r,after
 
@@ -182,7 +183,7 @@ def before_first_table(ap,cp,slot,*,hash_checks=True):
         raw=bytes.fromhex(w['after']);result[w['offset']:w['offset']+len(raw)]=raw
     return read_tables(bytes(result))[slot-1]
 
-def deactivate(ap,cp,slot,raw,*,hash_checks=True):
+def deactivate(ap,cp,slot,raw,*,hash_checks=True,native_bank=None,transitions=True):
     """Restore one native custom slot, retaining other LUTs and current FL23.
 
     Mask zero leaves the shared CP runtime dormant. The independent recovery
@@ -200,8 +201,11 @@ def deactivate(ap,cp,slot,raw,*,hash_checks=True):
     at=six.TABLE_FILE+32+(slot-1)*six.TABLE_BYTES;check=six.TABLE_FILE+8+(slot-1)*4
     result[at:at+six.TABLE_BYTES]=raw;struct.pack_into('<I',result,check,six.fnv(raw))
     from . import photoio
-    result=photoio.update(bytes(result),{slot:None})
+    result=photoio.update(bytes(result),{slot:None},native_bank)
     before={'appFw.so':ap,'cpapp-b.bin':cp};after={'appFw.so':after_ap,'cpapp-b.bin':bytes(result)}
+    if not transitions:
+        identify_current(after_ap,bytes(result))
+        return None,None,after
     from .checkpointworker import differences
     regions={'appFw.so':[(w['offset'],len(bytes.fromhex(w['hex']))) for w in spec['restore']],
         'cpapp-b.bin':[(offset,len(old)) for offset,old,_ in differences(cp,result)]}
