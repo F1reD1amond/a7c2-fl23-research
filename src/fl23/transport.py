@@ -38,15 +38,14 @@ class Bounded(UsbBackend):
 
 
 def _dispose(device):
-    try:
-        usb.util.dispose_resources(device)
-    except Exception:
-        pass
+    """释放 pyusb 资源；``None`` 或不是设备的对象都安静返回。"""
+    usbdev.dispose(device)
 
 
 def identity():
     """在 0E8A 身份上确认这是目标机型，并取出机身短码。"""
-    device = usbdev.find(usbdev.PID_MSC)
+    device = usbdev.require(usbdev.PID_MSC,
+                            hint='没有找到 054C:0E8A 身份的相机，请确认已开机并以 USB 海量存储模式连接')
     try:
         driver = MscBbbDriver(Bounded(device, 20))
         if MscDevice(driver).getDeviceInfo().manufacturer.strip() != 'Sony':
@@ -82,7 +81,8 @@ class Session:
         self.identity = identity()
         if not _matches(self.identity, self.expected):
             raise RuntimeError('当前机身与备份的机身不同，拒绝继续')
-        device = usbdev.find(usbdev.PID_MSC)
+        device = usbdev.require(usbdev.PID_MSC,
+                                hint='没有找到 054C:0E8A 身份的相机，请确认已开机并以 USB 海量存储模式连接')
         auth = None
         try:
             auth = SonySenserAuthDevice(GenericUsbDriver(Bounded(device, 20)))
@@ -99,14 +99,17 @@ class Session:
             _dispose(device)
         deadline = time.monotonic() + self.service_timeout
         while True:
+            probe = None
             try:
-                self.dev = usbdev.find(usbdev.PID_SERVICE)
-                break
+                probe = usbdev.find(usbdev.PID_SERVICE)
             except RuntimeError as exc:
                 if '需要且只能连接一台' in str(exc):
                     raise
-                if time.monotonic() >= deadline:
-                    raise RuntimeError('服务身份未出现，请确认 0336 驱动已安装')
+            if probe is not None:
+                self.dev = probe          # 找到就保留，不要在这里 dispose
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError('服务身份未出现，请确认 0336 驱动已安装')
             time.sleep(0.5)
         time.sleep(2)
         self.backend = Bounded(self.dev)
