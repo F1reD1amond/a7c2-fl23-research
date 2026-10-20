@@ -9,7 +9,7 @@ TEMP_NAMES={'libJit.so','lut-program-staged.so','lut-names-staged.so','lut-runti
     'a7c2.wbi.request','a7c2.wbi.result','a7c2.runtime.result','a7c2.probe.result'}
 
 def modules():
-    folder=ROOT/'src/fl23';sys.path[:0]=[str(folder),str(folder/'vendor')]
+    folder=ROOT/('src/camera_runtime' if (ROOT/'src/camera_runtime').is_dir() else 'src/fl23');sys.path[:0]=[str(folder),str(folder/'vendor')]
     transport=importlib.import_module('transport');core=importlib.import_module('core')
     if Path(transport.__file__).resolve()!=folder/'transport.py' or Path(core.__file__).resolve()!=folder/'core.py':
         raise ValueError('Unexpected camera transport module already loaded')

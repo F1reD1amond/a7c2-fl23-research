@@ -1,5 +1,7 @@
 # A7C II 工具
 
+**桌面开发分支：**[Windows／macOS 六功能 GUI](docs/zh-CN/desktop.md)。整合版本待实机测试；下方已发布版本与本分支独立。
+
 **交流群：**[Telegram（推荐加入）](https://t.me/sonyfwlab) · [Discord](https://discord.gg/SwPdfSd9c)。**更推荐大家加入 Telegram 群。**
 
 **作者：**小红书 [QAQLeonard（读研版）](https://www.xiaohongshu.com/user/profile/660501f7000000000600d03c) · 抖音 **LeonardZ**（抖音号：`90860261487`）。

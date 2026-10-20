@@ -18,13 +18,22 @@ def prepare(sources,names,ap,job_id,out,zig=None,*,target_ap=None,label_ids=reso
     out=Path(out);out.mkdir(parents=True,exist_ok=True);target={};specs=[];pointers=[]
     q=lambda s:json.dumps(s,ensure_ascii=True)
     cbytes=lambda b:'{'+','.join(map(str,b))+'}'
+    unchanged=True
     for filename in filenames():
         raw=sources[filename];parsed=resources.decode(raw)
         if parsed['count'] not in [2860,2866] or parsed['group']!=5:raise ValueError('Unsupported resource source layout')
         changed,plan=resources.rename(raw,names,label_ids)
+        unchanged=unchanged and all(parsed['entries'].get(label_ids[slot-1],{}).get('text')==name for slot,name in names.items())
         if resources.inverse(changed,plan)!=raw:raise ValueError('Resource inverse differs')
         target[filename]=changed;pointers.append([parsed['entries'].get(rid,{}).get('pointer',65535) for rid in label_ids])
         specs.append({'file':filename,'before_bytes':len(raw),'after_bytes':len(changed),'before_sha256':'00'*32 if byte_only else firmware.sha(raw),'after_sha256':'00'*32 if byte_only else firmware.sha(changed),'inverse':plan})
+    if unchanged:
+        for spec in specs:
+            spec['after_bytes']=spec['before_bytes'];spec['after_sha256']=spec['before_sha256']
+            spec['inverse'].update(after_bytes=spec['before_bytes'],changes=[])
+        return dict(sources),{'unchanged':True,'AP':None if byte_only else firmware.sha(ap),
+            'target_AP':None if byte_only else firmware.sha(target_ap if target_ap is not None else ap),
+            'count':len(specs),'files':specs,'job_id':job_id,'byte_only':byte_only}
     lines=['static const struct Asset assets[]={'+','.join('{'+q(s['file'])+','+str(s['before_bytes'])+','+cbytes(bytes.fromhex(s['before_sha256']))+','+cbytes(bytes.fromhex(s['after_sha256']))+'}' for s in specs)+'};',
         'static const u32 asset_count='+str(len(specs))+';',
         'static const u32 after_sizes[]={'+','.join(str(s['after_bytes']) for s in specs)+'};',
@@ -60,3 +69,17 @@ def validate(raw,mode,build):
     if mode==2 and any(values[13:15]):raise ValueError('Name restoration reported a forward commit')
     if mode==3 and any(values[12:16]):raise ValueError('Name cleanup reported resource writes')
     return {'native_verified':True,'mode':mode,'files':count,'restored':values[15]}
+
+def prepare_cleanup(build,header,current,out,zig=None):
+    """Retain the original job's backup paths; target proved later resources."""
+    if not build.get('byte_only') or build.get('unchanged'):raise ValueError('Byte-based existing name transaction required')
+    if set(current)!={spec['file'] for spec in build['files']}:raise ValueError('Complete current name resources required')
+    out=Path(out);out.mkdir(parents=True,exist_ok=True)
+    text=Path(header).read_text(encoding='ascii')
+    sizes=','.join(str(len(current[spec['file']])) for spec in build['files'])
+    text,count=re.subn(r'static const u32 after_sizes\[\]=\{[^}]*\};','static const u32 after_sizes[]={'+sizes+'};',text)
+    if count!=1:raise ValueError('Original name manifest sizes unavailable')
+    target=out/'names.private.h';target.write_text(text,encoding='ascii',newline='\n')
+    result=json.loads(json.dumps(build));result.update(compile_worker(ROOT/'src/looks/native/names.c',target,out/'names.so',zig,fingerprints=False))
+    for spec in result['files']:spec['after_bytes']=len(current[spec['file']])
+    return result

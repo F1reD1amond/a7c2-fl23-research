@@ -13,7 +13,7 @@ TEMPS={'checkpoint.staged.so','checkpoint.program.request','checkpoint.program.r
 class CheckpointCamera(Camera):
     """Same body-bound service session, narrow checkpoint temporary namespace."""
     def _connect(self):
-        if self.expected.get('usb_serial_sha256'):return super()._connect()
+        if not self.expected or self.expected.get('usb_serial_sha256'):return super()._connect()
         # Original FL23 workspaces have the normal Sony body serial only.
         # Use that existing identity rather than rejecting legacy backup2.
         from .devicesession import modules

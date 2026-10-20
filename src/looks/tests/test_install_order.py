@@ -19,7 +19,8 @@ class InstallOrderTests(unittest.TestCase):
         index=Path(FIXTURES);cls.research=index.parents[2]
         folder=cls.research/'firmware/a7c2-2.01/components'
         cls.ap=(folder/'appFw.so').read_bytes();cls.cp=(folder/'cpapp-b.bin').read_bytes()
-        sys.path.insert(0,str(f.ROOT/'src/fl23'))
+        runtime=f.ROOT/('src/camera_runtime' if (f.ROOT/'src/camera_runtime').is_dir() else 'src/fl23')
+        sys.path.insert(0,str(runtime))
         import core,compat
         cls.core,cls.compat=core,compat
     def test_fl23_then_lut_and_lut_then_fl23_produce_same_programs(self):

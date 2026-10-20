@@ -1,5 +1,15 @@
 # Changelog
 
+## Desktop development preview — 2026-10-21
+
+- Added a six-page Windows/macOS desktop front end, native packaging and complete background-job error logs.
+- Integrated explicit two-stage Windows driver preparation; macOS uses libusb without Zadig.
+- Added same-body automatic initial-checkpoint selection alongside manual complete recovery and independent LUT slot restoration.
+- Connected FL23, A7Look import/compiler/LrC plugin installation, session-only Vertical Display and custom electronic shutter sound workflows.
+- Retained the unchanged-name no-op fix and restored the byte-window native installer interface needed by recovery.
+
+Development branch only. Packaged offline checks and physical camera acceptance are separate; this is not a new formal Release. [Desktop guide](desktop.md).
+
 [Home](../../README.md) · [简体中文](../zh-CN/changelog.md)
 
 ## v2.2-preview.1 — updated 2026-10-20

@@ -65,10 +65,13 @@ def structural_ap(ap):
 
 def structural(ap,cp):
     identity=structural_ap(ap)
+    from . import photoio
+    photo=photoio.inspect(cp)
     if not identity.get('first_install'):
         if len(cp)<six.TABLE_FILE+32+6*six.TABLE_BYTES or struct.unpack_from('<2I',cp,six.TABLE_FILE)!=(six.MAGIC,six.VERSION):
             raise ValueError('Custom table header/size differs')
-    return dict(identity,layout='full7-v4' if identity['kind']=='legacy-six' else 'standalone-v1')
+    return dict(identity,layout='full7-v4' if identity['kind']=='legacy-six' else 'standalone-v1',
+                native_photo=photo)
 
 def tables(cp):
     """Read native-grid payloads, without comparing source table digests."""
@@ -76,7 +79,39 @@ def tables(cp):
         raise ValueError('Custom table header/size differs')
     return [cp[six.TABLE_FILE+32+i*six.TABLE_BYTES:six.TABLE_FILE+32+(i+1)*six.TABLE_BYTES] for i in range(6)]
 
+
+def same_selected_programs(expected,actual,slot):
+    """Post-reload only: permit later data updates to the other five slots.
+
+    AP and every CP byte outside the explicit per-slot data remain exact.
+    This never relaxes pre-write checks or immediate installation readback.
+    """
+    from . import photoio,photobuild,photobasis
+    if actual['appFw.so']!=expected['appFw.so']:return False
+    before,current=expected['cpapp-b.bin'],actual['cpapp-b.bin']
+    if len(before)!=len(current):return False
+    try:
+        tables(before);tables(current)
+        a,b=photoio.inspect(before),photoio.inspect(current)
+    except (ValueError,struct.error):return False
+    if (a is None)!=(b is None):return False
+    result=bytearray(current)
+    if a is not None:
+        if (a['mask']^b['mask'])&(1<<(slot-1)):return False
+        at=photobuild.DATA_FILE+8;result[at:at+4]=before[at:at+4]
+    for other in range(1,7):
+        if other==slot:continue
+        for at,size in [(six.TABLE_FILE+8+(other-1)*4,4),
+                        (six.TABLE_FILE+32+(other-1)*six.TABLE_BYTES,six.TABLE_BYTES)]:
+            result[at:at+size]=before[at:at+size]
+        if a is not None:
+            at=photobuild.PARAMS_VA-photobuild.BASE+(other-1)*photobasis.STRIDE
+            result[at:at+photobasis.STRIDE]=before[at:at+photobasis.STRIDE]
+    return result==before
+
 def identify(ap,cp):
+    from . import photoio
+    if photoio.present(cp):return structural(ap,cp)
     a=identify_ap(ap);c=firmware.sha(cp);asset=runtime()
     if a['kind']=='legacy-six':
         if code_hash(cp)!=CODE_SHA:raise ValueError('Unsupported legacy CP code identity')
@@ -90,7 +125,7 @@ def identify(ap,cp):
     return dict(a,layout='full7-v4' if a['kind']=='legacy-six' else 'standalone-v1',AP=firmware.sha(ap),CP=c,
         physical_first_install_tested=False if a['kind']!='legacy-six' else None)
 
-def replace(ap,cp,replacements,*,hash_checks=True):
+def replace(ap,cp,replacements,*,hash_checks=True,native_photo=None,native_bank=None):
     identify_current=identify if hash_checks else structural
     identity=identify_current(ap,cp)
     if not replacements or any(type(s) is not int or s not in range(1,7) for s in replacements):raise ValueError('Select custom slots 1..6')
@@ -122,6 +157,12 @@ def replace(ap,cp,replacements,*,hash_checks=True):
                 elif at-last>16 or at-start>=4096:spans.append((start,last-start+1));start=at
                 last=at
         if start is not None:spans.append((start,last-start+1))
+    from . import photoio
+    stages={slot:(native_photo or {}).get(slot) for slot in replacements}
+    if photoio.present(cp) or any(value is not None for value in stages.values()):
+        result=photoio.update(bytes(result),stages,native_bank,allocation_proved=True)
+        from .checkpointworker import differences
+        spans=[(at,len(old)) for at,old,_ in differences(cp,result)]
     after={'appFw.so':ap_result,'cpapp-b.bin':bytes(result)};before={'appFw.so':ap,'cpapp-b.bin':cp}
     regions={'appFw.so':ap_spans,'cpapp-b.bin':spans}
     f=firmware.transition(before,after,regions)
@@ -158,9 +199,12 @@ def deactivate(ap,cp,slot,raw,*,hash_checks=True):
     six.decode(raw);result=bytearray(cp)
     at=six.TABLE_FILE+32+(slot-1)*six.TABLE_BYTES;check=six.TABLE_FILE+8+(slot-1)*4
     result[at:at+six.TABLE_BYTES]=raw;struct.pack_into('<I',result,check,six.fnv(raw))
+    from . import photoio
+    result=photoio.update(bytes(result),{slot:None})
     before={'appFw.so':ap,'cpapp-b.bin':cp};after={'appFw.so':after_ap,'cpapp-b.bin':bytes(result)}
+    from .checkpointworker import differences
     regions={'appFw.so':[(w['offset'],len(bytes.fromhex(w['hex']))) for w in spec['restore']],
-        'cpapp-b.bin':[(at,six.TABLE_BYTES),(check,4)]}
+        'cpapp-b.bin':[(offset,len(old)) for offset,old,_ in differences(cp,result)]}
     forward,reverse=firmware.transition(before,after,regions),firmware.transition(after,before,regions)
     identify_current(after_ap,after['cpapp-b.bin'])
     return forward,reverse,after

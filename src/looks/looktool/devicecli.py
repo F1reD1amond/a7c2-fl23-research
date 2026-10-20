@@ -24,12 +24,18 @@ def main(argv):
         write_json(CONFIG,{'schema':'a7c2-lut-user-config/1','calibration':str(args.calibration.resolve()),'backup_root':str(args.backup_root.resolve())})
         print('Saved local calibration and backup location; no camera connection.');return 0
     if action=='import':
-        parser.add_argument('source',type=Path);parser.add_argument('--name',required=True);parser.add_argument('--slot',type=int,default=1)
+        parser.add_argument('source',type=Path);parser.add_argument('--name');parser.add_argument('--slot',type=int,default=1)
         parser.add_argument('--calibration',type=Path);parser.add_argument('--backup-dir',type=Path);parser.add_argument('--work-dir',type=Path)
         parser.add_argument('--write',action='store_true');parser.add_argument('--battery-percent',type=int);parser.add_argument('--zig')
         parser.add_argument('--input-space',help='For CUBE: sony-st-srgb, or a named input space with --bridge')
         parser.add_argument('--bridge',type=Path,help='CUBE mapping Sony ST sRGB into the reference CUBE input space')
         args=parser.parse_args(argv[1:]);config=settings()
+        compiled=args.source.suffix.lower()=='.a7look'
+        if compiled:
+            from . import lookfile
+            document=lookfile.read(args.source);lookfile.writer_document(document)
+            args.name=args.name or document['name']
+        elif not args.name:raise ValueError('DCP/CUBE imports require --name')
         model=args.calibration or config.get('calibration') or DEFAULT_MODEL
         identifier=datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid.uuid4().hex[:8]
         folder=args.work_dir or Path.home()/'.a7c2-lut/jobs'/identifier
@@ -37,7 +43,8 @@ def main(argv):
         job=Job(folder,zig=args.zig)
         print('Import:',args.source,'→ custom',args.slot,'as',args.name,flush=True)
         print('Job:',folder,'\nBackup:',backup,flush=True)
-        if Path(model).resolve()==DEFAULT_MODEL.resolve():print('Color mapping: shared one-scene approximation. Use --calibration for your own measured bridge; this does not reproduce the complete Adobe renderer.',flush=True)
+        if compiled:print('Color mapping: pre-fitted creative-look file; no conversion or calibration fit will run.',flush=True)
+        elif Path(model).resolve()==DEFAULT_MODEL.resolve():print('Color mapping: shared one-scene approximation. Use --calibration for your own measured bridge; this does not reproduce the complete Adobe renderer.',flush=True)
         state=job.create(args.source,args.name,args.slot,model,backup,write=args.write,battery=args.battery_percent,input_space=args.input_space,bridge=args.bridge)
     elif action=='restore-slot':
         parser.add_argument('job',type=Path,help='Completed original slot import to undo')

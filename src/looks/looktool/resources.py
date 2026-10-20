@@ -60,6 +60,33 @@ def inverse(raw,plan):
         if change['index_offset']<16+plan.get('before_count',2866)*2:struct.pack_into('<H',result,change['index_offset'],change['before_pointer'])
     decode(bytes(result));return bytes(result)
 
+def later_unselected_names(expected,actual,slot,label_ids=LABEL_IDS):
+    """Permit only appended records/index updates belonging to other slots."""
+    if actual==expected:return True
+    if slot not in range(1,7) or len(actual)<=len(expected):return False
+    try:
+        old,new=decode(expected),decode(actual)
+        if old['count']!=2866 or new['count']!=2866 or old['group']!=5 or new['group']!=5:return False
+        allowed=set(label_ids)-{label_ids[slot-1]};records={};at=len(expected)
+        while at<len(actual):
+            start=at;tag=struct.unpack_from('<I',actual,at)[0];rid=0x02000000|(tag&0xffffff)
+            if tag!=(0x1e000000|(rid&0xffffff)) or rid not in allowed:return False
+            end=actual.find(b'\0',at+4)
+            if end<0 or not 1<=end-at-4<=63:return False
+            text=actual[at+4:end].decode('utf-8')
+            if any(ord(c)<32 for c in text):return False
+            at=(end+4)&~3
+            if at>len(actual) or any(actual[end+1:at]):return False
+            records[(start-new['data_base'])//4]=rid
+        prefix=bytearray(actual[:len(expected)])
+        for rid in allowed:
+            before,after=old['entries'][rid],new['entries'][rid]
+            if before['pointer']!=after['pointer']:
+                if records.get(after['pointer'])!=rid:return False
+                at=before['index_offset'];prefix[at:at+2]=expected[at:at+2]
+        return bytes(prefix)==expected
+    except (ValueError,KeyError,UnicodeError,struct.error):return False
+
 def before_custom(raw):
     """Remove this project's appended titles without an earlier LUT job.
 

@@ -1,0 +1,59 @@
+"""Offline construction/decoding of the two fixed sound-file transaction.
+
+No USB command is exposed here. Physical boot/codec validation and an explicitly
+ordered files-before-hook / hook-before-files-removal controller are separate.
+"""
+import argparse
+import json
+from pathlib import Path
+import struct
+
+import candidate
+
+
+def build(audio, csv, output, zig=None):
+    from looktool import nativebuild
+    if not 0 < len(audio) <= 51200 or len(audio) % 64 or not 0 < len(csv) < 4096:
+        raise ValueError('Sound resource size exceeds its native limits')
+    root = Path(output)
+    root.mkdir(parents=True, exist_ok=False)
+    lines = []
+    for index, data in enumerate((audio, csv)):
+        lines.append('static const u8 sound_' + str(index) + '[]={' + ','.join(map(str, data)) + '};')
+    lines += ['static const u8 *sound_data[]={sound_0,sound_1};',
+              'static const u32 sound_sizes[]={' + str(len(audio)) + ',' + str(len(csv)) + '};']
+    header = root / 'files.private.h'
+    header.write_text('\n'.join(lines) + '\n', encoding='ascii')
+    destination = root / 'files.so'
+    nativebuild.compile_worker(Path(__file__).with_name('sound_files.c'), header,
+                               destination, zig, fingerprints=False)
+    return destination
+
+
+def parse(raw):
+    if len(raw) != 88:
+        raise ValueError('Incomplete native sound-file transaction report')
+    magic, version, mode, phase, created, *values = struct.unpack('<8s4I8q', raw)
+    if (magic, version) != (b'A7SFILE1', 1) or mode not in (0, 1, 2):
+        raise ValueError('Unexpected sound-file report header')
+    result = dict(zip(('status', 'rollback', 'remount', 'readonly', 'cleanup',
+                       'euid', 'pid', 'model_status'), values))
+    result.update(mode=mode, phase=phase, created_mask=created)
+    result['native_success'] = phase == 9 and not any(result[name] for name in
+        ('status', 'rollback', 'remount', 'readonly', 'cleanup', 'euid', 'model_status'))
+    result['firmware_or_settings_written'] = False
+    return result
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--native-bin', type=Path, required=True)
+    p.add_argument('--csv', type=Path, required=True)
+    p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--zig')
+    a = p.parse_args(argv)
+    print(build(a.native_bin.read_bytes(), a.csv.read_bytes(), a.output, a.zig))
+
+
+if __name__ == '__main__':
+    main()

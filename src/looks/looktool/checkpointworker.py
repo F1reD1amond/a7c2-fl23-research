@@ -19,15 +19,22 @@ def differences(before,after):
             end=at
         yield base+start,a[start:end+1],b[start:end+1]
 
-def build_programs(current,target,out,zig=None,*,checkpoint_namespace=True):
+def build_programs(current,target,out,zig=None,*,checkpoint_namespace=True,
+                   payload_limit=18000,require_single=False,window_priority=None):
     out=Path(out);out.mkdir(parents=True,exist_ok=True)
-    groups=[];group=[];size=0
+    groups=[];group=[];size=0;all_spans=[]
+    if not 1<=payload_limit<=48000:raise ValueError('Native payload limit must be 1..48000')
     # CP first, as in the existing project installer. No firmware hashes.
     for chip,name in [(1,'cpapp-b.bin'),(0,'appFw.so')]:
         for at,old,new in differences(current[name],target[name]):
-            if group and size+2*len(old)>18000:
-                groups.append(group);group=[];size=0
-            group.append((chip,at,old,new));size+=2*len(old)
+            all_spans.append((chip,at,old,new))
+    if window_priority is not None:all_spans.sort(key=window_priority)
+    if require_single and sum(2*len(old) for _,_,old,_ in all_spans)>payload_limit:
+        raise ValueError('Experimental CP edits must fit a single native execution')
+    for chip,at,old,new in all_spans:
+        if group and size+2*len(old)>payload_limit:
+            groups.append(group);group=[];size=0
+        group.append((chip,at,old,new));size+=2*len(old)
     if group:groups.append(group)
     result=[]
     for number,spans in enumerate(groups):

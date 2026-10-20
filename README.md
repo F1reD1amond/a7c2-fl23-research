@@ -1,5 +1,7 @@
 # A7C II Tools
 
+**Desktop development branch:** [Six-feature Windows/macOS GUI](docs/en/desktop.md). Physical integration testing is pending; existing releases below remain separate.
+
 **Community:** [Telegram — recommended](https://t.me/sonyfwlab) · [Discord](https://discord.gg/SwPdfSd9c). We recommend joining the Telegram group.
 
 **Author:** Xiaohongshu: [QAQLeonard（读研版）](https://www.xiaohongshu.com/user/profile/660501f7000000000600d03c) · Douyin: **LeonardZ** (ID: `90860261487`).

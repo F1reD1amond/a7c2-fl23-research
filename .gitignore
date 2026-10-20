@@ -3,6 +3,9 @@ __pycache__/
 .venv/
 .venv-macos/
 .venv-lut/
+.venv-desktop/
+build/
+desktop-assets/
 private/
 *.private.*
 *.ARW

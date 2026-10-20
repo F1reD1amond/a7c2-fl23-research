@@ -10,7 +10,13 @@ def zig_command(explicit=None):
     if explicit:return [str(Path(explicit).resolve())]
     found=shutil.which('zig')
     if found:return [found]
-    if importlib.util.find_spec('ziglang') is not None:
+    spec=importlib.util.find_spec('ziglang')
+    if spec is not None:
+        # Local/portable runtimes may add this package to sys.path only.
+        # Its executable works directly; a fresh `python -m` loses that path.
+        for folder in spec.submodule_search_locations or []:
+            binary=Path(folder)/('zig.exe' if os.name=='nt' else 'zig')
+            if binary.is_file():return [str(binary.resolve())]
         import sys
         return [sys.executable,'-m','ziglang']
     raise ValueError('Device preparation needs Zig: install requirements-device.txt or supply --zig')
@@ -41,13 +47,13 @@ def compile_worker(source,header,destination,zig=None,*,fingerprints=True):
     if not fingerprints:return {'bytes':len(blob)}
     return {'sha256':firmware.sha(blob),'bytes':len(blob),'native_source_sha256':firmware.sha(Path(source).read_bytes()),'manifest_sha256':firmware.sha(Path(header).read_bytes())}
 
-def program_header(before,forward,reverse,*,byte_only=False):
+def program_header(before,forward,reverse,*,byte_only=False,window_priority=None):
     after=firmware.apply(before,forward,hash_checks=not byte_only)
     if firmware.apply(after,reverse,hash_checks=not byte_only)!=before:raise ValueError('Complete program inverse required')
     rows=[];lines=[];windows=[]
     for chip,name in enumerate(NAMES):
         windows.extend(dict(w,chip=chip) for w in forward['files'][name]['windows'])
-    windows.sort(key=lambda w:(0 if w['chip']==1 else 1,0 if w['bytes']>1024 else 1,int(w['offset'],16)))
+    windows.sort(key=window_priority or (lambda w:(0 if w['chip']==1 else 1,0 if w['bytes']>1024 else 1,int(w['offset'],16))))
     cbytes=lambda b:'{'+','.join(map(str,b))+'}'
     for i,w in enumerate(windows):
         old,new=bytes.fromhex(w['before_hex']),bytes.fromhex(w['after_hex'])
@@ -67,8 +73,8 @@ def program_header(before,forward,reverse,*,byte_only=False):
     if not byte_only:contract.update(before={n:firmware.sha(before[n]) for n in NAMES},after={n:firmware.sha(after[n]) for n in NAMES})
     return '\n'.join(lines)+'\n',contract
 
-def build_program(before,forward,reverse,out,zig=None,*,byte_only=False):
-    header,contract=program_header(before,forward,reverse,byte_only=byte_only)
+def build_program(before,forward,reverse,out,zig=None,*,byte_only=False,window_priority=None):
+    header,contract=program_header(before,forward,reverse,byte_only=byte_only,window_priority=window_priority)
     if header is None:return {'unchanged':True,'contract':None}
     out=Path(out);out.mkdir(parents=True,exist_ok=True);h=out/'manifest.private.h';h.write_text(header,encoding='ascii',newline='\n')
     source=ROOT/'src/fl23/native/installer.c';destination=out/'program.so'

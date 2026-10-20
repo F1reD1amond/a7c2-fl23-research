@@ -22,6 +22,8 @@ class Job:
         self.root=Path(folder).resolve();self.factory=factory;self.zig=zig;self.state_path=self.root/'job.private.json'
     def _hashes(self):return getattr(self,'hash_checks',True) and not self.state.get('byte_checks',False)
     def save(self,phase,**values):
+        if phase in ('AWAITING_RELOAD','RESTORED_AWAITING_RELOAD') and self.state.get('phase')!=phase:
+            values.setdefault('raw_profile_effective_since',datetime.now().isoformat(timespec='microseconds'))
         self.state.update(values);self.state['phase']=phase;write_json(self.state_path,self.state)
         print('LUT:',phase,flush=True)
     def record(self,phase,**values):
@@ -39,6 +41,7 @@ class Job:
         if self.state.get('backup_format')!=2:return (self.root/'source'/name).read_bytes()
         return self._stores()[0].read(self.state['backup_objects'][name])
     def resource_target(self,name):
+        if self.state['name_build'].get('unchanged'):return self.source('resources/'+name)
         raw,_=resources.rename(self.source('resources/'+name),{self.state['slot']:self.state['name']},self.state['layout']['label_ids'])
         spec=next(s for s in self.state['name_build']['files'] if s['file']==name)
         if len(raw)!=spec['after_bytes'] or (self._hashes() and firmware.sha(raw)!=spec['after_sha256']):raise ValueError('Reconstructed name target differs')
@@ -99,7 +102,13 @@ class Job:
             blob=(self.root/'worker/program/program.so').read_bytes();stage='lut-program-staged.so';request='a7c2.install.request';result='a7c2.install.result';magic=b'A7INS001'
             decode=lambda raw:worker.validate_worker_report(raw,mode,build['contract'])
         elif kind=='names':
-            build=self.state['name_build'];blob=(self.root/'worker/names/names.so').read_bytes();stage='lut-names-staged.so';request='a7c2.names.request';result='a7c2.names.result';magic=b'A7NAM001'
+            build=self.state['name_build']
+            if build.get('unchanged'):
+                self.record('name_resources_already_match_no_native_operation',mode=mode)
+                return {'unchanged':True}
+            cleanup=mode==3 and 'name_cleanup_build' in self.state
+            if cleanup:build=self.state['name_cleanup_build']
+            blob=(self.root/('worker/names-cleanup/names.so' if cleanup else 'worker/names/names.so')).read_bytes();stage='lut-names-staged.so';request='a7c2.names.request';result='a7c2.names.result';magic=b'A7NAM001'
             decode=lambda raw:nameworker.validate(raw,mode,build)
         elif kind=='wbi':
             camera.core.assets();blob=(nativebuild.ROOT/'src/fl23/assets/wbi.so').read_bytes();stage='lut-program-staged.so';request='a7c2.wbi.request';result='a7c2.wbi.result';magic=b'A7WBI001'
@@ -113,9 +122,10 @@ class Job:
         else:raise ValueError('Unknown native operation')
         if kind in ['program','names'] and self._hashes() and firmware.sha(blob)!=build['sha256']:raise ValueError('Compiled worker changed')
         return invoke(camera,blob,stage=stage,request=request,result=result,contents=struct.pack('<8sII',magic,mode,0) if request else None,mode=mode,decode=decode,record=self.record,save_raw=lambda raw:self.raw(kind+'-'+str(mode)+'.bin',raw),extras=('a7c2.probe.result',) if kind=='runtime' else ())
-    def _read_programs(self,camera,expected):
+    def _read_programs(self,camera,expected,*,allow_later_slots=False):
         actual={}
         self._later_fl23=False
+        self._later_slot_updates=False
         camera.byte_checks=not self._hashes()
         if not self._hashes():
             wanted={n:self.source(n) for n in PROGRAM_PATHS}
@@ -135,21 +145,39 @@ class Job:
                 self._later_fl23=actual==with_fl23
                 differs=not self._later_fl23
             if differs:raise ValueError('Complete host readback differs from the job and its FL23-compatible target')
-        elif actual!=wanted:raise ValueError('Complete host readback differs from planned bytes')
+        elif actual!=wanted:
+            if expected==self.state['target_hashes']:
+                from .devicesession import modules
+                modules();import compat
+                _,_,with_fl23,_,_=compat.plan(wanted['appFw.so'],wanted['cpapp-b.bin'],transitions=False)
+                self._later_fl23=actual==with_fl23
+                if allow_later_slots and not self._later_fl23:
+                    self._later_slot_updates=device_layout.same_selected_programs(wanted,actual,self.state['slot'])
+                    if not self._later_slot_updates and device_layout.same_selected_programs(with_fl23,actual,self.state['slot']):
+                        self._later_fl23=True;self._later_slot_updates=True
+            if not self._later_fl23 and not self._later_slot_updates:raise ValueError('Complete host readback differs from planned bytes')
         self.record('complete_host_program_readback_verified',hashes={n:firmware.sha(b) for n,b in actual.items()} if self._hashes() else None,
-            comparison='file-digest' if self._hashes() else 'complete-bytes',full_readback_files_saved=False)
+            comparison='file-digest' if self._hashes() else 'complete-bytes-with-later-unselected-slot-data' if self._later_slot_updates else 'complete-bytes',full_readback_files_saved=False)
         if hasattr(camera,'pin_programs'):camera.pin_programs(actual['appFw.so'],actual['cpapp-b.bin'])
         return actual
-    def _resource_readback(self,camera,after):
+    def _resource_readback(self,camera,after,*,allow_later_slots=False):
+        actual={};self._later_name_updates=False
         for spec in self.state['name_build']['files']:
             raw=camera.read('/usr/share/app/'+spec['file']);which='after' if after else 'before'
             desired=None if self._hashes() else (self.resource_target(spec['file']) if after else self.source('resources/'+spec['file']))
-            if len(raw)!=spec[which+'_bytes'] or ((firmware.sha(raw)!=spec[which+'_sha256']) if self._hashes() else (raw!=desired)):raise ValueError('Complete name readback differs: '+spec['file'])
-        self.record('complete_name_resources_readback_verified',after=after,count=68)
+            if len(raw)!=spec[which+'_bytes'] or ((firmware.sha(raw)!=spec[which+'_sha256']) if self._hashes() else (raw!=desired)):
+                if not (allow_later_slots and after and not self._hashes() and resources.later_unselected_names(desired,raw,self.state['slot'],self.state['layout']['label_ids'])):
+                    raise ValueError('Complete name readback differs: '+spec['file'])
+                self._later_name_updates=True
+            actual[spec['file']]=raw
+        self.record('complete_name_resources_readback_verified',after=after,count=68,later_unselected_name_records=self._later_name_updates)
+        return actual
     def _capture(self,camera,second):
         print('Reading full programs, saved/live settings and 68 name resources; keep USB connected.',flush=True)
         self.state['identity']=camera.identity
         values={name:camera.read(path) for name,path in PROGRAM_PATHS.items()}
+        from . import photoio
+        if photoio.present(values['cpapp-b.bin']):self.state['byte_checks']=True
         camera.byte_checks=not self._hashes()
         self.state['layout']=(camera.pin_programs(values['appFw.so'],values['cpapp-b.bin']) if hasattr(camera,'pin_programs')
             else (device_layout.identify if self._hashes() else device_layout.structural)(values['appFw.so'],values['cpapp-b.bin']))
@@ -190,7 +218,21 @@ class Job:
         self.state['identity']=camera.identity;self.save('BACKUPS_VERIFIED')
         return values
     def _fit(self,source,name,slot,model,attribution):
-        source=Path(source).resolve();model=calibration.validate(model,source.suffix.lower()=='.dcp')
+        source=Path(source).resolve()
+        if source.suffix.lower()=='.a7look':
+            from . import lookfile
+            compiled=lookfile.read(source);raw=lookfile.writer_document(compiled)
+            input_dir=self.root/'input';input_dir.mkdir()
+            (input_dir/'reference.a7look').write_bytes(source.read_bytes())
+            candidate=self.root/'candidate';candidate.mkdir()
+            (candidate/f'slot{slot}.bin').write_bytes(raw)
+            write_json(candidate/'fit.private.json',{'compiled_look':lookfile.inventory(compiled),'refitted':False})
+            self.record('compiled_look_loaded_without_refitting',slot=slot,method=compiled.get('method'))
+            self.state['raw_profile_binding']=compiled.get('raw_profile')
+            self.state['native_photo_binding']=compiled.get('native_photo')
+            if compiled.get('native_photo') is not None:self.state['byte_checks']=True
+            return raw
+        model=calibration.validate(model,source.suffix.lower()=='.dcp')
         input_dir=self.root/'input';input_dir.mkdir();stored=input_dir/('reference'+source.suffix.lower());stored.write_bytes(source.read_bytes())
         write_json(input_dir/'calibration.json',model)
         entry={'slot':slot,'name':name,'base':'ST','source':{'type':'dcp' if source.suffix.lower()=='.dcp' else 'cube','path':stored.name,'attribution':attribution}}
@@ -200,6 +242,9 @@ class Job:
                 bridge=input_dir/'bridge.cube';bridge.write_bytes(Path(contract['bridge']).read_bytes())
                 entry['source']['bridge']={'path':bridge.name,'input_space':'sony-st-srgb','output_space':contract['input_space'],'evidence':'Explicit user-supplied input-space bridge; independent color validation still required'}
         if entry['source']['type']=='dcp':entry['source']['exposure_stops']=model.get('reference_exposure_stops',0)
+        if entry['source']['type']=='dcp':
+            from .rawidentity import descriptor
+            self.state['raw_profile_binding']=descriptor(source,name)
         render,provenance=project.reference(entry,input_dir,model)
         raw,report=native.fit_reference(render,model['response_matrix'],seed=201+slot)
         if not report['convergence']['converged']:raise ValueError('Table fit did not converge')
@@ -207,17 +252,42 @@ class Job:
         write_json(candidate/'fit.private.json',{'source':provenance,'calibration_sha256':firmware.sha((input_dir/'calibration.json').read_bytes()),'fit':report})
         self.record('reference_converted',slot=slot,table_sha256=firmware.sha(raw),fit_error=report['synthetic_holdout'])
         return raw
+    def _native_bank(self,program,settings,camera):
+        from . import photoformat
+        records=camera.records(settings)
+        return photoformat.extract_bank(program,records[1][0x02a40001].data,
+            records[1][0x02a4000d].data,gamma_table_va=0x1209480,
+            regular_row=0,still_row=10,color_parameter=0)[0]
     def _prepare(self,camera,name,slot,second,raw):
         values=self._capture(camera,second)
         ap,cp=values['appFw.so'],values['cpapp-b.bin'];self.state['layout']=(device_layout.identify if self._hashes() else device_layout.structural)(ap,cp)
         for span in self.state['source_runtime']['spans']:
             expected=ap[span['offset']:span['offset']+span['length']].hex()
             if span['memory']!=expected or span['disk']!=expected:raise ValueError('Source AP RAM/disk differ; finish the previous reload before importing')
-        f,r,after=(device_layout.deactivate(ap,cp,slot,raw,hash_checks=self._hashes()) if self.state.get('deactivate_slot') else device_layout.replace(ap,cp,{slot:raw},hash_checks=self._hashes()))
+        from . import photoio
+        photo_active=photoio.present(cp) or self.state.get('native_photo_binding') is not None
+        baseline_program=cp
+        if photo_active and self.state['layout'].get('first_install'):
+            # First build the existing reviewed table runtime: stock does not
+            # yet contain its relocated fifty-row gamma table.
+            baseline_program=device_layout.replace(ap,cp,{slot:raw},hash_checks=self._hashes())[2]['cpapp-b.bin']
+        bank=self._native_bank(baseline_program,values['settings-ram.bin'],camera) if photo_active else None
+        self.state['native_photo_before']=photoio.slot_delta(cp,slot,bank) if photoio.present(cp) else None
+        if self.state['layout']['mask']&(1<<(slot-1)):
+            from . import rawidentity
+            try:self.state['raw_profile_before']=rawidentity.previous(slot,photoio.signature(cp,slot))
+            except (OSError,ValueError,KeyError) as error:
+                self.state['raw_profile_before']=None;self.record('prior_source_DCP_unavailable',error=str(error))
+        f,r,after=(device_layout.deactivate(ap,cp,slot,raw,hash_checks=self._hashes()) if self.state.get('deactivate_slot') else device_layout.replace(ap,cp,{slot:raw},hash_checks=self._hashes(),
+            native_photo={slot:self.state.get('native_photo_binding')},native_bank=bank))
+        if photo_active:
+            from . import photobuild
+            self.state['native_photo_runtime_revision']=photobuild.REVISION
         write_json(self.root/'transition/forward.private.json',f);write_json(self.root/'transition/reverse.private.json',r)
         self.state['source_hashes']={n:firmware.sha(values[n]) for n in PROGRAM_PATHS};self.state['target_hashes']={n:firmware.sha(after[n]) for n in PROGRAM_PATHS}
         self.state['settings_plan']=self._planned_settings(ap,camera.records(values['settings-ram.bin']),camera.records(values['settings-saved.bin']))
-        self.state['program_build']=nativebuild.build_program({n:values[n] for n in PROGRAM_PATHS},f,r,self.root/'worker/program',self.zig,byte_only=not self._hashes())
+        self.state['program_build']=nativebuild.build_program({n:values[n] for n in PROGRAM_PATHS},f,r,self.root/'worker/program',self.zig,byte_only=not self._hashes(),
+            **({'window_priority':photoio.window_priority} if photo_active else {}))
         renamed,self.state['name_build']=nameworker.prepare({n:values['resources/'+n] for n in nameworker.filenames()},{slot:name},ap,self.state['job_id'],self.root/'worker/names',self.zig,target_ap=after['appFw.so'],label_ids=self.state['layout']['label_ids'],byte_only=not self._hashes())
         del renamed
         # Targets are reproducible from the verified source and selected name;
@@ -225,6 +295,7 @@ class Job:
         checkpoint={'schema':'a7c2-lut-slot-backup/1','slot':slot,'job_id':self.state['job_id'],
             'body':self.state['backup_body'],'source_manifest_sha256':self.state['backup_manifest_sha256'],
             'settings_before':self.state['settings_plan'],'before_table_hex':(six.read_tables(cp) if self._hashes() else device_layout.tables(cp))[slot-1].hex() if self.state['layout']['mask']&(1<<(slot-1)) else None,
+            'native_photo_before':self.state['native_photo_before'],
             'name_records_before':{n:resources.decode(values['resources/'+n])['entries'].get(self.state['layout']['label_ids'][slot-1],{}).get('text') for n in nameworker.filenames()}}
         filename=f'slot-{slot}-before.private.json'
         for base,key in zip([self.root,second],['backup_manifest_sha256','backup_mirror_manifest_sha256']):
@@ -283,6 +354,9 @@ class Job:
         self.record('reload_prepared');self.save('AWAITING_RELOAD')
     def _install(self,camera):
         if self.state['phase']!='PREFLIGHT_VERIFIED':raise ValueError('New preflight is required; unknown operations cannot be repeated')
+        if self.state.get('native_photo_runtime_revision'):
+            from .photobuild import REVISION
+            if self.state['native_photo_runtime_revision']!=REVISION:raise ValueError('Native-photo runtime changed since prepare; prepare a new job')
         self.state['active_operation']='install'
         self._validate_settings_plan(camera)
         self._read_programs(camera,self.state['source_hashes'])
@@ -297,13 +371,19 @@ class Job:
     @serialized
     def create(self,source,name,slot,calibration_path,backup_copy,*,write=False,battery=None,attribution='User-selected reference; original rights apply',input_space=None,bridge=None):
         source=Path(source).resolve()
-        if source.suffix.lower() not in ['.dcp','.cube'] or not source.is_file():raise ValueError('Select an existing DCP or CUBE file')
+        if source.suffix.lower() not in ['.dcp','.cube','.a7look'] or not source.is_file():raise ValueError('Select an existing DCP, CUBE or compiled A7LOOK file')
         if not 1<=len(name.encode('utf-8'))<=63 or any(ord(c)<32 for c in name):raise ValueError('Name needs 1..63 UTF-8 bytes without controls')
         if type(slot) is not int or slot not in range(1,7):raise ValueError('Choose custom slot 1..6')
-        model=json.loads(Path(calibration_path).read_text(encoding='utf-8-sig'));calibration.validate(model,Path(source).suffix.lower()=='.dcp')
+        compiled=source.suffix.lower()=='.a7look'
+        if compiled:
+            from . import lookfile
+            lookfile.writer_document(lookfile.read(source))
+            model=None
+        else:
+            model=json.loads(Path(calibration_path).read_text(encoding='utf-8-sig'));calibration.validate(model,Path(source).suffix.lower()=='.dcp')
         # Reject an invalid reference before USB, including prepare-only jobs.
         from .references import DcpLook,Cube
-        (DcpLook if source.suffix.lower()=='.dcp' else Cube)(source)
+        if not compiled:(DcpLook if source.suffix.lower()=='.dcp' else Cube)(source)
         if source.suffix.lower()=='.cube':
             if not input_space:raise ValueError('CUBE requires --input-space sony-st-srgb, or a named input space plus --bridge. Log LUT input is not Sony ST.')
             if (input_space=='sony-st-srgb')==bool(bridge):raise ValueError('Direct ST CUBE uses no bridge; other CUBE input spaces require --bridge')
@@ -354,6 +434,7 @@ class Job:
             'name':name,'slot':slot,'journal':[],'backup_files':{},'camera_writes_requested':True,
             'restore_recipe':{str(f['key']):f['before_saved'] for f in original.state['settings_plan']},
             'deactivate_slot':deactivate,'byte_checks':True,
+            'raw_profile_binding':original.state.get('raw_profile_before'),
             'slot_restore_of':original.state['job_id'],'conversion_table_sha256':firmware.sha(raw)}
         candidate=self.root/'candidate';candidate.mkdir();(candidate/f'slot{slot}.bin').write_bytes(raw)
         write_json(candidate/'restore-recipe.private.json',self.state['restore_recipe'])
@@ -369,6 +450,14 @@ class Job:
                 layout=device_layout.structural(current['appFw.so'],current['cpapp-b.bin'])
                 if (not layout['mask']&(1<<(slot-1)) or device_layout.tables(current['cpapp-b.bin'])[slot-1]!=prior_table):
                     raise ValueError('This selected slot was changed later; preserve it and select its latest job')
+                from . import photoio
+                previous={n:original.source(n) for n in PROGRAM_PATHS}
+                accepted=firmware.apply(previous,json.loads((original.root/'transition/forward.private.json').read_text(encoding='utf-8')),hash_checks=False)
+                if photoio.slot_bytes(current['cpapp-b.bin'],slot)!=photoio.slot_bytes(accepted['cpapp-b.bin'],slot):
+                    raise ValueError('This selected slot native stages were changed later; select its latest job')
+                if photoio.present(cp):
+                    old_bank=self._native_bank(cp,original.source('settings-ram.bin'),camera)
+                    self.state['native_photo_binding']=photoio.slot_delta(cp,slot,old_bank)
                 for n in nameworker.filenames():
                     title=resources.decode(camera.read('/usr/share/app/'+n))['entries'][layout['label_ids'][slot-1]]['text']
                     if title!=original.state['name']:raise ValueError('Selected slot title was changed later')
@@ -402,12 +491,12 @@ class Job:
             raise
     def _verify(self,restore,accept_photos):
         with self.factory(self.state['identity']) as camera:
-            programs=self._read_programs(camera,self.state['source_hashes'] if restore else self.state['target_hashes'])
+            programs=self._read_programs(camera,self.state['source_hashes'] if restore else self.state['target_hashes'],allow_later_slots=not restore)
             runtime=self._invoke(camera,'runtime',0);boot=runtime['boot_id'].encode('ascii')
             self._verify_runtime_ok=True
             same_boot=(firmware.sha(boot)==self.state['reload_before_boot_id_sha256']) if self._hashes() else (runtime['boot_id']==self.state['reload_before_boot_id'])
             if not boot.strip() or same_boot:raise ValueError('New boot not observed; do not repeat installation')
-            self._resource_readback(camera,not restore)
+            current_names=self._resource_readback(camera,not restore,allow_later_slots=not restore)
             for span in runtime['spans']:
                 expected=programs['appFw.so'][span['offset']:span['offset']+span['length']].hex()
                 if span['memory']!=expected or span['disk']!=expected:raise ValueError('Loaded AP spans do not match expected source')
@@ -427,7 +516,11 @@ class Job:
             if accept_photos and not restore and self.state['phase']!='COMPLETE':
                 self.record('physical_acceptance_reported_by_user')
                 self._verify_runtime_ok=False
-                if self._later_fl23:
+                if self._later_name_updates:
+                    self.state['name_cleanup_build']=nameworker.prepare_cleanup(self.state['name_build'],
+                        self.root/'worker/names/names.private.h',current_names,self.root/'worker/names-cleanup',self.zig)
+                    self.artifacts();self.record('name_cleanup_retargeted_after_proved_other_slot_records')
+                elif self._later_fl23:
                     # FL23 leaves resources intact; update only the cleanup
                     # worker's AP target before removing this job's old links.
                     _,self.state['name_build']=nameworker.prepare(
@@ -436,9 +529,16 @@ class Job:
                         self.root/'worker/names',self.zig,target_ap=programs['appFw.so'],
                         label_ids=self.state['layout']['label_ids'],byte_only=not self._hashes())
                     self.artifacts();self.record('name_cleanup_retargeted_after_native_fl23')
-                self._invoke(camera,'names',3);self._resource_readback(camera,True)
+                self._invoke(camera,'names',3);self._resource_readback(camera,True,allow_later_slots=True)
                 self._verify_runtime_ok=True
         self.save(('RESTORED' if restore else 'COMPLETE') if accept_photos else ('RESTORED_AWAITING_RELOAD' if restore else 'RELOAD_VERIFIED'),user_photos_and_preview_confirmed=bool(accept_photos))
+        if accept_photos:
+            from .rawidentity import after_verified
+            from . import photoio
+            document={'name':self.state['name'],'raw_profile':self.state.get('raw_profile_before' if restore else 'raw_profile_binding')}
+            if document['raw_profile'] is not None:document['camera_signature']=photoio.signature(programs['cpapp-b.bin'],self.state['slot'])
+            after_verified(self.state,self.save,self.state['job_id']+('-restore' if restore else ''),
+                [document],[self.state['slot']])
         return self.state
     @serialized
     def restore(self,battery):
@@ -491,7 +591,9 @@ class Job:
         result=intent['result'];kind='program' if 'install.result' in result else 'names' if 'names.result' in result else 'wbi' if 'wbi.result' in result else 'runtime' if 'runtime.result' in result else None
         if kind is None:raise ValueError('Inspect unsupported pending native operation without executing')
         mode=intent['mode'];build=self.state.get('program_build' if kind=='program' else 'name_build',{})
+        if kind=='names' and mode==3:build=self.state.get('name_cleanup_build',build)
         blob_path=self.root/('worker/program/program.so' if kind=='program' else 'worker/names/names.so') if kind in ['program','names'] else nativebuild.ROOT/('src/fl23/assets/'+kind+'.so')
+        if kind=='names' and mode==3 and 'name_cleanup_build' in self.state:blob_path=self.root/'worker/names-cleanup/names.so'
         blob=blob_path.read_bytes()
         if self._hashes() and firmware.sha(blob)!=intent['worker_sha256']:raise ValueError('Pending worker differs; preserve original evidence')
         with self.factory(self.state['identity']) as camera:
@@ -520,7 +622,7 @@ class Job:
                 # Names preflight occurs before a new program install.
                 if kind=='names' and mode==0:before=True
                 self._read_programs(camera,self.state['source_hashes'] if before else self.state['target_hashes'])
-            if kind=='names' and not recovered_failure:self._resource_readback(camera,mode!=2 and mode!=0)
+            if kind=='names' and not recovered_failure:self._resource_readback(camera,mode!=2 and mode!=0,allow_later_slots=mode==3)
             expected={intent['stage']:blob,'libJit.so':blob,result:raw}
             if kind=='runtime':
                 extra=camera.temp_read('a7c2.probe.result');camera.core.parse_native('probe',extra);expected['a7c2.probe.result']=extra
