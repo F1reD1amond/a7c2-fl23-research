@@ -11,7 +11,7 @@ from desktopapp import allinone
 class AllInOneTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         env = patch.dict(os.environ, {'A7C2_DESKTOP_DATA': str(self.root / 'app')})
         env.start(); self.addCleanup(env.stop)
         self.args = dict(workspace=str(self.root / 'setup'), firmware='2.01', power_confirmed=True,

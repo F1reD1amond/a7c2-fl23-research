@@ -1,5 +1,5 @@
 """Compile job-pinned native workers from fresh verified inputs, offline."""
-import hashlib,importlib.util,json,os,shutil,subprocess
+import hashlib,importlib.util,json,os,shutil,subprocess,sys
 from pathlib import Path
 from . import firmware
 from .worker import NAMES
@@ -24,6 +24,12 @@ def zig_command(explicit=None):
 def compile_worker(source,header,destination,zig=None,*,fingerprints=True):
     destination=Path(destination);destination.parent.mkdir(parents=True,exist_ok=True)
     env=os.environ.copy()
+    if sys.platform=='darwin' and getattr(sys,'frozen',False):
+        # Child compiler must use the system loader, not frozen Python dylibs.
+        for key in ('DYLD_LIBRARY_PATH','DYLD_FRAMEWORK_PATH'):
+            original=env.pop(key+'_ORIG',None)
+            env.pop(key,None)
+            if original:env[key]=original
     cache=Path(os.environ.get('A7C2_ZIG_CACHE',Path.home()/'.cache/a7c2-lut/zig')).resolve()
     env['ZIG_GLOBAL_CACHE_DIR']=str(cache/'global');env['ZIG_LOCAL_CACHE_DIR']=str(cache/'local')
     command=zig_command(zig)+['cc','-target','aarch64-linux-gnu','-shared','-fPIC','-O2',
