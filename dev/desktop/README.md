@@ -49,12 +49,14 @@ Windows/macOS runners without publishing a Release.
   reload verification. The compiler uses `--calibration`, not the retired `--model`.
 - Frozen LrC installs use `--raw-profile-worker`; its settings registry is shared
   with verified look activations. ExifTool 13.59 and its complete official runtime are bundled; missing/stale
-  paths automatically fall back to bundled/PATH/download preparation. DCP compilation additionally needs Lightroom and its configured renderer;
-  direct ST/sRGB CUBE compilation does not.
+  paths automatically fall back to bundled/PATH/download preparation. DCP and ST/sRGB CUBE compilation run offline without Lightroom or a renderer;
+  Lightroom is needed only to use the optional Lightroom plugin.
 - Vertical Display saves its native shooting-information/layout switch, with
   reversible resource aliases. Do not reuse the failed image-bank/ELF display patch.
 - Sound uses the current converted payload directly. Audition/confirmation/recovery
   records are optional and do not gate sound on/off or saving.
+  Volume decrease/increase/reset are host-only actions; each re-encodes the unchanged
+  selected PCM, updates the matching preview, and never opens USB or changes camera-job state.
 
 Before the owner's physical test, complete source tests, packaged offline native
 compilation, GUI startup and DMG verification. None proves camera boot safety or

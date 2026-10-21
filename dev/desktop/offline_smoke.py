@@ -87,6 +87,17 @@ def check_audio_conversion():
         assert (workspace/'sound.private.json').read_bytes()==original_state
         assert (workspace/'conversion.private.json').is_file()
         results['unresolved_camera_task_does_not_block_conversion']='passed'
+        initial=Path(sound_cli.selected_conversion(workspace,None))
+        original_payload=(initial/'custom-native.private.bin').read_bytes()
+        louder=sound_cli.volume_audio(workspace,decibels=3)
+        assert louder['volume_gain_db']==3 and louder['camera_io'] is False
+        adjusted=Path(sound_cli.selected_conversion(workspace,None))
+        adjusted_preview,_=native_codec.read_wav(adjusted/'preview.private.wav')
+        assert adjusted_preview==native_codec.decode((adjusted/'custom-native.private.bin').read_bytes())[:len(adjusted_preview)]
+        sound_cli.volume_audio(workspace,reset=True)
+        assert (Path(sound_cli.selected_conversion(workspace,None))/'custom-native.private.bin').read_bytes()==original_payload
+        assert (workspace/'sound.private.json').read_bytes()==original_state
+        results['offline_volume_and_exact_reset']='passed'
         import trial
         failed=workspace/'failed-enable';failed.mkdir()
         events=[dict(event=event,stage='shutter.staged.so',mode=0) for event in (

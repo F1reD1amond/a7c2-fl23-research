@@ -229,6 +229,11 @@ def import_audio(root, state, source, **options):
     root=Path(root).resolve();root.mkdir(parents=True,exist_ok=True)
     folder = new_path(root, 'converted')
     report = media.convert(source, folder, **options)
+    return select_conversion(root,folder,report,'converted_offline')
+
+
+def select_conversion(root,folder,report,phase):
+    import media
     temp=root/('conversion-'+uuid.uuid4().hex+'.pending')
     try:
         temp.write_text(json.dumps(dict(schema='a7c2-sound-conversion/1',conversion=str(folder)),indent=2),encoding='utf-8')
@@ -237,14 +242,26 @@ def import_audio(root, state, source, **options):
         temp.unlink(missing_ok=True)
         media.cleanup(folder)
         raise
-    return {'phase': 'converted_offline', 'camera_io': False, 'bytes': report['encoded_bytes'],
-            'preview': str(folder / 'preview.private.wav')}
+    return {'phase': phase, 'camera_io': False, 'bytes': report['encoded_bytes'],
+            'preview': str(folder / 'preview.private.wav'),
+            'volume_gain_db': report.get('volume_gain_db',0),
+            'volume_limited': report.get('volume_limited',False)}
 
 
 def selected_conversion(root,state):
     path=Path(root)/'conversion.private.json'
     if path.is_file():return json.loads(path.read_text(encoding='utf-8'))['conversion']
-    return state.get('conversion')
+    return (state or {}).get('conversion')
+
+
+def volume_audio(root, *, decibels=0, reset=False):
+    import media
+    root=Path(root).resolve();conversion=selected_conversion(root,None)
+    if not conversion:
+        raise ValueError('请先转换所选片段，再调节音量。')
+    folder=new_path(root,'volume')
+    report=media.adjust_volume(conversion,folder,decibels=decibels,reset=reset)
+    return select_conversion(root,folder,report,'volume_adjusted_offline')
 
 
 def audition(root, state, zig=None):
@@ -430,6 +447,7 @@ def parser():
         ('off', 'Disable only the electronic-capture sound branch; AF audio setting preserved'),
         ('attach', 'Offline: reuse a completed native-sound job and optional RAM audition'),
         ('import', 'Offline: extract selected WAV/MP3/MP4 audio and encode a private candidate'),
+        ('volume', 'Offline: adjust converted audio volume without camera access'),
         ('audition', 'Temporarily register converted audio in RAM, no ROM write'),
         ('confirm', 'Offline: record the actual listening result'),
         ('confirm-recovery', 'Offline statement: cold power-off done, native sound/shooting/playback normal'),
@@ -464,6 +482,10 @@ def parser():
         if name == 'confirm':
             s.add_argument('--result', required=True,
                            choices=('correct', 'quiet', 'noise', 'wrong-speed', 'native', 'silent'))
+        if name == 'volume':
+            gain = s.add_mutually_exclusive_group(required=True)
+            gain.add_argument('--decibels', type=float)
+            gain.add_argument('--reset', action='store_true')
         if name == 'verify':
             s.add_argument('--heard-correct', action='store_true')
         if name=='compile-install':
@@ -479,6 +501,8 @@ def main(argv=None, *, report=None):
         elif args.command=='import':
             result=import_audio(args.workspace,None,args.source,start=args.start,
                 duration=args.duration,peak=args.peak,ffmpeg=args.ffmpeg)
+        elif args.command=='volume':
+            result=volume_audio(args.workspace,decibels=args.decibels or 0,reset=args.reset)
         elif args.command=='compile-install':
             result=compile_install(args.ap,args.cp,args.native_bin,args.workspace)
         elif args.command=='status' and not (args.workspace/'sound.private.json').exists():
@@ -507,7 +531,7 @@ def main(argv=None, *, report=None):
         # The desktop needs the actual result phase, especially for cold reload
         # versus adoption/temporary audition. Do not infer it from command success.
         public = {key: result[key] for key in ('phase', 'camera_io', 'camera_firmware_written',
-            'complete_readback_and_settings_verified', 'owner_audio_correct', 'bytes', 'preview',
+            'complete_readback_and_settings_verified', 'owner_audio_correct', 'bytes', 'preview', 'volume_gain_db','volume_limited',
             'adopted_existing_enabled', 'sound_support_enabled_on_disk','audio_registration_started',
             'audio_resources_written','resource_update','adopted_same_sound',
             'completed_prior_marker_replaced','previous_marker_absent','previous_cp_handle_released') if key in result}
@@ -518,7 +542,8 @@ def main(argv=None, *, report=None):
         print(json.dumps(public if args.command not in ('status', 'doctor') else result, indent=2))
         return 0
     except (ValueError, OSError, ImportError, RuntimeError, KeyError) as exc:
-        detail=('\n电脑端转换失败，本次没有相机读写；请修正输入后重新转换。' if args.command=='import' else
+        detail=('\n电脑端音频处理失败，本次没有相机读写；请修正输入后重试。' if args.command=='volume' else
+                '\n电脑端转换失败，本次没有相机读写；请修正输入后重新转换。' if args.command=='import' else
                 '\nKeep the workspace and backup; do not repeat unknown writes.')
         print('Stopped: ' + str(exc) + detail, file=sys.stderr)
         return 2

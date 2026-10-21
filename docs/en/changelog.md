@@ -1,5 +1,12 @@
 # Changelog
 
+## Desktop preview.10.21 — Windows test package — 2026-10-21
+
+- Add offline sound volume controls: decrease/increase by 3 dB and reset to the converted volume. Always re-encode from the unchanged selected PCM, retaining matched native audio and preview. Limit peak amplitude to avoid clipping; adjustment does not require USB, a backup, or completion of an older camera task.
+- Retain the integrated driver preparation, built-in recovery, FL23, mixed selected-slot A7Look writes/resets, standalone DCP/CUBE conversion, optional Lightroom plugin, repeatable shutter-sound actions, and optional read-only USB stability sample.
+- Vertical Display retains the earlier shared-image aliases and persistent switch. Exclude the Fn/submenu separator rework, full portrait-bank copies and experimental resource compression from this package.
+- Validation is offline and includes the packaged executable; no physical camera acceptance is implied.
+
 ## Desktop preview.10.20 — Mac Terminal USB test build — 2026-10-21
 
 - Integrate the reviewed Terminal sudo launcher: explicit camera operations open Terminal for the user's password, while the GUI stays unprivileged. Preserve the shared installation/recovery engines and user data paths; retain the actual worker outcome.
