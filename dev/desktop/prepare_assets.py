@@ -85,25 +85,21 @@ def main():
         license_file = dest / 'COPYING.txt'
         if not license_file.exists():
             license_file.write_bytes(fetch('https://raw.githubusercontent.com/pbatard/libwdi/master/COPYING'))
+    sys.path.insert(0,str(ROOT/'src'))
+    from desktopapp.exiftool import install,executable
+    dest=ROOT/'desktop-assets/exiftool'
     if args.exiftool_archive:
-        dest = ROOT / 'desktop-assets/exiftool'
-        dest.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(args.exiftool_archive) as archive:
-            for item in archive.infolist():
-                if item.is_dir():
-                    continue
-                relative = Path(item.filename)
-                if relative.is_absolute() or '..' in relative.parts:
-                    raise ValueError('Unexpected helper archive path')
-                # Official bundles have a top-level exiftool-VERSION_64 folder.
-                parts = relative.parts
-                if len(parts) > 1 and parts[0].lower().startswith('exiftool-'):
-                    parts = parts[1:]
-                target = dest.joinpath(*parts)
-                if target.name == 'exiftool(-k).exe':
-                    target = target.with_name('exiftool.exe')
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(archive.read(item))
+        install(dest,archive=args.exiftool_archive)
+    elif not executable(dest).is_file():
+        request_file=ROOT/'dev/desktop/native-build-request.json'
+        urls=__import__('json').loads(request_file.read_text(encoding='utf-8')).get('exiftool_archives',{}) if request_file.is_file() else {}
+        if sys.platform in urls:
+            import tempfile
+            with tempfile.TemporaryDirectory(prefix='a7c2-exiftool-input-') as temporary:
+                path=Path(temporary)/('helper.zip' if sys.platform=='win32' else 'helper.tar.gz')
+                path.write_bytes(fetch(urls[sys.platform]))
+                install(dest,archive=path)
+        else:install(dest)
     print('Build helpers prepared. No driver installed; no camera connected.')
 
 

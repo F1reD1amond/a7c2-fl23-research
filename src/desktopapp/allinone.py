@@ -32,8 +32,9 @@ def run(arguments, *, dispatch):
         options, _ = bundle.documents(resolve(arguments.get('options', {})), inputs)
         # Version the behavior so already-written older jobs keep their plan.
         options['vertical_persistent'] = bool(options.get('vertical', True))
-        if options.get('plugin') and not Path(options.get('exiftool', '')).is_file():
-            raise ValueError('Lightroom 插件需要 ExifTool；先选择有效的 ExifTool 文件')
+        if options.get('plugin'):
+            from .exiftool import ensure
+            options['exiftool']=ensure(options.get('exiftool'))
         state = dict(schema='a7c2-one-click/1', phase='READY', workspace=str(root), options=options,
                      firmware='2.01', completed_steps=[], physical_checks_accepted=False)
         write_json(path, state)
@@ -182,7 +183,7 @@ def run(arguments, *, dispatch):
                 state['completed_steps'].append('sound')
                 save('FINALIZING')
             if options.get('plugin') and 'plugin' not in state['completed_steps']:
-                state['plugin_result'] = call('plugin_install', {'exiftool': options['exiftool']}, 'plugin')
+                state['plugin_result'] = call('plugin_install', {'exiftool': options.get('exiftool')}, 'plugin')
                 child = json.loads((install / 'direct.private.json').read_text(encoding='utf-8'))
                 _, rows = bundle.documents(child['bundle_options'])
                 if rows:

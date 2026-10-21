@@ -1,5 +1,12 @@
 # Changelog
 
+## Desktop preview.10.9 — 2026-10-21
+
+- Fix one-click installation stopping when the optional Lightroom plugin is selected but the caller has no valid ExifTool path. Use bundled or installed ExifTool automatically; otherwise download the official distribution before camera work, retaining complete connection errors.
+- Bundle ExifTool 13.59 and its complete Windows companion files / macOS Perl modules and original licenses. The separate plugin button uses the same automatic preparation, with no hidden file-selection prerequisite. Missing paths saved on another computer fall back to the local helper.
+- 50 focused offline tests passed for helper resolution/extraction, one-click setup and plugin integration. Native Mac packaging now runs on real Intel and Apple Silicon runners; physical Mac camera USB is a separate untested boundary.
+
+
 ## Desktop preview.10.8 — 2026-10-21
 
 - Rename Home continuation to “继续安装” (Continue installation). The post-restart dialog and persistent status explicitly tell users to reconnect USB and click it. Standalone look instructions no longer direct users to a removed verification button.

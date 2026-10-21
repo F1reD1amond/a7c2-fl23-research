@@ -9,14 +9,8 @@ from .paths import ROOT, data_root, write_json
 
 
 def install(arguments):
-    tool = arguments.get('exiftool') or shutil.which('exiftool')
-    if not tool:
-        bundled = ROOT / ('desktop-assets/exiftool/exiftool.exe' if sys.platform == 'win32'
-                          else 'desktop-assets/exiftool/exiftool')
-        if bundled.exists():
-            tool = str(bundled)
-    if not tool or not Path(tool).is_file():
-        raise ValueError('Choose ExifTool first. It reads the custom-look marker without modifying RAW files.')
+    from .exiftool import ensure
+    tool = ensure(arguments.get('exiftool'))
     if sys.platform == 'win32':
         source = Path(tool).resolve()
         local = data_root() / 'helpers/exiftool'

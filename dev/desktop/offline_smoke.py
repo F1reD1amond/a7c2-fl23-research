@@ -110,6 +110,11 @@ def run():
     setup_runtime()
     from desktopapp import reloadguide
     from desktopapp import connectionguide
+    from desktopapp.exiftool import ensure
+    import subprocess
+    exiftool=ensure()
+    exif_result=subprocess.run([exiftool,'-ver'],capture_output=True,text=True,timeout=30)
+    assert exif_result.returncode==0, exif_result.stderr
     assert '请检查所连接的设备' in connectionguide.TEXT and '正常现象' in connectionguide.TEXT
     audition=dict(phase='temporary_pcm_registered_cold_reload_required_after_test')
     assert not reloadguide.required('sound_audition',audition)
@@ -220,7 +225,7 @@ def run():
         _,forward=nameworker.prepare({n:original for n in nameworker.filenames()},{1:'Smoke'},bytes(16),
             '0123456789abcdef',Path(folder)/'forward',byte_only=True)
         assert forward['stream_install'] and Path(forward['path']).read_bytes()[:4]==b'\x7fELF'
-    return {'camera_io': False, 'project_imports': 'passed', 'assets': 'passed', 'builtin_factory_reference': 'passed',
+    return {'camera_io': False, 'project_imports': 'passed', 'bundled_exiftool':exif_result.stdout.strip(), 'assets': 'passed', 'builtin_factory_reference': 'passed',
             'native_cross_compile': 'passed', 'native_assembler_disassembler':'passed',
             'one_click_offline_sequence':'passed','look_batch_defaults':'passed','streaming_names_compile':'passed',
             'bundled_six_looks':list(presets.NAMES),'fl23_pr6_movie_routes':'passed',

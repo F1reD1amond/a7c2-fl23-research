@@ -614,10 +614,7 @@ class Window(W.QMainWindow):
         dialog.exec()
 
     def plugin_dialog(self):
-        executable = ROOT / ('desktop-assets/exiftool/exiftool.exe' if sys.platform == 'win32' else 'desktop-assets/exiftool/exiftool')
-        path = str(executable) if executable.exists() else W.QFileDialog.getOpenFileName(self, '选择 ExifTool')[0]
-        if path:
-            self.launch('plugin_install', {'exiftool': path})
+        self.launch('plugin_install', {})
 
     def one_click_restore(self):
         roots = [str(data_root() / 'backups'), str(data_root() / 'initial-checkpoints')]

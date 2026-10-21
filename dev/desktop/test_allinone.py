@@ -152,8 +152,7 @@ class AllInOneTests(unittest.TestCase):
 
     def test_bad_inputs_fail_before_any_driver_or_device_call(self):
         for options in (dict(looks=[dict(slot=7, path='missing.a7look')]),
-                        dict(looks=[dict(slot=1, path='missing.a7look')]),
-                        dict(plugin=True, exiftool='missing.exe', looks=[])):
+                        dict(looks=[dict(slot=1, path='missing.a7look')])):
             with self.subTest(options=options), self.assertRaises((ValueError, FileNotFoundError)):
                 allinone.run(dict(self.args, options=options), dispatch=self.dispatch)
             self.assertEqual(self.calls, [])
@@ -268,3 +267,33 @@ class AllInOneTests(unittest.TestCase):
         count=len(self.calls)
         with self.assertRaises(ValueError):allinone.run(self.args,dispatch=self.dispatch)
         self.assertEqual(len(self.calls),count)
+
+
+def test_missing_exiftool_is_prepared_before_first_device_call(tmp_path,monkeypatch):
+    monkeypatch.setenv('A7C2_DESKTOP_DATA',str(tmp_path/'app'))
+    tool=tmp_path/'prepared-exiftool.exe';tool.write_bytes(b'helper')
+    calls=[]
+    def dispatch(action,args,folder):
+        calls.append(action)
+        if action=='direct_install_all':
+            assert args['options']['exiftool']==str(tool)
+            return dict(phase='AWAITING_RELOAD',mode='install_all',workspace=args['workspace'])
+        return {}
+    args=dict(workspace=str(tmp_path/'work'),firmware='2.01',power_confirmed=True,
+              options=dict(plugin=True,exiftool='old-computer/missing.exe',looks=[]))
+    with patch('desktopapp.exiftool.ensure',return_value=str(tool)) as prepare:
+        result=allinone.run(args,dispatch=dispatch)
+    prepare.assert_called_once_with('old-computer/missing.exe')
+    assert result['phase']=='WAIT_RELOAD'
+    assert calls==['usb_prepare','direct_install_all']
+
+
+def test_helper_download_failure_does_not_open_camera(tmp_path,monkeypatch):
+    monkeypatch.setenv('A7C2_DESKTOP_DATA',str(tmp_path/'app'))
+    dispatch=Mock()
+    with patch('desktopapp.exiftool.ensure',side_effect=RuntimeError('mirror connection failed')):
+        import pytest
+        with pytest.raises(RuntimeError,match='mirror connection failed'):
+            allinone.run(dict(workspace=str(tmp_path/'work'),firmware='2.01',power_confirmed=True,
+                options=dict(plugin=True,looks=[])),dispatch=dispatch)
+    dispatch.assert_not_called()
