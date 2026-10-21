@@ -82,11 +82,13 @@ def fit(model, source, target, work, *, passes, evaluations):
         if file.exists() and note.exists():
             vector=np.load(file,allow_pickle=False)['vector'];optimizer=json.loads(note.read_text(encoding='utf-8'))
         else:
-            if index<3:initial=nativefit.table_seed(problem,max_evaluations=evaluations)
+            initialization=None
+            if index<3:initial,initialization=nativefit.table_seed(problem,max_evaluations=evaluations,return_report=True)
             else:
                 initial=best[1].copy()
                 initial[1215:]=np.clip(initial[1215:]+rng.normal(0,.08,17),-.5,.5)
             vector,optimizer=nativefit.solve(problem,initial,max_evaluations=evaluations,loss=loss)
+            if initialization is not None:optimizer['initialization']=initialization
             np.savez_compressed(file,vector=vector);save(note,optimizer)
         check=nativefit.Problem(model,source[validation],target[validation],smooth)
         metrics=coupledfit.metrics(check.prediction(vector),target[validation])
@@ -135,7 +137,7 @@ def main(argv=None):
     parser.add_argument('--config',type=Path)
     parser.add_argument('--work',type=Path)
     parser.add_argument('--passes',type=int,default=3,help='Number of multi-start candidates; increase for more compute')
-    parser.add_argument('--evaluations',type=int,default=100,help='Maximum evaluations for each solve')
+    parser.add_argument('--evaluations',type=int,default=100,help='Compute budget per fit; retain the best approximation when reached')
     parser.add_argument('--extra-colors',type=int,default=256)
     parser.add_argument('--dcp-bridge',type=Path,help='Optional measured ST-to-DCP working-space mapping JSON; default is the bundled approximation')
     parser.add_argument('--input-space',help='CUBE input: sony-st-srgb, or a named space with --bridge')
@@ -233,6 +235,9 @@ def main(argv=None):
         source_reference=source_reference)
     save(work/'result.json',report)
     print('Created '+str(args.output.resolve()),flush=True)
+    if not report['final_optimizer']['optimizer_converged']:
+        print('已生成近似结果；最终优化未完全收敛。验证色样平均预测误差 %.2f / 255，不能代表实机色彩准确度。' %
+              report['virtual_heldout_validation_replica']['RGB_MAE_8bit'],flush=True)
     print('Offline candidate; no camera connection or write was performed.',flush=True)
     return 0
 

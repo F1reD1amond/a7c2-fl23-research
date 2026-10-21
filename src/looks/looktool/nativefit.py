@@ -82,10 +82,10 @@ def solve(problem, initial=None, *, max_evaluations=100, loss='linear'):
         integer_metrics=coupledfit.metrics(problem.prediction(vector),problem.target))
 
 
-def table_seed(problem, max_evaluations=80):
+def table_seed(problem, max_evaluations=80, return_report=False):
     """Optimize the nested table-only problem before adding native controls."""
     adjusted=np.clip(problem.target-problem.source+problem.basezero,0,1)
-    seed,_=coupledfit.solve(problem.model.base,problem.coordinates,adjusted,smooth=problem.smooth)
+    seed,seed_report=coupledfit.solve(problem.model.base,problem.coordinates,adjusted,smooth=problem.smooth)
     cache={}
     def value(table):
         if 'table' not in cache or not np.array_equal(table,cache['table']):
@@ -108,4 +108,10 @@ def table_seed(problem, max_evaluations=80):
         return vstack((measuredfit.design(problem.field,derivative),regularizer),format='csr')
     result=least_squares(residual,seed.ravel(),jac=jacobian,bounds=(-64,63),method='trf',
         tr_solver='lsmr',max_nfev=max_evaluations,ftol=1e-5,xtol=1e-5,gtol=1e-6)
-    return np.r_[result.x,np.zeros(17)]
+    before=residual(seed.ravel());after=residual(result.x)
+    improved=np.isfinite(after).all() and np.dot(after,after)<=np.dot(before,before)
+    table=result.x if improved else seed.ravel()
+    vector=np.r_[table,np.zeros(17)]
+    report=dict(seed=seed_report,optimizer_converged=bool(result.success),
+        evaluations=int(result.nfev),retained_refinement=bool(improved))
+    return (vector,report) if return_report else vector

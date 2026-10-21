@@ -9,8 +9,55 @@ import usb.backend.libusb1
 import libusb_package
 from pmca.usb.driver.generic import GenericUsbDriver,MscBbbDriver,GenericUsbException
 from pmca.usb.driver.generic.libusb import UsbBackend
-from pmca.usb.sony import SonySenserAuthDevice,SonySenserDevice,SonySenserCamera,SonyExtCmdCamera,SonyMscExtCmdDevice
+from io import BytesIO
+from pmca.usb.sony import SonySenserAuthDevice,SonySenserCamera,SonyExtCmdCamera,SonyMscExtCmdDevice
+from pmca.usb.sony import SonySenserDevice as PmcaSenserDevice
 from pmca.usb import MscDevice
+
+class SonySenserDevice(PmcaSenserDevice):
+    """pmca's senser exchange with a bounded wait for chunk end packets.
+
+    After every chunk whose length is a multiple of 512, pmca reads one more
+    time for the zero-length end packet. Field log 31: after a final
+    20992-byte chunk that packet never arrived and the read blocked for the
+    whole 180 s budget. Wait briefly; if it stays absent, the chunk is done.
+    A late packet would reach the next header read and fail it loudly.
+    """
+    END_PACKET_MS=1000
+
+    def _end_packet(self):
+        try:self.driver.read(self.SenserMinSize,timeout=self.END_PACKET_MS)
+        except GenericUsbException as exc:
+            if not isinstance(exc.__context__,usb.core.USBTimeoutError):raise
+
+    def sendSenserPacket(self,pFunc,data,oData=None):
+        # Same as pmca, except _end_packet replaces the unbounded end read.
+        while data!=b'':
+            header=self.SenserPacketHeader.pack(size=len(data),pFunc=pFunc,sequence=self._sequence,
+                                                version=0,miconType=0,offsetType=0,response=0)
+            self.driver.write(header+data[:self.SenserMaxSize])
+            data=data[self.SenserMaxSize:]
+        outData=BytesIO() if oData is None else oData
+        minSize=0 if self.driver.getId()[1]==0x0336 else self.SenserMinSize
+        while True:
+            l=max(minSize-self.SenserPacketHeader.size,0)
+            d=self.driver.read(self.SenserPacketHeader.size+l)
+            header=self.SenserPacketHeader.unpack(d)
+            if header.sequence!=self._sequence:raise Exception('Wrong senser sequence')
+            outData.write(d[self.SenserPacketHeader.size:])
+            done=l
+            dataLen=min(header.size,self.SenserMaxSize)
+            chunkLen=self.SenserChunkSize-minSize
+            while done<dataLen:
+                l=min(dataLen-done,chunkLen)
+                outData.write(self._readAll(l))
+                done+=l
+                if not (l&(self.SenserMinSize-1)):self._end_packet()
+                chunkLen=self.SenserChunkSize
+            if header.size<=self.SenserMaxSize:break
+        self._sequence+=1
+        return header.response,outData.getvalue() if oData is None else None
+
 
 class Bounded(UsbBackend):
     def __init__(self,device,budget=180):
@@ -157,34 +204,82 @@ def service_identity(snapshot,model):
     # the text. Hashing the raw bytes would break existing per-body backups.
     return {'model':model,'serial_sha256':core.sha(serial.data.hex().encode('ascii'))}
 
+# Shortly after leaving service mode the camera may answer a new normal-side
+# authentication by re-enumerating as 054C:0D68, then 096F, then MSC again,
+# never as 0336 (field logs 28 and 30, 12-15 s after the previous exit).
+SERVICE_COOLDOWN=30
+SERVICE_ATTEMPTS=3
+SERVICE_WAIT=20
+_service_exit=None  # monotonic time the last service session ended in this process
+
+
+def _cool_down():
+    if _service_exit is None:return
+    left=SERVICE_COOLDOWN-(time.monotonic()-_service_exit)
+    if left>0:
+        print('等待相机从上一次服务模式恢复（%d 秒）。'%round(left),flush=True)
+        time.sleep(left)
+
+
+def _sony_pids():
+    backend=usb.backend.libusb1.get_backend(find_library=libusb_package.find_library)
+    return ['%04x'%d.idProduct for d in usb.core.find(find_all=True,idVendor=0x054c,backend=backend)]
+
+
+def _wait_for(pid,seconds,seen,prepare=None):
+    """Enumerate only; record every Sony identity seen while waiting."""
+    deadline=time.monotonic()+seconds
+    prepared=False
+    while True:
+        for found in _sony_pids():
+            if found not in seen:seen.append(found)
+        if prepare is not None and not prepared and '%04x'%pid in seen:
+            prepare();prepared=True
+        try:return get_device(pid)
+        except RuntimeError:
+            if time.monotonic()>=deadline:return None
+            time.sleep(.5)
+
+
 class Session:
     def __init__(self,expected=None,media_released=False):
         self.expected=expected;self.healthy=True;self.media_released=media_released
     def __enter__(self):
-        if sys.platform=='darwin' and not self.media_released:
-            from macos_host import unmount_camera
-            unmount_camera()
-        dev=get_device(0x0e8a)
-        try:
-            if sys.platform=='darwin':
-                # MDHan's order: verify the MSC interface and claim it first.
-                from macos_host import claim_camera_interface
-                claim_camera_interface(dev,interface_class=(8,6,0x50))
-            # Standard USB strings remain usable when the storage LUN and
-            # DevInfoSender_GetModelInfo are busy. Neither is a service gate.
-            model=usb.util.get_string(dev,dev.iProduct) if dev.iProduct else None
-            if model!=core.MODEL:raise RuntimeError('只支援 '+core.MODEL+'；USB 型號不符')
-            auth=SonySenserAuthDevice(GenericUsbDriver(Bounded(dev,20)))
-            auth.start();auth.authenticate()
-            # An ambiguous authentication is not retried or followed by stop.
-        finally:usb.util.dispose_resources(dev)
-        if SERVICE_DRIVER_SETUP is not None:SERVICE_DRIVER_SETUP()
-        deadline=time.monotonic()+15
-        while True:
-            try:self.dev=get_device(0x0336);break
-            except RuntimeError:
-                if time.monotonic()>=deadline:raise RuntimeError('服務身份未出現；若是第一次，請依文件安裝0336驅動')
-                time.sleep(.5)
+        global _service_exit
+        for attempt in range(1,SERVICE_ATTEMPTS+1):
+            _cool_down()
+            if sys.platform=='darwin' and (attempt>1 or not self.media_released):
+                # A bounce back to MSC lets macOS remount the camera storage.
+                from macos_host import unmount_camera
+                unmount_camera()
+            dev=get_device(0x0e8a)
+            try:
+                if sys.platform=='darwin':
+                    # MDHan's order: verify the MSC interface and claim it first.
+                    from macos_host import claim_camera_interface
+                    claim_camera_interface(dev,interface_class=(8,6,0x50))
+                # Standard USB strings remain usable when the storage LUN and
+                # DevInfoSender_GetModelInfo are busy. Neither is a service gate.
+                model=usb.util.get_string(dev,dev.iProduct) if dev.iProduct else None
+                if model!=core.MODEL:raise RuntimeError('只支援 '+core.MODEL+'；USB 型號不符')
+                auth=SonySenserAuthDevice(GenericUsbDriver(Bounded(dev,20)))
+                auth.start();auth.authenticate()
+                # An authentication error is not retried or followed by stop.
+            finally:usb.util.dispose_resources(dev)
+            seen=[]
+            self.dev=_wait_for(0x0336,SERVICE_WAIT,seen,prepare=SERVICE_DRIVER_SETUP)
+            if self.dev is not None:break
+            if '0336' in seen:
+                raise RuntimeError('服务身份 0336 已出现，但接口无法打开；请保留驱动与 USB 日志，不重新认证。')
+            # No service identity ever appeared, so no service session exists
+            # and nothing was sent to the camera after authentication.
+            print('认证后相机未进入服务模式（期间出现的 Sony USB 身份：%s）。'%('、'.join(seen) or '无'),flush=True)
+            if attempt==SERVICE_ATTEMPTS:
+                raise RuntimeError('服務身份未出現；若是第一次，請依文件安裝0336驅動（已嘗試 %d 次）'%attempt)
+            if _wait_for(0x0e8a,60,seen) is None:
+                raise RuntimeError('服務身份未出現，相機也未回到普通 USB；請在相機選擇「影像傳輸（MSC）」後重新連接')
+            _service_exit=time.monotonic()
+            print('相机已回到普通 USB，冷却后自动重试（第 %d/%d 次）。'%(attempt+1,SERVICE_ATTEMPTS),flush=True)
         time.sleep(2)
         if sys.platform=='darwin':
             from macos_host import claim_camera_interface
@@ -202,11 +297,12 @@ class Session:
             if self.expected and self.identity!=self.expected:raise RuntimeError('目前機身與備份機身不同')
         except BaseException:
             try:
-                if authenticated and self.healthy:self.auth.stop()
+                if authenticated and self.healthy:self.auth.stop();_service_exit=time.monotonic()
             finally:usb.util.dispose_resources(self.dev)
             raise
         return self
     def __exit__(self,*args):
+        global _service_exit
         stopped=False
         try:
             if self.healthy:self.auth.stop();stopped=True
@@ -217,6 +313,7 @@ class Session:
             # before the next session can release remounted camera storage.
             wait_normal_return(lambda:usb.core.find(idVendor=0x054c,idProduct=0x0e8a,
                 backend=usb.backend.libusb1.get_backend(find_library=libusb_package.find_library)))
+        if stopped:_service_exit=time.monotonic()
     def call(self,method,*args):
         if not self.healthy:raise RuntimeError('會話結果未知，停止後續命令')
         self.backend.reset()

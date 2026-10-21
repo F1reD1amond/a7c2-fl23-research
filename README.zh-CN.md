@@ -63,6 +63,12 @@
 
 只替换**自订**创意外观槽位，索尼原有的创意外观保持不变。内置外观是对原 DCP 的拟合近似，并非完整复现。想改用自己的文件时，在首页取消勾选内置六款并填写自定义文件区；留空的槽位保持原样。
 
+### DCP／A7Look 配对库
+
+后续桌面 Windows ZIP 均附带 `Profiles/Fujifilm`（11 款）和 `Profiles/Ricoh GR III`（4 款彩色）。每份原始 `.dcp` 与对应的已拟合 `.a7look` 使用相同文件名主体，并排存放；`Profiles/catalog.csv` 列出 15 组。理光黑白三款因独立预测误差仍较大，本版不收录。自定义创意外观页面可点击“打开内置 DCP／A7Look 配对库”。
+
+写入相机时选择 `.a7look`，无需重新转换或安装 Lightroom；同名 `.dcp` 用于电脑端 RAW 显影。作者制作参考拟合时可以使用 Lightroom，但发行的转换器与相机工具不依赖 Lightroom。作者与来源统一列在下方，不单独附原作者说明文件。
+
 ## 常用操作
 
 - **修改一个或多个自订槽位。**在**自定义创意外观**页，清单默认为空。每个槽位添加一项；新增项默认**恢复 ST 默认**，导入时切换为**写入 A7Look** 并选择文件。恢复槽位不会找回旧配方。
@@ -130,17 +136,21 @@ python -m pytest dev/desktop -q
 
 ## 仓库结构
 
+运行代码、系统差异、测试、构建和数据的放置规则，见[代码目录与共用边界](docs/zh-CN/code-map.md)。
+
 ```text
 desktop.py              桌面程序入口（界面、worker、自检模式）
 FL23.cmd, lut.py, recovery.py, shutter.py, vertical.py, a7look_*.py, raw_*.py
                         独立 CLI 入口（见上表）
 src/
   desktopapp/           PySide6 界面、任务 worker、驱动、预设、一键安装流程
+    platforms/          USB 驱动／介质适配与 macOS 授权
   camera_runtime/       桌面版使用的 FL23 规划器与原生运行时
   fl23/                 独立的 FL2／FL3 安装、备份与核对
   looks/                looktool：A7Look 编译／写入、直接设备任务、
                         原厂参考、检查点、RAW 配置工具
   vertical/             竖屏显示原生 worker
+  shutter_sound/        共用声音运行模块；native/ 存放相机 worker
   launcher.py           CMD 入口共用的 Windows 环境准备
 plugins/A7LookAuto.lrplugin/
                         Lightroom Classic 自动配置插件
@@ -148,6 +158,8 @@ dev/                    桌面构建与测试、发布脚本、快门声音、US
 docs/en/, docs/zh-CN/   对应的英文／简体中文文档
 docs/profiles/          DCP 来源清单与原始许可文本
 calibration/            固件 2.01 的虚拟校准模型
+desktop-assets/         被忽略的默认六款、收录的配对外观与辅助程序
+build/, dist/           被忽略的拟合／构建证据与最终安装包
 ```
 
 ## 文档索引

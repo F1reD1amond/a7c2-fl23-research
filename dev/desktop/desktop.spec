@@ -3,6 +3,8 @@ import sys
 from PyInstaller.utils.hooks import collect_all
 
 root = Path(SPECPATH).parents[1]
+sys.path.insert(0,str(root/'dev/desktop'))
+from profilepack import files as profile_files
 version = {}
 exec((root / 'src/desktopapp/__init__.py').read_text(encoding='utf-8'), version)
 for slot in range(1, 7):
@@ -22,17 +24,22 @@ for package in ('numpy', 'scipy', 'PIL', 'tifffile', 'yaml', 'elftools', 'usb',
 # Source keeps original __file__-relative native headers and asset paths.
 for folder in ('src/desktopapp', 'src/camera_runtime', 'src/looks/looktool',
                'src/looks/assets', 'src/looks/native', 'src/fl23/native', 'src/fl23/assets',
-               'src/vertical', 'dev/shutter_sound', 'plugins', 'desktop-assets'):
+               'src/vertical', 'src/shutter_sound', 'plugins', 'desktop-assets'):
     for source in (root / folder).rglob('*'):
         relative = source.relative_to(root)
+        if relative.parts[:2]==('desktop-assets','profile-library-v1'):continue
         if not source.is_file() or any(p in ('__pycache__', 'tests') for p in relative.parts):
             continue
         if sys.platform == 'darwin' and (relative.parts[:2] == ('desktop-assets', 'windows') or source.suffix.lower() in ('.exe', '.dll', '.pyd', '.bat', '.cmd')):
             continue
-        if '.private.' in source.name or source.suffix.lower() in ('.arw', '.hif', '.jpg', '.dcp', '.cube', '.pyc'):
+        if source.suffix.lower()=='.dcp' and relative.parts[:2]!=('desktop-assets','profile-library-v1'):
+            continue
+        if '.private.' in source.name or source.suffix.lower() in ('.arw', '.hif', '.jpg', '.cube', '.pyc'):
             continue
         datas.append((str(source), str(relative.parent)))
-for name in ('desktop.py', 'LICENSE', 'desktop-requirements.txt',
+for relative,source in profile_files().items():
+    datas.append((str(source),str(Path('desktop-assets/profile-library-v1')/Path(relative).parent)))
+for name in ('desktop.py', 'LICENSE', 'README.md', 'README.zh-CN.md', 'desktop-requirements.txt',
              'dev/desktop/offline_smoke.py', 'docs/en/desktop.md',
              'docs/zh-CN/desktop.md', 'docs/en/lut-formats.md', 'docs/zh-CN/lut-formats.md', 'docs/en/desktop-validation.md',
              'docs/zh-CN/desktop-validation.md', 'docs/licenses/a7c2-fl23-macos-MIT.txt', 'calibration/a7c2-2.01.virtual.npz'):

@@ -1,6 +1,8 @@
 """Ground-truth predictions, interpolation and native-range limitations."""
 import itertools
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 import numpy as np
 from looktool import coupledfit, native
 
@@ -14,6 +16,26 @@ def identity_response():
 
 
 class CoupledFitTests(unittest.TestCase):
+    def test_iteration_stop_keeps_finite_seed_and_reports_nonconvergence(self):
+        response=identity_response()
+        at=np.array([[.2,.3,.4],[.6,.5,.4]])
+        stopped=SimpleNamespace(x=np.zeros(1215),success=False,status=0,nit=100,
+            message='The maximum number of iterations is exceeded.')
+        with patch.object(coupledfit,'lsq_linear',return_value=stopped):
+            coefficients,report=coupledfit.solve(response,at,at,smooth=1e-11)
+        np.testing.assert_array_equal(coefficients,np.zeros((405,3)))
+        self.assertFalse(report['seed_optimizer']['converged'])
+        self.assertEqual(report['seed_optimizer']['status'],0)
+        self.assertEqual(report['seed_optimizer']['iterations'],100)
+
+    def test_nonfinite_or_numerically_failed_seed_still_reports_error(self):
+        response=identity_response();at=np.array([[.2,.3,.4],[.6,.5,.4]])
+        for status,x in [(-1,np.zeros(1215)),(0,np.full(1215,np.nan))]:
+            with self.subTest(status=status),patch.object(coupledfit,'lsq_linear',
+                    return_value=SimpleNamespace(x=x,success=False,status=status,message='numerical failure')):
+                with self.assertRaisesRegex(ValueError,'seed failed'):
+                    coupledfit.solve(response,at,at,smooth=1e-11)
+
     def test_spline_coordinates_work_with_noncontiguous_and_partial_gamut_inputs(self):
         response = identity_response()
         values = np.random.default_rng(1).uniform(.1, .4, (100, 3, 3))[:, 1, :]

@@ -450,7 +450,7 @@ class Window(W.QMainWindow):
         self.look_button.setObjectName('action_direct_looks_import');self.look_button.clicked.connect(self.launch_look_changes)
         layout.addWidget(self.look_button);self.buttons.append(self.look_button)
         tools=W.QHBoxLayout();layout.addLayout(tools)
-        for title,callback in [('从 DCP／LUT 生成 A7Look…',self.compiler_dialog),('安装 LrC 自动识别插件…',self.plugin_dialog)]:
+        for title,callback in [('打开内置 DCP／A7Look 配对库',self.open_profile_library),('从 DCP／LUT 生成 A7Look…',self.compiler_dialog),('安装 LrC 自动识别插件…',self.plugin_dialog)]:
             button=W.QPushButton(title);button.clicked.connect(callback);tools.addWidget(button);self.buttons.append(button)
         formats=W.QPushButton('LUT 格式说明：ST / sRGB，不是 S-Log3…')
         formats.clicked.connect(self.show_look_format_guide);layout.addWidget(formats);self.buttons.append(formats)
@@ -461,6 +461,10 @@ class Window(W.QMainWindow):
         self._look_displayed_pending=None;self._look_refreshing=False
         self.look_editor.changed.connect(self.refresh_look_controls)
         self.refresh_look_controls()
+
+    def open_profile_library(self):
+        from .profilelibrary import location
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(location())))
 
     def look_pending_state(self):
         prior=self.settings.get('look_direct_work')
@@ -548,7 +552,7 @@ class Window(W.QMainWindow):
         self.button(layout, '读取当前显示状态', 'vertical_status', args)
         self.button(layout, '开启竖屏显示', 'vertical_enable', args, primary=True)
         self.button(layout, '关闭竖屏显示', 'vertical_disable', args)
-        hint = W.QLabel('本 Mac USB 测试版沿用旧版竖屏资源，不含 Fn／子菜单线框修正，也不会复制整份图形库。开启／关闭后按弹窗断电重开；关闭及原厂恢复会清理本工具的辅助资源。')
+        hint = W.QLabel('沿用共用横屏图片的竖屏显示，不含 Fn／子菜单线条修正，不复制整份图形库。已开启时可以再次点“开启竖屏显示”；相同状态不重复写入。开启／关闭后按弹窗断电重开。')
         hint.setWordWrap(True)
         layout.addWidget(hint)
         layout.addStretch()
@@ -579,6 +583,13 @@ class Window(W.QMainWindow):
         self.button(row, '转换所选片段', 'sound_import', lambda: dict(args(), source=self.text('sound_source'),
             start=self.sound_start.value(), duration=self.sound_duration.value(), peak=.4))
         self.button(row, '相机内临时试听', 'sound_audition', args)
+        volume = W.QHBoxLayout()
+        layout.addLayout(volume)
+        self.button(volume, '音量降低 −3 dB', 'sound_volume', lambda: dict(args(), decibels=-3))
+        self.button(volume, '音量提高 +3 dB', 'sound_volume', lambda: dict(args(), decibels=3))
+        self.button(volume, '还原转换时音量', 'sound_volume', lambda: dict(args(), reset=True))
+        volume_hint=W.QLabel('先转换片段，再调节音量；仅处理电脑上的音频，不连接相机。达到音量上限会自动限制以避免削波；保存时使用调整后的声音。重新转换会重置音量。')
+        volume_hint.setWordWrap(True);layout.addWidget(volume_hint)
         self.button(layout, '保存当前自定义声音', 'sound_install', args, primary=True)
         hint=W.QLabel('转换成功即可直接保存；自动建立工作区并准备电子快门声支援，不必先开启或关联旧任务。试听可选；全部写入完成后按弹窗统一断电加载。')
         hint.setWordWrap(True);layout.addWidget(hint)

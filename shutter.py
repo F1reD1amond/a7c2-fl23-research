@@ -4,7 +4,7 @@ import sys
 
 
 def main(argv=None):
-    sys.path.insert(0, str(Path(__file__).resolve().parent / 'dev/shutter_sound'))
+    sys.path.insert(0, str(Path(__file__).resolve().parent / 'src/shutter_sound'))
     from sound_cli import main as run
     return run(argv)
 

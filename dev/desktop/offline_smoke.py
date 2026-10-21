@@ -87,6 +87,17 @@ def check_audio_conversion():
         assert (workspace/'sound.private.json').read_bytes()==original_state
         assert (workspace/'conversion.private.json').is_file()
         results['unresolved_camera_task_does_not_block_conversion']='passed'
+        initial=Path(sound_cli.selected_conversion(workspace,None))
+        original_payload=(initial/'custom-native.private.bin').read_bytes()
+        louder=sound_cli.volume_audio(workspace,decibels=3)
+        assert louder['volume_gain_db']==3 and louder['camera_io'] is False
+        adjusted=Path(sound_cli.selected_conversion(workspace,None))
+        adjusted_preview,_=native_codec.read_wav(adjusted/'preview.private.wav')
+        assert adjusted_preview==native_codec.decode((adjusted/'custom-native.private.bin').read_bytes())[:len(adjusted_preview)]
+        sound_cli.volume_audio(workspace,reset=True)
+        assert (Path(sound_cli.selected_conversion(workspace,None))/'custom-native.private.bin').read_bytes()==original_payload
+        assert (workspace/'sound.private.json').read_bytes()==original_state
+        results['offline_volume_and_exact_reset']='passed'
         import trial
         failed=workspace/'failed-enable';failed.mkdir()
         events=[dict(event=event,stage='shutter.staged.so',mode=0) for event in (
@@ -225,7 +236,7 @@ def run():
     from fwtool.archive import ext2, fat
     from desktopapp.official import builtin
     assert builtin()['version'] == '2.01'
-    sys.path[:0] = [str(ROOT / 'src/vertical'), str(ROOT / 'dev/shutter_sound')]
+    sys.path[:0] = [str(ROOT / 'src/vertical'), str(ROOT / 'src/shutter_sound')]
     importlib.import_module('verticaltool.device')
     assert (ROOT / 'src/vertical/assets/aliases_recovery.so').read_bytes()[:4] == b'\x7fELF'
     importlib.import_module('sound_cli')

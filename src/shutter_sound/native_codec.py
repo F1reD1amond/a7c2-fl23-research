@@ -78,8 +78,8 @@ def candidate(wav_path, *, target_rate=24000, peak=0.12):
     from scipy.signal import resample_poly
     import numpy as np
     source, source_rate = read_wav(wav_path)
-    if target_rate <= 0 or not 0 < peak <= 0.5 or not source or not any(source):
-        raise ValueError('Use a positive rate, non-silent audio and peak <= 0.5')
+    if target_rate <= 0 or not 0 < peak <= 32512 / 32767 or not source or not any(source):
+        raise ValueError('Use a positive rate, non-silent audio and PCM headroom within +/-32512')
     divisor = math.gcd(source_rate, target_rate)
     converted = resample_poly(np.array(source, dtype=float), target_rate // divisor, source_rate // divisor)
     gain = 32767 * peak / float(np.max(np.abs(converted)))

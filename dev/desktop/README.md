@@ -49,12 +49,14 @@ Windows/macOS runners without publishing a Release.
   reload verification. The compiler uses `--calibration`, not the retired `--model`.
 - Frozen LrC installs use `--raw-profile-worker`; its settings registry is shared
   with verified look activations. ExifTool 13.59 and its complete official runtime are bundled; missing/stale
-  paths automatically fall back to bundled/PATH/download preparation. DCP compilation additionally needs Lightroom and its configured renderer;
-  direct ST/sRGB CUBE compilation does not.
+  paths automatically fall back to bundled/PATH/download preparation. DCP and ST/sRGB CUBE compilation run offline without Lightroom or a renderer;
+  Lightroom is needed only to use the optional Lightroom plugin.
 - Vertical Display saves its native shooting-information/layout switch, with
   reversible resource aliases. Do not reuse the failed image-bank/ELF display patch.
 - Sound uses the current converted payload directly. Audition/confirmation/recovery
   records are optional and do not gate sound on/off or saving.
+  Volume decrease/increase/reset are host-only actions; each re-encodes the unchanged
+  selected PCM, updates the matching preview, and never opens USB or changes camera-job state.
 
 Before the owner's physical test, complete source tests, packaged offline native
 compilation, GUI startup and DMG verification. None proves camera boot safety or
@@ -237,13 +239,15 @@ Keystone 0.9.2 and Unicorn 2.1.3 have no Apple Silicon wheels on PyPI. On ARM64 
 
 Outputs: `dist/A7C2Tools.app` and `dist/A7C2Tools-macOS-arm64.dmg`. Staging is fresh per build; packaging verifies the ad-hoc app signature and DMG structure. There is no Developer ID signature/notarization. Mount the DMG and drag the app to Applications; run packaged offline self-test and GUI smoke checks before distribution. Native binaries and all helper imports must pass on each architecture; Windows mocks alone do not establish this.
 
-The six compiled looks contain distribution-only source profiles and must stay outside Git. On an existing build machine, export the exact existing pack and notices:
+The six default looks and accepted DCP/A7Look pairs are distribution assets and stay outside Git. This build includes 15 color pairs; the three mono pairs are excluded. On an existing build machine, export the complete assets and existing license files:
 
 ```text
 python dev/desktop/prepare_assets.py --export-presets dist/desktop-presets.zip
 ```
 
-Transfer that ZIP to the Mac. `--preset-archive` also accepts the existing Windows desktop ZIP, but extracts only the six looks and their attribution/license files, never the Windows executable or DLLs. macOS bundles the official portable Perl ExifTool distribution and its modules/license, never a Windows helper. `prepare_assets.py` prepares it automatically or accepts `--exiftool-archive`. The runtime can also fall back to an installed helper or official download.
+Transfer that ZIP to the Mac. `--preset-archive` also accepts the Windows desktop ZIP, extracting the six defaults and the accepted paired library without executables or DLLs. Native build inputs must include both libraries. Windows ZIPs expose the pairs in `Profiles/`, with matching filename stems and a catalog; macOS keeps the library inside its app resources. The GUI opens the appropriate folder. Build-time pairing checks compare the embedded source DCP bytes without firmware hashes or new camera gates. Mono entries require independent MAE <=3/255 and P95 <=12/255. Author/source information is consolidated in the main README.
+
+macOS bundles the official portable Perl ExifTool distribution and its modules/license, never a Windows helper. `prepare_assets.py` prepares it automatically or accepts `--exiftool-archive`. The runtime can also fall back to an installed helper or official download.
 
 The manual `desktop-preview.yml` workflow has Windows and `macos-15` (ARM64) native runners. Supply `preset_archive_url` pointing to the exported pack or an accessible desktop ZIP. The workflow must be available on the default branch to appear for manual dispatch; choose the feature ref for its code when available. On the feature branch, updating `dev/desktop/native-build-request.json` also triggers an Apple Silicon build without modifying main; manual dispatch selects macos / windows / all. The current public v2 CLI ZIP is not a desktop preset pack. CI runs focused contracts, native packaging, packaged offline/GUI checks, signature/DMG verification and uploads artifacts, without publishing a Release. Local source presets alone cannot populate a clean hosted runner.
 

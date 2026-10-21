@@ -52,7 +52,7 @@ def build(ap, output, zig=None, *, payload=None, register=False, wire_format=1, 
                      ','.join(map(str, ap[0x3514f54:0x3514f54 + 56])) + '};')
     header.write_text('\n'.join(lines) + '\n', encoding='ascii')
     worker = output / 'buffer.so'
-    nativebuild.compile_worker(Path(__file__).with_name('buffer_probe.c'),
+    nativebuild.compile_worker((Path(__file__).parent / 'native/buffer_probe.c'),
                                header, worker, zig, fingerprints=False)
     return worker
 
