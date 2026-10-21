@@ -2,6 +2,7 @@
 import argparse
 from pathlib import Path
 import urllib.request
+import urllib.error
 import zipfile
 import io
 import re
@@ -18,8 +19,11 @@ def fetch(url):
         request.add_header('Accept','application/octet-stream')
         token=os.environ.get('GH_TOKEN')
         if token:request.add_unredirected_header('Authorization','Bearer '+token)
-    with urllib.request.urlopen(request, timeout=90) as response:
-        return response.read()
+    try:
+        with urllib.request.urlopen(request, timeout=90) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError('Build asset download failed: HTTP %s; %s' % (exc.code,exc.read().decode('utf-8',errors='replace'))) from None
 
 
 PRESET_NAMES = tuple('slot%d.a7look' % slot for slot in range(1,7)) + (

@@ -16,7 +16,9 @@ on:
         type: string
 
 permissions:
-  contents: read
+  # GitHub requires write-capable repository access to read draft release assets.
+  # This workflow never publishes or changes a release.
+  contents: write
 
 jobs:
   package:
