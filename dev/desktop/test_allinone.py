@@ -158,11 +158,11 @@ class AllInOneTests(unittest.TestCase):
                 allinone.run(dict(self.args, options=options), dispatch=self.dispatch)
             self.assertEqual(self.calls, [])
 
-    def test_unfinished_factory_recovery_blocks_new_install(self):
-        with patch('looktool.factoryrecover.pending', return_value=(self.root / 'factory', {'phase': 'NEEDS_REVIEW'})):
-            with self.assertRaisesRegex(ValueError, '未完成的原厂恢复'):
-                allinone.run(self.args, dispatch=self.dispatch)
-        self.assertEqual(self.calls, [])
+    def test_new_install_does_not_inspect_historical_factory_verification(self):
+        with patch('looktool.factoryrecover.pending',side_effect=AssertionError('No historical verification gate')):
+            result=allinone.run(self.args,dispatch=self.dispatch)
+        self.assertEqual(result['phase'],'WAIT_RELOAD')
+        self.assertEqual([a for a,_ in self.calls],['usb_prepare','direct_install_all'])
 
     def test_saved_configuration_is_not_replaced_mid_install(self):
         allinone.run(self.args, dispatch=self.dispatch)
@@ -240,3 +240,31 @@ class AllInOneTests(unittest.TestCase):
         self.assertEqual(result['phase'], 'WAIT_RELOAD')
         self.assertEqual([a for a, _ in self.calls].count('usb_prepare'), 1)
         self.assertIn('connect', [a for a, _ in self.calls])
+
+    def test_fixed_tool_replans_a_prewrite_window_conflict_without_reinstalling_drivers(self):
+        allinone.run(self.args,dispatch=self.dispatch)
+        root=Path(self.args['workspace']);path=root/'setup.private.json'
+        state=json.loads(path.read_text());state.update(phase='NEEDS_REVIEW',completed_steps=['drivers'])
+        path.write_text(json.dumps(state))
+        old=root/'install';old.mkdir()
+        child=old/'direct.private.json'
+        child.write_text(json.dumps(dict(schema='a7c2-direct-job/1',mode='install_all',
+            phase='NEEDS_REVIEW',failed_during='READING',journal=[],error='cpapp-b.bin 0x138832')))
+        before=child.read_bytes();count=len(self.calls)
+        result=allinone.run(self.args,dispatch=self.dispatch)
+        self.assertEqual(result['phase'],'WAIT_RELOAD')
+        self.assertEqual([a for a,_ in self.calls[count:]],['direct_install_all'])
+        self.assertNotEqual(self.calls[-1][1]['workspace'],str(old))
+        self.assertEqual(child.read_bytes(),before)
+        self.assertIn(str(old),result['failed_install_workspaces'])
+
+    def test_unknown_native_execution_cannot_be_replanned_as_an_initial_conflict(self):
+        allinone.run(self.args,dispatch=self.dispatch)
+        root=Path(self.args['workspace']);path=root/'setup.private.json'
+        state=json.loads(path.read_text());state['phase']='NEEDS_REVIEW';path.write_text(json.dumps(state))
+        old=root/'install';old.mkdir()
+        (old/'direct.private.json').write_text(json.dumps(dict(schema='a7c2-direct-job/1',mode='install_all',
+            phase='NEEDS_REVIEW',failed_during='WRITING',journal=[dict(event='native_intent',mode=1)])))
+        count=len(self.calls)
+        with self.assertRaises(ValueError):allinone.run(self.args,dispatch=self.dispatch)
+        self.assertEqual(len(self.calls),count)

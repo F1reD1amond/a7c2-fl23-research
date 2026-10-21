@@ -51,7 +51,10 @@ def plan(ap,cp,version=core.VERSION,*,transitions=True):
             current=source[at:at+len(old)]
             if current==new:continue
             if current!=old and not (chip==1 and current in layout.fl23_previous_values(at)):
-                raise ValueError(f'補丁位置衝突：{name} {at:#x}；沒有寫入')
+                detail=current[:64].hex()
+                raise ValueError(f'補丁位置衝突：{name} {at:#x}；沒有寫入；'
+                    f'目前位元組({len(current)} bytes, first 64)={detail}。'
+                    '若使用過舊版本，請先依 README 恢復原廠功能後再安裝；保留本次日誌。')
             result[at:at+len(new)]=new;changed=True
             for offset in range(0,len(new),4096):spans.append((at+offset,min(4096,len(new)-offset)))
         after[name]=bytes(result);regions[name]=spans

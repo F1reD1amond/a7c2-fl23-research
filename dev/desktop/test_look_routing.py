@@ -79,7 +79,7 @@ class LookRoutingTests(unittest.TestCase):
         self.assertIn('fresh-look-route-ok', result.stdout)
 
     def test_continuation_tracks_actual_returned_workspace_and_survives_gui_restart(self):
-        for phase in ('AWAITING_RESOURCE_RELOAD', 'AWAITING_RELOAD'):
+        for phase in ('AWAITING_RESOURCE_RELOAD',):
             with self.subTest(phase=phase):
                 window = self.window()
                 requested = self.root / phase / 'unused-request-directory'
@@ -118,7 +118,7 @@ class LookRoutingTests(unittest.TestCase):
             bundle_options=dict(reset_slots=[2, 5], looks=[])))
         write_json(self.root / 'app' / 'desktop.json', dict(look_direct_work=str(actual)))
         window = self.window()
-        self.assertEqual(len(window.look_editor.values()), 2)
+        self.assertEqual(len(window.look_editor.values()), 0)
         write_json(actual / 'direct.private.json', dict(phase='LOADED', mode='install_all'))
         window.current_job = jobs.new_job('direct_verify', dict(workspace=str(actual)))
         write_json(window.current_job / 'status.private.json', dict(

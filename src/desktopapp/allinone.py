@@ -7,10 +7,11 @@ import json
 import uuid
 from pathlib import Path
 from .paths import data_root, write_json
+from . import lookbatch
 
 
 def run(arguments, *, dispatch):
-    from looktool import bundle, factoryrecover
+    from looktool import bundle
     from looktool.power import require_power
     require_power(confirmed=arguments.get('power_confirmed', False))
     if arguments.get('firmware') != '2.01':
@@ -24,9 +25,6 @@ def run(arguments, *, dispatch):
         if archive_error(state):write_json(path,state)
         print('本次一键安装已结束，没有重复写入。', flush=True)
         return state
-    found = factoryrecover.pending(data_root() / 'work')
-    if found and not (found[1]['phase'] == 'LOADED' and found[1].get('readonly_after_reload_verified')):
-        raise ValueError('相机有未完成的原厂恢复，请先到“恢复原厂功能”继续／核对：' + str(found[0]))
     if state is None:
         from .presets import resolve
         inputs = root / 'inputs'
@@ -79,6 +77,16 @@ def run(arguments, *, dispatch):
             # Re-read device proof even when the child finished before the
             # parent saved its result. LOADED children need no further reboot.
             save('WAIT_RELOAD')
+        elif (child_state.get('schema')=='a7c2-direct-job/1' and child_state.get('mode')=='install_all'
+              and isinstance(child_state.get('journal'),list)
+              and lookbatch.read_only_failure(child_state)):
+            # A version/window conflict can occur while building the host plan,
+            # before any camera write. A fixed tool must allow a fresh plan,
+            # preserving the failed child and its saved selection.
+            print('上次安装在写入前停止；保留失败记录，使用新版代码重新生成方案，不重装驱动。',flush=True)
+            state.setdefault('failed_install_workspaces',[]).append(str(install))
+            install=root/('install-retry-'+uuid.uuid4().hex[:8])
+            save('PREPARED',install_workspace=str(install))
         else:
             from . import reviewnames
             try:reviewnames.source(install)
@@ -86,7 +94,9 @@ def run(arguments, *, dispatch):
                 from looktool import namespause
                 try:namespause.source(install)
                 except (ValueError,OSError,KeyError):
-                    raise ValueError('上次安装结果需要核对，不会重复刷写。保留本目录并查看完整错误：' + str(root))
+                    detail='；原始阶段：%s；原始错误：%s'%(child_state.get('failed_during',child_state.get('phase','未知')),
+                        child_state.get('error','缺少原始错误，请导出包含子事务的新诊断包'))
+                    raise ValueError('上次安装结果需要核对，不会重复刷写。保留本目录并查看完整错误：' + str(root)+detail)
                 save('RESOURCE_REVIEW_REQUIRED')
             else:
                 print('上次在名称提交前空间不足；先核对现有字节并清理该次已完成的临时报告。',flush=True)

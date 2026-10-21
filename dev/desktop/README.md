@@ -1,6 +1,6 @@
 # Desktop development
 
-Keep changes on `feature/unified-desktop`. No camera operation occurs at startup,
+Current integration branch: `feature/desktop-overview`. No camera operation occurs at startup,
 in packaging, in `--offline-self-test`, or in `--smoke-test`.
 
 ## Run and build
@@ -51,10 +51,10 @@ Windows/macOS runners without publishing a Release.
   with verified look activations. ExifTool is user-selected unless bundled at build
   time. DCP compilation additionally needs Lightroom and its configured renderer;
   direct ST/sRGB CUBE compilation does not.
-- Vertical Display is shooting information/layout rotation, session-only, with
+- Vertical Display saves its native shooting-information/layout switch, with
   reversible resource aliases. Do not reuse the failed image-bank/ELF display patch.
-- Shutter sound keeps native on/off and custom PCM installation separate. Persist
-  only the exact confirmed audition, after temporary audition recovery.
+- Sound uses the current converted payload directly. Audition/confirmation/recovery
+  records are optional and do not gate sound on/off or saving.
 
 Before the owner's physical test, complete source tests, packaged offline native
 compilation, GUI startup and DMG verification. None proves camera boot safety or
@@ -217,3 +217,5 @@ and transaction storage with a simulated camera/planner. Guided setup recovers
 completed child proof after parent interruption, unstarted resource dispatch
 and the exact nested `program-install` child. It verifies rather than replaying
 completed writes; unknown nonempty children stop with their evidence intact.
+
+During development, run focused checks for the changed paths. Defer the full regression and complete package acceptance to the formal release, as requested by the owner. One-click setup checks the final combined camera state once after reload; individual look operations check/write/read back together, without a separate verify button. Factory recovery alone must remain pending until its loaded-state check passes.

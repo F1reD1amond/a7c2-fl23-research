@@ -109,6 +109,8 @@ def run():
     from desktopapp.paths import ROOT
     setup_runtime()
     from desktopapp import reloadguide
+    from desktopapp import connectionguide
+    assert '请检查所连接的设备' in connectionguide.TEXT and '正常现象' in connectionguide.TEXT
     audition=dict(phase='temporary_pcm_registered_cold_reload_required_after_test')
     assert not reloadguide.required('sound_audition',audition)
     assert '保持相机开机' in reloadguide.sound_notice('sound_audition',audition)['text']
@@ -132,6 +134,9 @@ def run():
     importlib.import_module('desktopapp.allinone')
     from desktopapp import allinone, presets, lookbatch, reviewnames, completion
     from looktool import bundle
+    from looktool import device_layout
+    assert bytes.fromhex('002c04d1132802d3142898bf002049f6f811c0f22011704700bf') in device_layout.fl23_previous_values(0x138832)
+    assert len(device_layout.fl23_previous_values(0x1100b80))>=2
     packed, selected = bundle.documents(presets.resolve(dict(preset_pack=presets.PACK)))
     assert [row['name'] for row in selected] == list(presets.NAMES)
     defaults=lookbatch.options(presets.catalog())

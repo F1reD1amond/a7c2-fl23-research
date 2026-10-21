@@ -66,24 +66,19 @@ class LookEditorTests(unittest.TestCase):
         self.assertTrue(all(r['action']=='restore' for r in window.look_editor.values()))
         self.assertFalse(window.look_editor.add.isEnabled())
 
-    def test_waiting_reload_locks_saved_mixed_plan_and_button_only_verifies(self):
+    def test_written_plan_does_not_lock_new_operations_or_require_verify(self):
         root,state=self.pending();window=self.window()
-        self.assertFalse(window.look_editor.isEnabled())
-        self.assertEqual([r['slot'] for r in window.look_editor.values()],[4,6])
-        self.assertIn('核对',window.look_button.text())
-        with patch.object(W.QMessageBox,'question') as power,patch('desktopapp.window.QtCore.QProcess'):
-            window.look_button.click()
-        power.assert_not_called()
-        request=json.loads((window.current_job/'request.private.json').read_text())
-        self.assertEqual(request['action'],'direct_verify')
-        self.assertEqual(request['arguments']['workspace'],str(root))
-        state['phase']='LOADED';write_json(root/'direct.private.json',state)
-        write_json(window.current_job/'status.private.json',dict(action='direct_verify',phase='SUCCEEDED',
-            result=dict(mode='install_all',phase='LOADED',workspace=str(root))))
-        window.finished(0,None)
-        self.assertEqual(window.look_editor.values(),[])
         self.assertTrue(window.look_editor.isEnabled())
-        self.assertFalse(window.look_button.isEnabled())
+        self.assertIsNone(window.look_pending_state())
+        self.assertEqual(window.look_editor.values(),[])
+        self.assertFalse(hasattr(window,'look_accept'))
+        self.assertFalse(window.pages.widget(4).findChildren(W.QPushButton,'action_direct_verify'))
+        window.look_editor.add_row(2)
+        with patch.object(W.QMessageBox,'question',return_value=W.QMessageBox.Yes),patch('desktopapp.window.QtCore.QProcess'):
+            window.look_button.click()
+        request=json.loads((window.current_job/'request.private.json').read_text())
+        self.assertEqual(request['action'],'direct_looks_import')
+        self.assertNotEqual(request['arguments']['workspace'],str(root))
 
     def test_resource_pause_continues_saved_job_without_reselecting_files(self):
         root,state=self.pending('AWAITING_RESOURCE_RELOAD');window=self.window()
@@ -131,8 +126,8 @@ class LookEditorTests(unittest.TestCase):
         write_json(job/'request.private.json',dict(action='direct_resume_looks',arguments=dict(workspace=str(candidate),failed_workspace=str(root))))
         write_json(job/'status.private.json',dict(phase='SUCCEEDED',action='direct_resume_looks',result=dict(workspace=str(root))))
         write_json(data_root()/'desktop.json',dict(look_direct_work=str(candidate),look_resume_source=str(root),look_job_dir=str(job)))
-        window=self.window();self.assertEqual(window.look_pending_state()[0],str(root))
-        self.assertIn('核对',window.look_button.text())
+        window=self.window();self.assertIsNone(window.look_pending_state())
+        self.assertTrue(window.look_editor.isEnabled())
 
     def test_background_completion_is_refreshed_without_restarting_gui(self):
         root,state=self.pending();job=self.root/'background-job'

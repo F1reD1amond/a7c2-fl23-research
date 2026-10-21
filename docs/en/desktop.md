@@ -46,6 +46,8 @@ This desktop build includes [FL23 PR #6](https://github.com/QAQLeonard/a7c2-fl23
 
 ## Factory functionality recovery
 
+Writing/readback alone leaves recovery **pending at 70%**. Follow the restart dialog, reconnect in Mass Storage and click **Restart, Verify and Finish Recovery** on the recovery page. Only a successful loaded-state check marks recovery verified and reaches 100%; closing the dialog does not confirm anything. The tool keeps the pending button/status after reopening.
+
 A historical recovery with completed loaded-state/read-only verification does not block a new restore. After later feature installation, the main Restore button creates a fresh current-state plan; only genuinely unfinished transactions are continued automatically.
 
 Use the unified restore/continue button, without an old backup or complete firmware download. Supported project modifications are removed and all six custom recipes return to ST defaults. Body calibration, counters and unrelated settings are preserved. Optional historical-backup recovery remains separate. This is neither an updater downgrade nor a full flash-image overwrite.
@@ -60,7 +62,7 @@ Offline regressions cover individual/repeated imports, selected-slot reset, mixe
 
 For source use, install `desktop-requirements.txt` and run `python desktop.py`. [Validation and limits](desktop-validation.md) · [Developer notes](../../dev/desktop/README.md). Development branch/local test bundle only; main and formal Releases are unchanged.
 
-The custom page previews its complete operation list before power confirmation. After write/readback follow the cold-reload dialog; the same button becomes loaded-state verification. Pending plans are locked and cleared on completion. Proven pre-write failures allow editing/retry; unknown outcomes preserve evidence and stop. Home still offers the default six-look installation separately.
+The custom page uses one Apply operation for source checks, selected-slot writes and complete readback. There is no separate verification button. After success the list clears and remains editable; follow the cold-reload dialog to load the change. Historical verification records do not block new operations. A real unfinished resource transaction still resumes its remaining work. Home retains its default six-look installation and one final combined check.
 
 Audio conversion is an independent offline operation: every attempt creates a new job, without prior camera enable or old camera-job locks. Failed/cancelled attempts clean their partial output; source files and the last successful result remain. The candidate is selected in a separate conversion record; conversion success does not mean camera audition or installation.
 
@@ -71,3 +73,5 @@ Sound retains its original Sony service body identity; legacy sound jobs do not 
 Before audition, completed owned markers are archived/replaced automatically; normal use does not require deleting files. An attempt rejected only by a marker before allocation can start fresh on the next click. Old CP storage is reclaimed by cold power-off, not released through potentially stale addresses. Unknown executions or markers without a matching completed report retain evidence and stop with details.
 
 After conversion, click Save Current Custom Sound directly; no prior audition, confirmation or cold recovery is required. Optional audition opens powered-on listening instructions; reconnect afterward and save directly. Listening/recovery records are optional controls. Follow the cold-reload dialog only after actual write/readback: unplug USB, wait for access activity to stop, switch off, remove the battery for at least one minute, then restart to load the change.
+
+One-click installation does not inspect historical factory-verification records at startup. Sound On/Off and repeated completed auditions do not require a cold-recovery record. Actual unknown writes and unfinished resources remain distinct from optional user confirmation.

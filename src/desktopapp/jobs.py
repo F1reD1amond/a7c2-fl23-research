@@ -46,6 +46,39 @@ def worker_command(request):
     return [sys.executable, '-u', str(ROOT / 'desktop.py'), '--worker', str(request)]
 
 
+def transaction_summaries(job):
+    """Include original failure stages, never program/settings snapshots."""
+    request_path=Path(job)/'request.private.json'
+    if not request_path.is_file():return {}
+    request=json.loads(request_path.read_text(encoding='utf-8'))
+    folder=request.get('arguments',{}).get('workspace')
+    if not folder:return {}
+    root=Path(folder);result={};children=[root]
+    fields=('schema','phase','mode','failed_during','error','error_type','completed_steps',
+            'install_workspace','failed_install_workspaces','names_cleanup_pending',
+            'readonly_after_reload_verified','physical_checks_accepted')
+    setup=root/'setup.private.json'
+    if setup.is_file():
+        state=json.loads(setup.read_text(encoding='utf-8'))
+        result['setup-summary.json']={k:state[k] for k in fields if k in state}
+        children=[Path(state.get('install_workspace') or root/'install')]
+        children.extend(Path(p) for p in state.get('failed_install_workspaces',[])[-5:])
+    for i,child in enumerate(dict.fromkeys(children)):
+        path=child/'direct.private.json'
+        if not path.is_file():continue
+        state=json.loads(path.read_text(encoding='utf-8'))
+        summary={k:state[k] for k in fields if k in state}
+        summary['journal']=[]
+        for event in state.get('journal',[]):
+            row={k:event[k] for k in ('event','stage','mode') if k in event}
+            if isinstance(event.get('result'),dict):
+                row['result']={k:event['result'][k] for k in ('phase','status','windows','mode',
+                    'staged','linked','committed','restored','rollback','remount','readonly','cleanup') if k in event['result']}
+            summary['journal'].append(row)
+        result['direct-summary-%d.json'%i]=summary
+    return result
+
+
 def export_support(job, destination):
     """Export diagnostic text only; never programs, sensor calibration or photos."""
     job = Path(job)
@@ -59,6 +92,11 @@ def export_support(job, destination):
             path = job / name
             if path.is_file():
                 archive.write(path, 'diagnostics/' + name)
+        try:
+            for name,value in transaction_summaries(job).items():
+                archive.writestr('diagnostics/transactions/'+name,json.dumps(value,ensure_ascii=False,indent=2))
+        except (OSError,ValueError,TypeError) as exc:
+            archive.writestr('diagnostics/transactions/read-error.txt',str(exc))
         # SetupAPI is particularly useful for driver installation failures.
         setupapi = Path(os.environ.get('WINDIR', 'C:/Windows')) / 'INF/setupapi.dev.log'
         if sys.platform == 'win32' and setupapi.exists():

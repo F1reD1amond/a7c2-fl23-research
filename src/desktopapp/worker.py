@@ -130,6 +130,9 @@ def run(action, args, job):
                 bundle_options=args.get('options'))
         response = {'workspace': str(obj.root), 'phase': result['phase'], 'mode': result['mode'],
                     'backup_created': False}
+        if result['mode']=='factory_reset':
+            response.update(recovery_complete=result['phase'] in ('LOADED','COMPLETE'),
+                            verification_required=result['phase']=='AWAITING_RELOAD')
         if result.get('vertical_result'):response['vertical_result']=result['vertical_result']
         if mode in ('fl23_enable', 'fl23_disable') and result['phase'] == 'AWAITING_RELOAD':
             # The device write is finished. Keep reload evidence internally,
@@ -140,6 +143,23 @@ def run(action, args, job):
             response['operations']=args['options']['slot_operations']
             if result['phase'] == 'AWAITING_RELOAD':
                 response.update(phase='COMPLETED', reload_required=True)
+        if (action in ('direct_looks_import','direct_resume_looks') and
+                result['phase'] in ('AWAITING_RELOAD','LOADED','COMPLETE') and
+                result.get('raw_profile_effective_since') and result.get('job_id')):
+            # Publish computer-side profile mapping after the same write/readback
+            # operation; no separate user verification click is required.
+            from looktool import bundle,rawidentity
+            try:
+                opts,rows=bundle.documents(result.get('bundle_options',{}))
+                docs=[dict(r['document'],name=r['name']) for r in rows]
+                slots=[r['slot'] for r in rows]
+                slots+=opts.get('reset_slots',[])
+                docs += [dict(name='ST',raw_profile=None) for _ in opts.get('reset_slots',[])]
+                sync=rawidentity.activated(docs,slots,result['job_id'],result['raw_profile_effective_since'])
+            except (OSError,ValueError,KeyError) as exc:
+                sync=dict(status='profile_sync_failed',error=str(exc))
+            obj.state['raw_profile_sync']=sync;write_json(obj.state_path,obj.state)
+            response['raw_profile_sync']=sync
         return response
     if action in ('driver_scan', 'driver_install', 'driver_uninstall', 'usb_prepare', 'mac_unmount'):
         from . import drivers

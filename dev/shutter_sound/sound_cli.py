@@ -155,13 +155,6 @@ def native_job(state, *, enabled=True):
     return Path(path), value
 
 
-def require_recovered_trial(state):
-    if state.get('audio_job'):
-        previous = load_job(state['audio_job'])
-        if not previous.get('owner_cold_recovery_confirmed'):
-            raise ValueError('Cold-recover the temporary audition first, then run confirm-recovery')
-
-
 def operate(root, state, command, job, operation):
     # Durable intent precedes camera action. Only proven pre-mutation enable/
     # adoption failures can release their binding; writes are never replayed.
@@ -183,11 +176,8 @@ def operate(root, state, command, job, operation):
 def on(root, state, battery, zig=None, *, power_confirmed=False):
     import trial
     require_idle(state, root)
-    require_recovered_trial(state)
     from looktool.power import require_power
     state['power_confirmation'] = require_power(battery, confirmed=power_confirmed)
-    if state.get('native_job') and load_job(state['native_job'])['phase'] != 'restored':
-        raise ValueError('Existing support is enabled or unresolved; inspect status instead of writing again')
     job = new_path(root, 'native-on')
     state['native_job'] = str(job)
     def run():
@@ -203,8 +193,7 @@ def on(root, state, battery, zig=None, *, power_confirmed=False):
 
 
 def off(root, state, zig=None):
-    require_idle(state)
-    require_recovered_trial(state)
+    require_idle(state,root)
     job, _ = native_job(state)
     result = operate(root, state, 'off', job, lambda: trial.change(job, restore=True, zig=zig))
     print(RELOAD)
@@ -262,11 +251,11 @@ def audition(root, state, zig=None):
     require_idle(state, root)
     if state.get('boot_job') and load_job(state['boot_job'])['phase'] != 'restored_cold_test_pending':
         raise ValueError('Restore the persistent sound and cold-reload before a new audition')
-    require_recovered_trial(state)
     conversion=selected_conversion(root,state)
     if not conversion:
         raise ValueError('Convert a source with import first')
-    previous = Path(state['audio_job']) if state.get('audio_job') else None
+    previous=(Path(state['audio_job']) if state.get('audio_job') and
+              load_job(state['audio_job']).get('owner_cold_recovery_confirmed') else None)
     payload = (Path(conversion) / 'custom-native.private.bin').read_bytes()
     if not state.get('native_job'):
         # A temporary audition never enables the permanent CP branch silently.
@@ -349,8 +338,7 @@ def compile_install(ap,cp,payload,output,zig=None):
 
 def restore_sound(root, state, zig=None):
     import boot_trial
-    require_idle(state)
-    require_recovered_trial(state)
+    require_idle(state,root)
     if not state.get('boot_job'):
         raise ValueError('No persistent sound is recorded; RAM auditions clear by cold power-off')
     job = Path(state['boot_job'])

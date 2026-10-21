@@ -1,5 +1,16 @@
 # Changelog
 
+## Desktop preview.10.7 — 2026-10-21
+
+- Simplify workflow: no historical recovery-verification check at one-click startup. Custom looks perform checks/write/full readback through Apply, without a separate verification button or a post-write editor lock. Sound on/off and repeated completed auditions no longer require a recovery record. One-click installation retains one final combined check after all selected camera changes and restart; recovery retains its own mandatory completion check.
+- After these workflow changes, use focused checks only (50 relevant cases); defer the next full regression to formal release. The earlier 334/20 result below predates the last workflow simplification.
+
+- Fix direct upgrade from the project's published v2-era FL23 helper/curve table. Reproduce its `cpapp-b.bin + 0x138832` conflict using the original 2.01 programs and published patch list; migrate both reviewed old windows while preserving unrelated code and LUTs.
+- Continue can re-plan an accounted read-only failure in a fresh child without reinstalling drivers. Preserve failed jobs and unknown native outcomes. Diagnostic exports now include original child-stage/error summaries without program or calibration snapshots.
+- Show a startup notice explaining the camera's “Check the connected device” message during tool connection/driver switching, and distinguish it from actual tool errors.
+- Recovery remains at 70% with “not complete; restart and verify” until loaded-state verification passes. Update the main button and restart dialog accordingly; keep physical acceptance separate.
+- 334 tests passed / 20 skipped. Full offline one-click plans passed for stock, published old FL23 and old FL23 with LUTs; recovery/startup dialogs were rendered and inspected. No camera operations were performed for this update. The external reports lack actual source bytes/child state, so their exact original states still require recipient validation.
+
 ## Desktop preview.10.6 — 2026-10-21
 
 - Save converted audio directly. Audition, listening confirmation and cold-recovery records are optional; cold reload is requested after actual write/readback.

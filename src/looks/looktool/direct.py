@@ -184,6 +184,8 @@ class DirectJob(Rollback):
                       RESOURCE_RELOAD_VERIFIED='名称及只读挂载已确认，可以继续程序安装')
         if phase=='AWAITING_RELOAD' and self.state.get('mode') in ('fl23_enable','fl23_disable'):
             labels[phase] = 'FL23 操作完成：已写入并完整读回；重开后生效，无需再点核对。'
+        elif phase=='AWAITING_RELOAD' and restoring:
+            labels[phase]='恢复尚未完成：写入与读回已结束，等待重启后核对'
         print(labels.get(phase, phase), flush=True)
 
     def settings(self, camera, before, wanted):
@@ -287,7 +289,7 @@ class DirectJob(Rollback):
                     self.native(camera, 'wbi', 0)
                     self.native(camera, 'wbi', 1)
             self.save('AWAITING_RELOAD')
-            print('续接完成，所有读写已结束。拔 USB 和其他外部供电，等存取灯停止闪烁，再正常关机并等屏幕和灯完全熄灭；取下电池至少一分钟，再装回开机、检查并核对。', flush=True)
+            print('续接写入和读回已结束，恢复尚未完成：请拔 USB 和其他外部供电，等存取灯停止闪烁，再正常关机并等屏幕和灯完全熄灭；取下电池至少一分钟，再装回开机、接回 USB，点击“重启后核对并完成恢复”。', flush=True)
             return self.state
         except BaseException as exc:
             self.save('NEEDS_REVIEW', error=str(exc))

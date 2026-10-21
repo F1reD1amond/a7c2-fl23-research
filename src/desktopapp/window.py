@@ -9,6 +9,7 @@ from . import VERSION
 from . import jobs
 from . import presets
 from . import reloadguide
+from . import connectionguide
 from .paths import ROOT, data_root, load_settings, write_json
 
 
@@ -251,8 +252,12 @@ class Window(W.QMainWindow):
         return confirm
 
     def show_reload_guide(self, *, setup=False, mode=None):
-        title = '试听结果已记录，请断电恢复原声' if mode=='sound_confirm' else '读写已结束，请断电重开'
+        title = ('恢复尚未完成，请重启后核对' if mode=='factory_reset' else
+                 '试听结果已记录，请断电恢复原声' if mode=='sound_confirm' else '读写已结束，请断电重开')
         W.QMessageBox.information(self, title, reloadguide.text(setup=setup, mode=mode))
+
+    def show_connection_notice(self):
+        W.QMessageBox.information(self,connectionguide.TITLE,connectionguide.TEXT)
 
     def field(self, form, key, label, *, kind=None, filter='All files (*)', value=''):
         line = W.QLineEdit(str(self.settings.get(key, value)))
@@ -323,15 +328,17 @@ class Window(W.QMainWindow):
 
     def recovery_page(self):
         layout = self.page('恢复原厂功能', '已内置本项目修改区域的原厂 2.01 基准。移除已支持的项目修改，六个自订栏位设为 ST 默认，保留机身校准。无需旧备份或下载完整固件；旧配方不找回。')
-        self.button(layout, '恢复／继续恢复原厂 2.01 功能（无需旧备份）', 'direct_factory_reset',
+        self.factory_button=self.button(layout, '恢复／继续恢复原厂 2.01 功能（无需旧备份）', 'direct_factory_reset',
                     lambda: self.direct_args('factory', mode='factory_reset', factory='builtin'), primary=True)
+        self.factory_status=W.QLabel('恢复写入后必须按弹窗重启，再接回核对；核对通过前不会标记恢复完成。')
+        self.factory_status.setWordWrap(True);layout.addWidget(self.factory_status)
         resume_section = self.advanced(layout, '恢复事务（自动识别；也可手动选择）')
         resume_form = W.QFormLayout()
         self.field(resume_form, 'factory_failed_work', '恢复事务目录（通常自动）', kind='folder',
                    value=self.settings.get('factory_direct_work', ''))
         resume_section.addLayout(resume_form)
         self.factory_accept = self.reload_controls(layout, '取景、拍照和回放正常')
-        self.button(layout, '核对原厂功能恢复后的加载状态', 'direct_verify',
+        self.button(layout, '重启后核对并完成恢复（恢复写入后必做）', 'direct_verify',
                     lambda: self.direct_verify_args('factory', self.factory_accept.isChecked()))
         layout.addWidget(W.QLabel('相机仍需能够进入 USB 服务通信；此操作不是索尼更新器的降级重刷。'))
         expert = self.advanced(layout, '导入完整原厂 2.01 参考文件（高级、可选）')
@@ -344,6 +351,23 @@ class Window(W.QMainWindow):
         legacy = self.advanced(layout, '使用旧备份回到过去的状态（可选）')
         self.backup_recovery_controls(legacy)
         layout.addStretch()
+        self.refresh_factory_controls()
+
+    def refresh_factory_controls(self):
+        work=self.settings.get('factory_direct_work') or self.text('factory_failed_work')
+        path=Path(work,'direct.private.json') if work else None
+        try:state=json.loads(path.read_text(encoding='utf-8')) if path and path.is_file() else {}
+        except (OSError,ValueError):return
+        phase=state.get('phase')
+        if phase=='AWAITING_RELOAD':
+            self.factory_button.setText('重启后核对并完成恢复')
+            self.factory_status.setText('恢复尚未完成：写入与读回已结束。请断电重启、接回 USB，再点击上方按钮核对。')
+        elif phase in ('LOADED','COMPLETE') and state.get('readonly_after_reload_verified'):
+            self.factory_button.setText('重新恢复原厂 2.01 功能（无需旧备份）')
+            self.factory_status.setText('上次恢复核对已通过。程序、设置、加载状态及只读挂载已核对；当前功能和拍摄验收以机身为准。')
+        elif phase=='NEEDS_REVIEW':
+            self.factory_button.setText('继续恢复／核对未完成事务')
+            self.factory_status.setText('恢复尚未完成，请继续处理未完成事务；当前不代表已恢复成功。')
 
     def backup_recovery_controls(self, layout):
         form = self.box(layout, '恢复来源')
@@ -393,9 +417,8 @@ class Window(W.QMainWindow):
         for title,callback in [('从 DCP／LUT 生成 A7Look…',self.compiler_dialog),('安装 LrC 自动识别插件…',self.plugin_dialog)]:
             button=W.QPushButton(title);button.clicked.connect(callback);tools.addWidget(button);self.buttons.append(button)
         layout.addWidget(W.QLabel('仅更改清单内的槽位，保留 FL23、声音与竖屏设置。'))
-        diagnostic=self.advanced(layout,'断电步骤与加载核对')
-        self.look_accept=self.reload_controls(diagnostic,'预览、拍照和回放正常')
-        self.button(diagnostic,'只读核对上次加载状态','direct_verify',lambda:self.direct_verify_args('look',self.look_accept.isChecked()))
+        hint=W.QLabel('同一次操作自动检查当前状态、写入并完整读回。结束后按弹窗断电加载，无需单独点击核对。')
+        hint.setWordWrap(True);layout.addWidget(hint)
         layout.addStretch()
         self._look_displayed_pending=None;self._look_refreshing=False
         self.look_editor.changed.connect(self.refresh_look_controls)
@@ -422,7 +445,7 @@ class Window(W.QMainWindow):
             if state.get('phase')=='RESOURCE_RELOAD_VERIFIED' and nested.is_file():
                 prior=str(nested.parent);state=json.loads(nested.read_text(encoding='utf-8'))
         except (ValueError,OSError,KeyError) as exc:return str(prior),dict(phase='UNREADABLE',error=str(exc))
-        return None if state.get('phase') in ('LOADED','COMPLETE') else (prior,state)
+        return None if state.get('phase') in ('AWAITING_RELOAD','LOADED','COMPLETE') else (prior,state)
 
     def refresh_look_controls(self):
         if self._look_refreshing:return
@@ -440,10 +463,7 @@ class Window(W.QMainWindow):
                     operations=[dict(r,**{k:v for k,v in by_slot.get(r['slot'],{}).items() if k!='slot'}) if r.get('action')=='write' else r for r in operations]
                     self.look_editor.set_operations(operations);self._look_displayed_pending=token
                 self.look_editor.setEnabled(False);self.look_button.setEnabled(not busy)
-                if phase=='AWAITING_RELOAD':
-                    text='本次更改已写入并完整读回；按弹窗断电重开、接回后，点下方按钮核对。'
-                    self.look_button.setText('重开后核对本次槽位更改（不重复写入）')
-                elif phase in ('AWAITING_RESOURCE_RELOAD','RESOURCE_RELOAD_VERIFIED') or (phase=='NEEDS_REVIEW' and state.get('forward_name_build',{}).get('stream_install') and 'readonly=-16' in state.get('error','')):
+                if phase in ('AWAITING_RESOURCE_RELOAD','RESOURCE_RELOAD_VERIFIED') or (phase=='NEEDS_REVIEW' and state.get('forward_name_build',{}).get('stream_install') and 'readonly=-16' in state.get('error','')):
                     text='上次操作正在等待资源续接，将沿用已保存的清单。'
                     self.look_button.setText('继续上次槽位更改')
                 else:
@@ -473,8 +493,6 @@ class Window(W.QMainWindow):
         pending=self.look_pending_state()
         if pending:
             prior,state=pending;phase=state.get('phase')
-            if phase=='AWAITING_RELOAD':
-                self.launch('direct_verify',dict(workspace=prior,accepted=self.look_accept.isChecked()));return
             if phase in ('AWAITING_RESOURCE_RELOAD','RESOURCE_RELOAD_VERIFIED') or (phase=='NEEDS_REVIEW' and state.get('forward_name_build',{}).get('stream_install') and 'readonly=-16' in state.get('error','')):
                 self.launch('direct_resume_looks',dict(self.common(),workspace=self.work('look'),failed_workspace=prior));return
             from .lookbatch import read_only_failure
@@ -498,7 +516,7 @@ class Window(W.QMainWindow):
         layout.addStretch()
 
     def sound_page(self):
-        layout = self.page('电子快门声音', '独立开关控制电子快门发声分支。自定义音频先转换、临时试听，再保存已确认的同一份声音。')
+        layout = self.page('电子快门声音', '独立开关控制电子快门发声分支。音频转换后可直接保存，临时试听可选；写入后按弹窗断电加载。')
         form = self.box(layout, '声音工作区')
         self.field(form, 'sound_work', '工作目录', kind='folder', value=str(data_root() / 'sound'))
         self.field(form, 'sound_backup', '第二份备份', kind='folder', value=str(data_root() / 'sound-backup'))
@@ -649,7 +667,7 @@ class Window(W.QMainWindow):
             self.settings[group + '_direct_work'] = arguments['workspace']
             if group=='look':
                 self.settings['look_resume_source']=arguments.get('failed_workspace','')
-            getattr(self, group + '_accept').setChecked(False)
+            if group!='look':getattr(self, group + '_accept').setChecked(False)
         if action == 'setup_all':
             self.settings['setup_work'] = arguments['workspace']
             self.setup_button.setText('正在安装…')
@@ -722,6 +740,7 @@ class Window(W.QMainWindow):
             self.fields['look_work'].setText(status['result']['workspace'])
         if success and status.get('action') in ('direct_factory_reset', 'direct_resume_factory'):
             self.settings['factory_direct_work'] = status['result']['workspace']
+            self.fields['factory_failed_work'].setText(status['result']['workspace'])
         if success and status.get('action')=='direct_verify' and status['result'].get('mode')=='factory_reset':
             self.settings['factory_direct_work']=status['result']['workspace']
         if success and (status.get('action') in ('direct_looks_import','direct_resume_looks') or
@@ -737,6 +756,8 @@ class Window(W.QMainWindow):
         write_json(data_root() / 'desktop.json', self.settings)
         waiting=success and reloadguide.required(status.get('action'),status.get('result',{}))
         sound_notice=reloadguide.sound_notice(status.get('action'),status.get('result',{})) if success else None
+        factory_wait=success and status.get('result',{}).get('mode')=='factory_reset' and status['result'].get('phase')=='AWAITING_RELOAD'
+        factory_done=success and status.get('result',{}).get('mode')=='factory_reset' and status['result'].get('phase') in ('LOADED','COMPLETE')
         resource_wait=status.get('result',{}).get('phase') in ('WAIT_RESOURCE_RELOAD','AWAITING_RESOURCE_RELOAD')
         resource_ready=success and status.get('result',{}).get('phase')=='RESOURCE_RELOAD_VERIFIED'
         self.status.setText(('名称已写好，程序尚未写入。按弹窗断电重开、接回，再点同一个按钮继续。' if resource_wait else
@@ -748,18 +769,21 @@ class Window(W.QMainWindow):
                            '完成。请按日志提示进行下一步。' if success else
                            '操作停止：' + status.get('error', '进程异常退出，退出码 ' + str(code)) + '。请导出诊断包。')
         if sound_notice:self.status.setText(sound_notice['status'])
+        if factory_wait:self.status.setText('恢复尚未完成：写入和读回已结束，必须断电重启、接回 USB，再点“重启后核对并完成恢复”。')
+        elif factory_done:self.status.setText('原厂恢复核对通过。程序、设置及实际加载状态已核对；请继续检查机身拍摄和回放。')
         self.progress.setRange(0, 100)
-        self.progress.setValue(0 if sound_notice and status.get('action')=='sound_install' else
+        self.progress.setValue(70 if factory_wait else 0 if sound_notice and status.get('action')=='sound_install' else
                               40 if success and (resource_wait or resource_ready) else 70 if waiting and status.get('action')=='setup_all' else 100 if success else 0)
         for button in self.buttons:
             button.setEnabled(True)
         self.stop.setEnabled(False)
         self.process.deleteLater()
         self.process = None
-        if success and status.get('action') in ('direct_looks_import','direct_resume_looks','direct_verify') and status.get('result',{}).get('mode') in ('install_all','look_import','slot_default') and status['result'].get('phase') in ('LOADED','COMPLETE') and (status['action']!='direct_verify' or self._look_displayed_pending is not None):
+        if success and status.get('action') in ('direct_looks_import','direct_resume_looks','direct_verify') and status.get('result',{}).get('mode') in ('install_all','look_import','slot_default') and status['result'].get('phase') in ('COMPLETED','AWAITING_RELOAD','LOADED','COMPLETE') and (status['action']!='direct_verify' or self._look_displayed_pending is not None):
             self.look_editor.set_operations([])
         self.refresh_look_controls()
         self.refresh_setup_controls()
+        self.refresh_factory_controls()
         if sound_notice:
             W.QMessageBox.information(self,sound_notice['title'],sound_notice['text'])
         elif waiting:
@@ -823,4 +847,6 @@ def main():
                 raise OSError('Could not save desktop smoke screenshot')
         window.nav.setCurrentRow(0)
         QtCore.QTimer.singleShot(800, app.quit)
+    else:
+        QtCore.QTimer.singleShot(0,window.show_connection_notice)
     return app.exec()

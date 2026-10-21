@@ -88,15 +88,24 @@ class IntegratedSoundTests(unittest.TestCase):
                 self.assertEqual(install.call_args.args[4],payload)
         self.scenario(check)
 
-    def test_current_temporary_buffer_is_not_stacked_or_persisted_without_cold_recovery(self):
+    def test_sound_off_and_save_do_not_require_a_cold_recovery_record(self):
         def check(base, root, state, native, audio):
             cli.confirm_audio(root, state, 'correct')
-            with patch.object(buffer_trial, 'run') as run, patch.object(boot_trial, 'install',return_value={'phase':'installed_cold_test_pending'}) as install:
-                for action in (lambda: cli.audition(root, state), lambda: cli.off(root, state)):
-                    with self.assertRaisesRegex(ValueError, 'Cold-recover'): action()
+            with patch.object(trial,'change',return_value={'phase':'restored'}) as off,patch.object(boot_trial, 'install',return_value={'phase':'installed_cold_test_pending'}) as install:
+                cli.off(root,state)
+                off.assert_called_once()
                 result=cli.install(root,state,100)
                 self.assertEqual(result['phase'],'installed_cold_test_pending')
-                run.assert_not_called(); install.assert_called_once()
+                install.assert_called_once()
+        self.scenario(check)
+
+    def test_reaudition_automatically_replaces_completed_marker_without_recorded_recovery(self):
+        def check(base,root,state,native,audio):
+            state['conversion']=str(audio);(audio/'custom-native.private.bin').write_bytes(bytes(64))
+            with patch.object(buffer_trial,'run',return_value={'phase':'temporary_pcm_registered_cold_reload_required_after_test'}) as run:
+                cli.audition(root,state)
+            self.assertIsNone(run.call_args.kwargs['recovered_job'])
+            self.assertIn(str(audio),run.call_args.kwargs['replace_jobs'])
         self.scenario(check)
 
     def test_direct_save_does_not_require_or_fabricate_listening_or_recovery(self):

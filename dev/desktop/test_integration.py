@@ -239,5 +239,19 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(result['phase'], 'RESTORED_AWAITING_RELOAD')
 
 
+    def test_lut_write_publishes_profile_binding_without_separate_verify(self):
+        result=dict(phase='AWAITING_RELOAD',mode='install_all',job_id='test-profile-write',
+            raw_profile_effective_since='2026-10-21T12:00:00',bundle_options=dict(looks=[],reset_slots=[2]))
+        obj=Mock();obj.root=self.root/'direct';obj.state_path=obj.root/'direct.private.json';obj.state=dict(result)
+        obj.run_direct.return_value=result
+        with patch('looktool.direct.DirectJob',return_value=obj), \
+             patch('looktool.rawidentity.activated',return_value=dict(status='published')) as publish:
+            answer=worker.run('direct_looks_import',dict(workspace=str(obj.root),firmware='2.01',
+                power_confirmed=True,operations=[dict(slot=2,action='restore')]),self.root)
+        self.assertEqual(answer['phase'],'COMPLETED')
+        self.assertEqual(publish.call_args.args[1],[2])
+        obj.verify_direct.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()
