@@ -36,7 +36,11 @@ def decode(raw):
 
 @pytest.mark.parametrize('raw',[b'abc',bytes(65536),b'0123456789'*6500,bytes(range(256))*193],ids=['literal','zeros','periodic','bytes'])
 def test_lz77_round_trip_across_blocks(raw):
-    assert decode(portrait.compress(raw))==raw
+    packed=portrait.compress(raw);stream=io.BytesIO(packed);blocks=[]
+    while stream.tell()<len(packed):blocks.append(inflateLz77(stream))
+    assert b''.join(blocks)==raw
+    assert all(len(block)==4096 for block in blocks[:-1])
+    assert len(blocks[-1])<=4096
 
 
 def test_only_selected_existing_records_change_and_new_rasters_decode_exactly():

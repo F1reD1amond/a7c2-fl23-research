@@ -11,10 +11,10 @@ ASSETS=Path(__file__).resolve().parents[1]/'assets'
 
 
 def compress(raw):
-    """Sony LZ77 blocks, with at most 16 KiB decoded per block."""
+    """Sony LZ77 blocks using the original image decoder's 4096-byte pages."""
     result=bytearray();lengths=list(range(3,17))+[32,64]
-    for base in range(0,len(raw),16384):
-        data=raw[base:base+16384];out=bytearray(b'\xf0');history={};at=0;tokens=[]
+    for base in range(0,len(raw),4096):
+        data=raw[base:base+4096];out=bytearray(b'\xf0');history={};at=0;tokens=[]
         while at<len(data):
             key=data[at:at+3];prior=history.get(key);size=0
             if len(key)==3 and prior is not None and at-prior<=4095:
