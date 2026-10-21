@@ -4,6 +4,31 @@ from pathlib import Path
 import tempfile
 
 
+def check_dcp_conversion(selected):
+    """Exercise shipped profiles and the real fitting pipeline in the package."""
+    import numpy as np
+    from looktool import compilelook, lookfile, rawidentity
+    names=[]
+    with tempfile.TemporaryDirectory(prefix='a7c2-dcp-smoke-') as temporary:
+        folder=Path(temporary)
+        for row in selected:
+            source=folder/('slot%d.dcp'%row['slot'])
+            source.write_bytes(rawidentity.source_bytes(row['document']['raw_profile']))
+            target,report,info=compilelook.dcp_targets(np.array([[.1,.2,.3],[.8,.6,.4],[.3,.3,.3]]),source)
+            assert target.shape==(3,3) and np.isfinite(target).all()
+            assert not report['Lightroom_reference_used'] and not report['full_adobe_renderer']
+            names.append(info['profile'])
+        output=folder/'Astia.a7look'
+        assert compilelook.main([str(folder/'slot4.dcp'),'--name','Offline package check',
+            '--output',str(output),'--passes','1','--evaluations','20','--extra-colors','32'])==0
+        document=lookfile.read(output)
+        assert len(lookfile.writer_document(document))==1215
+        assert document['native_photo']['runtime_basis']
+        assert document['validation']['metrics']['Lightroom_reference_used'] is False
+    return dict(profiles_evaluated=names,real_fit='passed',Lightroom_used=False,
+                reduced_budget=True,physical_color_validated=False,camera_io=False)
+
+
 def check_audio_conversion():
     """Convert generated mono/stereo/compressed audio using shipped dependencies.
 
@@ -201,6 +226,7 @@ def run():
     assert (ROOT / 'src/vertical/assets/aliases_recovery.so').read_bytes()[:4] == b'\x7fELF'
     importlib.import_module('sound_cli')
     audio_conversion = check_audio_conversion()
+    dcp_conversion = check_dcp_conversion(selected)
     import numpy as np
     import scipy.optimize
     from looktool.measuredmodel import Response
@@ -230,4 +256,5 @@ def run():
             'one_click_offline_sequence':'passed','look_batch_defaults':'passed','streaming_names_compile':'passed',
             'bundled_six_looks':list(presets.NAMES),'fl23_pr6_movie_routes':'passed',
             'completion_summary':'passed','persistent_vertical_plan':'passed',
-            'audio_conversion':audio_conversion,'sound_install_emulator':'passed','numpy': np.__version__}
+            'audio_conversion':audio_conversion,'standalone_dcp_conversion':dcp_conversion,
+            'sound_install_emulator':'passed','numpy': np.__version__}

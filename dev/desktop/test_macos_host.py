@@ -31,8 +31,9 @@ class Mac:
         self.commands.append(args)
         if 'ioreg' in args[0]:return tree(self.disks)
         disk=args[-1].removeprefix('/dev/')
-        info=dict(DeviceIdentifier=disk,Internal=False,BusProtocol='USB',ParentWholeDisk=self.whole(disk),
+        info=dict(DeviceIdentifier=disk,Internal=False,BusProtocol='USB',
                   WholeDisk=disk==self.whole(disk))
+        if not info['WholeDisk']:info['ParentWholeDisk']=self.whole(disk)
         if self.mounts.get(disk):info['MountPoint']=self.mounts[disk]
         return info
     def run(self,command,**kwargs):
@@ -66,11 +67,28 @@ def test_already_unmounted_camera_is_rechecked_and_allowed():
     with a,b,c,d:assert host.unmount_camera()['unmounted']==['disk9']
 
 
-def test_no_camera_disk_stops_before_usb_capture():
+def test_stable_empty_camera_without_sd_card_is_allowed():
     fake=Mac({})
     a,b,c,d=fake.patches()
-    with a,b,c,d,pytest.raises(RuntimeError,match='影像传输'):host.unmount_camera()
+    with a,b,c,d:assert host.unmount_camera()['unmounted']==[]
     assert fake.unmounts==[]
+
+
+def test_whole_disk_without_parent_field_is_valid():
+    fake=Mac({'disk9':None})
+    with patch.object(host,'plist_command',side_effect=fake.plist):
+        registry,media=host.camera_media()
+    assert registry==77 and media['disk9']['parent']=='disk9'
+
+
+def test_partition_parent_outside_camera_subtree_is_rejected():
+    fake=Mac({'disk9s1':None})
+    def plist(*args):
+        result=fake.plist(*args)
+        if args[-1]=='/dev/disk9s1':result['ParentWholeDisk']='disk99'
+        return result
+    with patch.object(host,'plist_command',side_effect=plist):
+        with pytest.raises(RuntimeError,match='parent'):host.camera_media()
 
 
 def test_busy_volume_stops_before_capture_with_details(capsys):
@@ -119,6 +137,18 @@ def test_normal_return_timeout_is_reported_not_raised(capsys):
     with patch.object(host.time,'sleep'),patch.object(host.time,'monotonic',side_effect=lambda:next(clock)):
         assert host.wait_normal_return(lambda:None) is False
     assert '未恢复' in capsys.readouterr().out
+
+
+def test_normal_return_handles_readonly_enumeration_error(capsys):
+    import usb.core
+    found=iter([usb.core.USBError('Device disappeared during enumeration'),Mock()])
+    def find():
+        value=next(found)
+        if isinstance(value,Exception):raise value
+        return value
+    with patch.object(host.time,'sleep'),patch('usb.util.dispose_resources'):
+        assert host.wait_normal_return(find) is True
+    assert 'Device disappeared' in capsys.readouterr().out
 
 
 def test_mac_connect_unmounts_before_the_first_usb_open(monkeypatch):

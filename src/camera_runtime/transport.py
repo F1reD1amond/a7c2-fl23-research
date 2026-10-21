@@ -213,7 +213,10 @@ class Session:
         finally:usb.util.dispose_resources(self.dev)
         if stopped and sys.platform=='darwin':
             from macos_host import wait_normal_return
-            wait_normal_return(lambda:get_device(0x0e8a))
+            # Only enumerate here. Reading configuration opens a new handle
+            # before the next session can release remounted camera storage.
+            wait_normal_return(lambda:usb.core.find(idVendor=0x054c,idProduct=0x0e8a,
+                backend=usb.backend.libusb1.get_backend(find_library=libusb_package.find_library)))
     def call(self,method,*args):
         if not self.healthy:raise RuntimeError('會話結果未知，停止後續命令')
         self.backend.reset()

@@ -1,5 +1,12 @@
 # 更新日志
 
+## Desktop preview.10.14 — Mac／离线 DCP 整合 — 2026-10-21
+
+- 整合审查后的 Mac 连接顺序、存在旧任务时的启动修复与独立离线 DCP 转换。Windows／Mac 使用相同相机安装和恢复后端，Mac 专属变化限于授权与 USB 接管。
+- 修正 diskutil 未提供整碟 ParentWholeDisk 时的误判，并保留无 SD 卡的稳定连接。只对相机所属磁盘执行非强制卸载。
+- 原生 CI 加入 DCP／CUBE 合约测试；实际安装包的离线检查加入六份自带 DCP 解析与低预算 Astia 完整拟合。这不代表实机 USB 恢复或照片色彩已经验证。
+- Windows 诊断包 (20) 的中断写入续接问题仍待定位，不包含在本次修复声明中。
+
 ## 桌面 preview.10.12 — 独立离线 DCP 转换 — 2026-10-21
 
 - DCP 直接在本机解析 LookTable／色调曲线，再拟合支持的机内色彩阶段。不依赖 Lightroom、显影插件、Node、renderer 配置或网络。独立的 LrC 配置插件安装入口仍可选。

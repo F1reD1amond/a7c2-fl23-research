@@ -1,5 +1,12 @@
 # Changelog
 
+## Desktop preview.10.14 — Mac / standalone DCP integration — 2026-10-21
+
+- Integrate the reviewed Mac connection sequence and the existing-record startup fix with standalone offline DCP conversion. Windows and Mac retain the same camera install/recovery engines; Mac-specific changes cover authorization and USB ownership only.
+- Correct whole-disk identity handling when diskutil omits ParentWholeDisk. Preserve stable no-card connections instead of requiring SD media before service access. Only camera-associated disks are unmounted, without forcing.
+- Add DCP/CUBE contracts to native CI and real reduced-budget Astia fitting to packaged offline checks, alongside the six bundled source-profile evaluations. These checks do not establish physical USB recovery or photo color fidelity.
+- The separate Windows diagnostic (20) interrupted-write continuation remains unresolved and is not claimed fixed by this integration.
+
 ## Desktop preview.10.12 — standalone DCP conversion — 2026-10-21
 
 - DCP conversion evaluates LookTable / tone locally and fits the supported native stages. No Lightroom, rendering plugin, Node runtime, renderer configuration or network is required. The separate LrC profile-plugin installer remains optional.

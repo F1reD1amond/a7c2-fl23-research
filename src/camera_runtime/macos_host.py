@@ -55,7 +55,9 @@ def camera_media():
         if (info.get('DeviceIdentifier')!=disk or info.get('Internal') is not False
                 or info.get('BusProtocol')!='USB'):
             raise RuntimeError('Camera disk external-USB identity check failed: '+disk)
-        media[disk]=dict(parent=info.get('ParentWholeDisk'),whole=info.get('WholeDisk') is True,
+        whole=info.get('WholeDisk') is True
+        # diskutil reports ParentWholeDisk for partitions, not the whole disk.
+        media[disk]=dict(parent=disk if whole else info.get('ParentWholeDisk'),whole=whole,
                          mount=info.get('MountPoint') or None)
     for row in media.values():
         if row['parent'] not in media or not media[row['parent']]['whole']:
@@ -71,12 +73,12 @@ def wait_for_stable_media():
         registry,media=camera_media()
         topology=(registry,tuple(sorted((disk,row['parent'],row['whole']) for disk,row in media.items())))
         now=time.monotonic()
-        if any(row['whole'] for row in media.values()):
-            if topology!=previous:previous,stable_since=topology,now
-            elif now-stable_since>=STABLE_SECONDS:return
-        else:previous=stable_since=None
+        # MSC service access also works without an SD card. A stable empty
+        # subtree has nothing to unmount; it must not become a readiness gate.
+        if topology!=previous:previous,stable_since=topology,now
+        elif now-stable_since>=STABLE_SECONDS:return
         if now>=deadline:
-            raise RuntimeError('相机磁盘未出现或未稳定，尚未接管 USB。'+MSC_PROMPT+'等存取灯停止后重试。')
+            raise RuntimeError('相机磁盘尚未稳定，尚未接管 USB。'+MSC_PROMPT+'等存取灯停止后重试。')
         time.sleep(.5)
 
 
@@ -127,11 +129,16 @@ def wait_normal_return(find):
     A timeout is reported, not raised: the finished camera work is known and
     the next connection checks the identity again.
     """
+    import usb.core
     print('服务模式已退出，等待普通 USB 连接（最多 %d 秒）。'%NORMAL_RETURN_SECONDS+MSC_PROMPT,flush=True)
     deadline=time.monotonic()+NORMAL_RETURN_SECONDS
+    last_error=None
     while True:
         try:device=find()
-        except RuntimeError:device=None
+        except (RuntimeError,usb.core.USBError) as exc:
+            detail=str(exc)
+            if detail!=last_error:print('等待普通 USB 重新枚举：'+detail,flush=True)
+            last_error=detail;device=None
         if device is not None:
             import usb.util
             usb.util.dispose_resources(device)
