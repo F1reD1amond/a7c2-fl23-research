@@ -60,7 +60,8 @@ def test_offline_compiler_writes_supported_a7look_without_renderer_config(tmp_pa
         virtual_samples=lambda count:(colors,colors))
     def fit(*args,**kwargs):
         source.write_bytes(b'original source changed after snapshot')
-        return np.zeros((405,3)),dict(native_controls=[0]*17)
+        return np.zeros((405,3)),dict(native_controls=[0]*17,
+            final_optimizer=dict(optimizer_converged=True))
     output=tmp_path/'offline.a7look'
     with patch.object(measuredmodel,'Response',return_value=model),patch.object(compilelook,'fit',side_effect=fit), \
          patch('subprocess.Popen',side_effect=AssertionError('No external renderer allowed')), \

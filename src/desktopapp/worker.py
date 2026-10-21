@@ -260,7 +260,9 @@ def run(action, args, job):
         from looktool.compilelook import main
         argv = [args['source'], '--name', args['name'], '--output', args['output'],
                 '--calibration', args['model'], '--passes', str(args.get('passes', 3)),
-                '--evaluations',str(args.get('evaluations',100)), '--extra-colors',str(args.get('extra_colors',256))]
+                '--extra-colors',str(args.get('extra_colors',256))]
+        if args.get('evaluations') is not None:
+            argv += ['--evaluations', str(args['evaluations'])]
         if Path(args['source']).suffix.lower() == '.cube':
             argv += ['--input-space', args.get('input_space', 'sony-st-srgb')]
             if args.get('bridge'):

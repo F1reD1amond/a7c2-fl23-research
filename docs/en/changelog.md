@@ -1,5 +1,12 @@
 # Changelog
 
+## Desktop preview.10.22 — offline conversion iteration stop — 2026-10-22
+
+- Fix DCP/CUBE conversion aborting when the bounded linear initializer reaches 100 iterations. Retain its finite candidate for subsequent optimization, record the initializer status and iteration count, and preserve real numerical errors.
+- Keep the better seed if table-only refinement worsens the fitting objective. Include initialization diagnostics in saved optimizer reports. Iteration budgets control computation; they do not limit the number of files or slots.
+- Retain preview.10.21 sound-volume controls and shared portrait-image aliases. No portrait separator rework, full portrait-bank copies, or experimental resource compression.
+- Reproduce the exact previous failure using the owner's GR III Hard Monotone DCP. The default three-pass conversion now completes with final optimizer convergence; a separate fresh conversion through the packaged Windows EXE also completes with a reduced fitting budget and records its nonconvergence. Nineteen focused tests and seven packaged startup pages pass. Numerical prediction is not physical color validation.
+
 ## Desktop preview.10.21 — Windows test package — 2026-10-21
 
 - Add offline sound volume controls: decrease/increase by 3 dB and reset to the converted volume. Always re-encode from the unchanged selected PCM, retaining matched native audio and preview. Limit peak amplitude to avoid clipping; adjustment does not require USB, a backup, or completion of an older camera task.

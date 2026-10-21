@@ -60,7 +60,8 @@ class CubeCompileTests(unittest.TestCase):
             virtual_samples=lambda count:(np.array([[.2,.3,.4]]),np.array([[.2,.3,.4]])))
         def long_fit(*args,**kwargs):
             paired.write_bytes(profile('Changed while fitting'))
-            return np.zeros((405,3)),dict(native_controls=[0]*17)
+            return np.zeros((405,3)),dict(native_controls=[0]*17,
+                final_optimizer=dict(optimizer_converged=True))
         output=self.root/'compiled.a7look'
         with patch.object(measuredmodel,'Response',return_value=model),patch.object(compilelook,'fit',side_effect=long_fit):
             code=compilelook.main([str(source),'--input-space','sony-st-srgb','--raw-dcp',str(paired),

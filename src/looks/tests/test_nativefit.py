@@ -1,6 +1,9 @@
 """Numerical gradients and bounded improvement; no private fixtures or USB."""
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 import numpy as np
+from looktool import nativefit
 from looktool.nativefit import Problem, solve
 
 
@@ -26,6 +29,18 @@ class Model:
 
 
 class NativeFitTests(unittest.TestCase):
+    def test_table_refinement_keeps_better_seed_and_retains_seed_diagnostics(self):
+        source=np.random.default_rng(3).uniform(.2,.7,(18,3))
+        problem=Problem(Model(),source,source,1e-9)
+        seed=np.zeros((405,3));diagnostics={'seed_optimizer':{'status':0,'converged':False}}
+        result=SimpleNamespace(x=np.full(1215,63.),success=False,nfev=1)
+        with patch.object(nativefit.coupledfit,'solve',return_value=(seed,diagnostics)),\
+                patch.object(nativefit,'least_squares',return_value=result):
+            vector,report=nativefit.table_seed(problem,max_evaluations=1,return_report=True)
+        np.testing.assert_array_equal(vector,np.zeros(1232))
+        self.assertFalse(report['retained_refinement'])
+        self.assertEqual(report['seed'],diagnostics)
+
     def test_full_analytic_chain_matches_finite_difference(self):
         source=np.random.default_rng(3).uniform(.2,.7,(18,3))
         problem=Problem(Model(),source,source,1e-9)

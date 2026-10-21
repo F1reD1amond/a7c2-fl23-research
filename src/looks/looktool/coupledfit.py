@@ -99,14 +99,21 @@ def solve(response, coordinates, target_rgb, *, smooth, bounded=True,
                     np.zeros(regularizer.shape[0])]
         initial = lsq_linear(system, rhs, bounds=bounds, tol=1e-8,
                              lsmr_tol=1e-8, max_iter=100)
-        if not initial.success:
-            raise ValueError('Coupled native seed did not converge: ' + initial.message)
+        # Hitting the seed budget still leaves an approximation that the full
+        # fit can improve. Numerical failures remain errors.
+        if initial.status < 0 or not np.isfinite(initial.x).all():
+            raise ValueError('Coupled native seed failed: ' + initial.message)
         coefficients = initial.x
     else:
         coefficients = np.asarray(initial_coefficients, dtype=float).reshape(1215)
     report = {'bounded': bounded, 'curvature_strength': smooth,
               'RGB_refined': False, 'new_scene_camera_verified': False,
               'initialization': 'inverse response' if initial_coefficients is None else 'supplied field'}
+    if initial_coefficients is None:
+        report['seed_optimizer'] = dict(converged=bool(initial.success),
+            status=int(initial.status), iterations=int(initial.nit), message=str(initial.message))
+        if initial.status == 0:
+            print('初始拟合达到迭代预算，保留当前近似值继续优化；不会中断转换。', flush=True)
     if refine:
         ids, weights = measuredfit.interpolation(field_coordinates)
         cache = {}
