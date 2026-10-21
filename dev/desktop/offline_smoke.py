@@ -157,7 +157,7 @@ def run():
                     assert args['options']['vertical_persistent'] is True
                     _, rows = bundle.documents(args['options'])
                     assert [r['name'] for r in rows] == list(presets.NAMES)
-                    assert all(Path(r['path']).parent == Path(temporary) / 'inputs' for r in rows)
+                    assert all(Path(r['path']).parent.resolve() == (Path(temporary) / 'inputs').resolve() for r in rows)
                 return {'phase':'LOADED','mode':'install_all','workspace':args.get('workspace',''),
                     'vertical_result':dict(persistent=True,loaded_verified=True,saved='ON',running='ON',alias_count=3)}
             result=allinone.run(dict(workspace=temporary,firmware='2.01',power_confirmed=True,

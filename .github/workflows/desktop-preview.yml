@@ -85,4 +85,5 @@ jobs:
             dist/*.dmg
             dist/*self-test.json
             dist/ui-smoke/**/*.png
+            ~/Library/Logs/A7C2Tools/startup-error.log
           if-no-files-found: ${{ job.status == 'success' && 'error' || 'warn' }}

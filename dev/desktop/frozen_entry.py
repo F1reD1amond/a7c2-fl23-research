@@ -11,7 +11,9 @@ except Exception:
     folder = (Path(os.environ.get('LOCALAPPDATA', str(Path.home()))) / 'A7C2Tools'
               if sys.platform == 'win32' else Path.home() / 'Library/Logs/A7C2Tools')
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / 'startup-error.log').write_text(traceback.format_exc(), encoding='utf-8')
+    detail=traceback.format_exc()
+    (folder / 'startup-error.log').write_text(detail, encoding='utf-8')
+    if sys.stderr is not None:print(detail,file=sys.stderr,flush=True)
     if '--offline-self-test' in sys.argv or '--smoke-test' in sys.argv:
         raise SystemExit(2)
     raise
