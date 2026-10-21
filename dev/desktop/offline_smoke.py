@@ -245,10 +245,19 @@ def run():
         plans=[]
         for group in (0,1):
             count=7844 if group==0 else 7880
-            raw=bytearray(struct.pack('<8sHHI',imagebank.MAGIC,8,group,count|(((count+1)&~1)<<12)))
-            raw.extend(b'\xff\xff'*((count+1)&~1));struct.pack_into('<H',raw,16,0)
-            raw.extend(struct.pack('<IIHHII',0x1a000000+group*8192,0x40000000,8,8,128,16))
-            raw.extend(bytes(range(128)))
+            slots=(count+1)&~1
+            raw=bytearray(struct.pack('<8sHHI',imagebank.MAGIC,8,group,count|(slots<<12)))
+            raw.extend(b'\xff\xff'*slots);base=len(raw)
+            if group==1:
+                # Sony's original Creative Look panel (0x291) with its 20-byte slice options.
+                struct.pack_into('<H',raw,16+2*0x291,(len(raw)-base)//4)
+                raw.extend(struct.pack('<IIHH',0x1a000000+8192+0x291,0x48000000,8,8))
+                raw.extend(bytes.fromhex('020001000000000000007e0000007e0000000000'))
+                raw.extend(struct.pack('<II',16,36)+bytes(16))
+            # One existing payload, after all metadata, large enough to relocate for the new records.
+            struct.pack_into('<H',raw,16,(len(raw)-base)//4)
+            raw.extend(struct.pack('<IIHHII',0x1a000000+group*8192,0x40000000,8,8,2048,16))
+            raw.extend(bytes(range(256))*8)
             original,target,plan=portraitbank.prepare(bytes(raw),group)
             assert portraitbank.prepare(target,group)==(original,target,plan)
             assert imagebank.apply(target,plan,reverse=True)==original
