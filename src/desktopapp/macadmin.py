@@ -85,6 +85,8 @@ def return_ownership(request,uid,gid):
     roots=[data_root(),Path(request['job_dir'])]
     roots.extend(Path(args[key]).expanduser() for key in ('workspace','backup') if args.get(key))
     home=Path.home().resolve();seen=set()
+    roots.extend([home/'Library/Application Support/Adobe/Lightroom/Modules/A7LookAuto.lrplugin',
+                  home/'Library/Application Support/Adobe/CameraRaw/CameraProfiles/A7Look-Imported'])
     for value in roots:
         if value.is_symlink():continue
         root=value.resolve()
