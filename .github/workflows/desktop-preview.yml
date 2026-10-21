@@ -1,7 +1,7 @@
 name: Desktop preview packages
 on:
   push:
-    branches: [feature/desktop-overview]
+    branches: [feature/desktop-overview, 'build/**']
     paths: ['dev/desktop/native-build-request.json']
   workflow_dispatch:
     inputs:
