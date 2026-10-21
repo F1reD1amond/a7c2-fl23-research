@@ -48,6 +48,9 @@ def main():
     # Derive every reader/path/call edit from the actual sound implementation.
     import boot_sound
     regions['appFw.so'].extend((at, len(old)) for at, old, new in boot_sound.windows(programs['appFw.so']))
+    sys.path.insert(0,str(ROOT/'src/vertical'))
+    from verticaltool import portraitlayout
+    regions['appFw.so'].extend((portrait+delta,4) for portrait,_,delta,_ in portraitlayout.PAIRS)
     if args.legacy_fixtures:
         index = json.loads(args.legacy_fixtures.read_text(encoding='utf-8'))
         for key, name in (('three_ap', 'appFw.so'), ('six_ap', 'appFw.so'),

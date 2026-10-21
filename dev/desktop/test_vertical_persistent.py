@@ -133,12 +133,15 @@ class PersistentVerticalTests(unittest.TestCase):
             self.assertFalse(self.camera.saves)
 
     def test_gui_vertical_button_uses_saved_direct_job_not_legacy_session_toggle(self):
+        from looktool.portraitjob import PortraitJob
+        from desktopapp.platforms import usb_drivers
         response=dict(phase='AWAITING_RELOAD',mode='vertical_enable',
             vertical_result=dict(saved='ON',running='OFF',persistent=True,loaded_verified=False))
-        with patch.object(direct.DirectJob,'run_direct',return_value=response) as run, \
+        with patch.object(PortraitJob,'run_frames',return_value=response) as run, \
+                patch.object(usb_drivers,'prepare',return_value={}), \
                 patch.object(device,'execute',side_effect=AssertionError('no session toggle')):
             result=worker.run('vertical_enable',dict(workspace=str(self.root/'gui'),firmware='2.01',power_confirmed=True),self.root)
-        self.assertEqual(run.call_args.args,('vertical_enable',))
+        self.assertEqual(run.call_args.args,(True,))
         self.assertEqual(result['phase'],'AWAITING_RELOAD')
         self.assertTrue(result['vertical_result']['persistent'])
 

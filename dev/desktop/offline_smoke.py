@@ -208,7 +208,7 @@ def run():
             result=allinone.run(dict(workspace=temporary,firmware='2.01',power_confirmed=True,
                 options=dict(fl23=False,sound=False,vertical=True,plugin=False,preset_pack=presets.PACK)),dispatch=simulated)
             assert result['phase']=='COMPLETE' and not result['physical_checks_accepted']
-            assert calls==['usb_prepare','direct_install_all']
+            assert calls==['usb_prepare','vertical_enable','direct_install_all']
             assert '电子快门声：本次未选择' in completion.text(result)
             assert completion.console_summary(result)['phase']=='COMPLETE'
             assert '无需每次连接电脑' in completion.text(result)
@@ -238,6 +238,25 @@ def run():
     assert builtin()['version'] == '2.01'
     sys.path[:0] = [str(ROOT / 'src/vertical'), str(ROOT / 'src/shutter_sound')]
     importlib.import_module('verticaltool.device')
+    importlib.import_module('looktool.portraitjob')
+    from verticaltool import imagebank, portraitbank, portraitworker
+    import struct
+    with tempfile.TemporaryDirectory(prefix='a7c2-portrait-smoke-') as temporary:
+        plans=[]
+        for group in (0,1):
+            count=7844 if group==0 else 7880
+            raw=bytearray(struct.pack('<8sHHI',imagebank.MAGIC,8,group,count|(((count+1)&~1)<<12)))
+            raw.extend(b'\xff\xff'*((count+1)&~1));struct.pack_into('<H',raw,16,0)
+            raw.extend(struct.pack('<IIHHII',0x1a000000+group*8192,0x40000000,8,8,128,16))
+            raw.extend(bytes(range(128)))
+            original,target,plan=portraitbank.prepare(bytes(raw),group)
+            assert portraitbank.prepare(target,group)==(original,target,plan)
+            assert imagebank.apply(target,plan,reverse=True)==original
+            plans.append(plan)
+        frames=portraitworker.build(plans,bytes(128),temporary,
+            ap_windows=[dict(offset=32,before_hex=bytes(4).hex(),after_hex=b'NEW!'.hex())])
+        assert Path(frames['path']).read_bytes()[:4]==b'\x7fELF'
+        assert Path(frames['path']).stat().st_size<=65536
     assert (ROOT / 'src/vertical/assets/aliases_recovery.so').read_bytes()[:4] == b'\x7fELF'
     importlib.import_module('sound_cli')
     audio_conversion = check_audio_conversion()
@@ -270,6 +289,6 @@ def run():
             'native_cross_compile': 'passed', 'native_assembler_disassembler':'passed',
             'one_click_offline_sequence':'passed','look_batch_defaults':'passed','streaming_names_compile':'passed',
             'bundled_six_looks':list(presets.NAMES),'fl23_pr6_movie_routes':'passed',
-            'completion_summary':'passed','persistent_vertical_plan':'passed',
+            'completion_summary':'passed','persistent_vertical_plan':'passed','portrait_frames_compile_and_inverse':'passed',
             'audio_conversion':audio_conversion,'standalone_dcp_conversion':dcp_conversion,
             'sound_install_emulator':'passed','numpy': np.__version__}

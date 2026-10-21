@@ -82,6 +82,11 @@ class Stage:
             if self.camera.records(self.camera.snapshot(memory))[0][SETTING].data != wanted:
                 raise ValueError('Saved/live vertical setting readback differs')
         if not self.enabled:
+            from .portraitjob import remove_for_vertical_stage
+            result=(None if getattr(self,'frames_handled',False) else
+                    remove_for_vertical_stage(self.camera,self.owner,self.originals))
+            if result and (result.get('readonly_deferred_busy') or result.get('cleanup',{}).get('readonly_deferred_busy')):
+                self.record('portrait_cleanup_readonly_busy')
             # Saved OFF must be confirmed before removing boot-time resources.
             if self.before['value'] != 1:self.workers.ram(1)
             if self.aliases['prior']:self.alias_result(2)
@@ -110,3 +115,8 @@ class Stage:
                 raise ValueError('Reloaded vertical saved/live switch differs')
         if self.before['value'] != wanted[0] or self.aliases['prior'] != (7 if self.enabled else 0):
             raise ValueError('竖屏保存值已读取，但开机运行状态／资源尚不符合目标；不以 RAM 临时开启代替持久化验证')
+        if not self.enabled:
+            from .portraitjob import remove_for_vertical_stage
+            result=remove_for_vertical_stage(self.camera,self.owner,self.originals)
+            if result and (result.get('readonly_deferred_busy') or result.get('cleanup',{}).get('readonly_deferred_busy')):
+                raise ValueError('线框资源已清理，但只读挂载仍忙；完整断电后再核对恢复')

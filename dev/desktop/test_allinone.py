@@ -24,6 +24,8 @@ class AllInOneTests(unittest.TestCase):
         vertical=dict(persistent=True, loaded_verified=True, running='ON', saved='ON', alias_count=3)
         if action == 'direct_install_all':
             return dict(phase='AWAITING_RELOAD', mode='install_all', workspace=args['workspace'], vertical_result=vertical)
+        if action == 'vertical_enable':
+            return dict(phase='AWAITING_RELOAD',mode='vertical_enable',workspace=args['workspace'])
         if action == 'direct_verify':
             if not self.booted:raise ValueError('尚未确认新的冷启动。不要重复写入。')
             return dict(phase='LOADED', mode='install_all', workspace=args['workspace'], vertical_result=vertical)
@@ -32,7 +34,7 @@ class AllInOneTests(unittest.TestCase):
     def test_one_write_then_wait_then_verify_then_vertical(self):
         state = allinone.run(self.args, dispatch=self.dispatch)
         self.assertEqual(state['phase'], 'WAIT_RELOAD')
-        self.assertEqual([a for a, _ in self.calls], ['usb_prepare', 'direct_install_all'])
+        self.assertEqual([a for a, _ in self.calls], ['usb_prepare', 'vertical_enable', 'direct_install_all'])
         self.assertTrue(self.calls[1][1]['power_confirmed'])
         state = allinone.run(self.args, dispatch=self.dispatch)
         self.assertEqual(state['phase'], 'WAIT_RELOAD')
@@ -42,8 +44,8 @@ class AllInOneTests(unittest.TestCase):
         self.assertEqual(state['phase'], 'COMPLETE')
         self.assertEqual([a for a, _ in self.calls].count('direct_install_all'), 1)
         self.assertEqual([a for a,_ in self.calls][-2:], ['direct_verify','sound_on'])
-        self.assertTrue(self.calls[1][1]['options']['vertical_persistent'])
-        self.assertNotIn('vertical_enable', [a for a, _ in self.calls])
+        self.assertTrue(self.calls[2][1]['options']['vertical_persistent'])
+        self.assertEqual([a for a,_ in self.calls].count('vertical_enable'),1)
         self.assertFalse(state['physical_checks_accepted'])
         before = list(self.calls)
         allinone.run(self.args, dispatch=self.dispatch)
@@ -161,7 +163,7 @@ class AllInOneTests(unittest.TestCase):
         with patch('looktool.factoryrecover.pending',side_effect=AssertionError('No historical verification gate')):
             result=allinone.run(self.args,dispatch=self.dispatch)
         self.assertEqual(result['phase'],'WAIT_RELOAD')
-        self.assertEqual([a for a,_ in self.calls],['usb_prepare','direct_install_all'])
+        self.assertEqual([a for a,_ in self.calls],['usb_prepare','vertical_enable','direct_install_all'])
 
     def test_saved_configuration_is_not_replaced_mid_install(self):
         allinone.run(self.args, dispatch=self.dispatch)
@@ -181,7 +183,7 @@ class AllInOneTests(unittest.TestCase):
             return result
         with self.assertRaisesRegex(ValueError,'持久化加载尚未确认'):
             allinone.run(self.args,dispatch=no_proof)
-        self.assertNotIn('vertical_enable',[a for a,_ in self.calls])
+        self.assertEqual([a for a,_ in self.calls].count('vertical_enable'),1)
 
     def test_resource_busy_pause_then_continue_does_not_rewrite_names_or_drivers(self):
         resource_boot=False
@@ -275,6 +277,7 @@ def test_missing_exiftool_is_prepared_before_first_device_call(tmp_path,monkeypa
     calls=[]
     def dispatch(action,args,folder):
         calls.append(action)
+        if action=='vertical_enable':return dict(phase='AWAITING_RELOAD',workspace=args['workspace'])
         if action=='direct_install_all':
             assert args['options']['exiftool']==str(tool)
             return dict(phase='AWAITING_RELOAD',mode='install_all',workspace=args['workspace'])
@@ -285,7 +288,7 @@ def test_missing_exiftool_is_prepared_before_first_device_call(tmp_path,monkeypa
         result=allinone.run(args,dispatch=dispatch)
     prepare.assert_called_once_with('old-computer/missing.exe')
     assert result['phase']=='WAIT_RELOAD'
-    assert calls==['usb_prepare','direct_install_all']
+    assert calls==['usb_prepare','vertical_enable','direct_install_all']
 
 
 def test_helper_download_failure_does_not_open_camera(tmp_path,monkeypatch):

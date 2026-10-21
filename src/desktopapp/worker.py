@@ -59,6 +59,16 @@ def run(action, args, job):
     if action == 'review_failed_names':
         from . import reviewnames
         return reviewnames.run(args['workspace'],job)
+    if action in ('vertical_enable','vertical_disable') and not args.get('session_only'):
+        from .platforms import usb_drivers
+        from looktool.portraitjob import PortraitJob
+        print('准备本次线框测试的 USB 驱动与服务连接。',flush=True)
+        if not args.get('drivers_prepared'):usb_drivers.prepare(job)
+        work=Path(args['workspace'])/('frames-'+uuid.uuid4().hex[:8])
+        write_json(Path(job)/'backend-workspace.private.json',dict(action=action,workspace=str(work)))
+        values=dict(version=args['firmware'],power_confirmed=args.get('power_confirmed',False))
+        if args.get('combined'):values['combined']=True
+        return PortraitJob(work).run_frames(action=='vertical_enable',**values)
     if action in ('sound_on','sound_off'):
         mode='sound_enable' if action=='sound_on' else 'sound_disable'
         result=run('direct_'+mode,dict(args,workspace=str(Path(args['workspace'])/('switch-'+uuid.uuid4().hex[:8]))),job)
@@ -66,10 +76,6 @@ def run(action, args, job):
         if result['phase']=='AWAITING_RELOAD':
             result.update(phase='written' if action=='sound_on' else 'restored',reload_required=True)
         return result
-    if action in ('vertical_enable','vertical_disable') and not args.get('session_only'):
-        work=Path(args['workspace']) / ('persistent-'+uuid.uuid4().hex[:8])
-        write_json(Path(job)/'backend-workspace.private.json',dict(action=action,workspace=str(work)))
-        return run('direct_'+action, dict(args, workspace=str(work)), job)
     if action.startswith('direct_'):
         from looktool.direct import DirectJob
         mode = action.removeprefix('direct_')

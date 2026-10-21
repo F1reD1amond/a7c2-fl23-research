@@ -1,5 +1,11 @@
 # Changelog
 
+## Desktop preview.10.25-portrait.1 — portrait frame manual test — 2026-10-22
+
+- Combine portrait enable/disable and four Fn/submenu frame corrections into two repeatable operations. Disable saves OFF and turns the running display OFF before restoring references and removing aliases; no intermediate reboot or additional button.
+- Append 15,676 bytes across two existing image banks, including recovery records, instead of copying full banks. Edit 15 portrait-only data references; retain original landscape images and executable code. Three shared gauge images remain unchanged.
+- Keep byte readback and resumable current-byte planning, without a separate native image-size query. Retain any still-mapped appended tail during removal. Offline tests and native compilation pass; actual new-image recognition, placement and camera navigation await manual acceptance.
+
 ## Desktop preview.10.24 — shared service fixes and backend interfaces — 2026-10-22
 
 - Integrate Claude's preserved service cooldown/bounce retry and senser end-packet fixes from `b651a6c` and `38a9195`. Apply the same transport to Windows and macOS: 30-second re-entry cooldown, 20-second service discovery, up to three attempts when service never appeared and MSC returned, and a one-second optional chunk-end wait. Authentication, payload-read and non-timeout errors remain failures; no firmware write is replayed.

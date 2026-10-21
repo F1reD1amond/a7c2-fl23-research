@@ -32,6 +32,7 @@ def run(arguments, *, dispatch):
         options, _ = bundle.documents(resolve(arguments.get('options', {})), inputs)
         # Version the behavior so already-written older jobs keep their plan.
         options['vertical_persistent'] = bool(options.get('vertical', True))
+        options['portrait_frames'] = bool(options.get('vertical', True))
         if options.get('plugin'):
             from .exiftool import ensure
             options['exiftool']=ensure(options.get('exiftool'))
@@ -56,6 +57,9 @@ def run(arguments, *, dispatch):
     options = state['options']
     common = dict(firmware='2.01', power_confirmed=True)
     install = Path(state.get('install_workspace') or root / 'install')
+    if state['phase']=='PREPARING_VERTICAL' or (state['phase']=='NEEDS_REVIEW' and state.get('failed_step')=='portrait_frames'):
+        print('重新读取当前竖屏与线框状态，续接本次安装；相同内容不重复写入。',flush=True)
+        save('PREPARED')
     if state['phase'] in ('INSTALLING', 'NEEDS_REVIEW', 'RESUMING_RESOURCES'):
         child = install / 'direct.private.json'
         child_state = json.loads(child.read_text(encoding='utf-8')) if child.exists() else {}
@@ -145,6 +149,16 @@ def run(arguments, *, dispatch):
             state['completed_steps'].append('drivers')
             save('PREPARED')
         if state['phase'] == 'PREPARED':
+            if options.get('portrait_frames') and not state.get('portrait_frames_preinstalled'):
+                save('PREPARING_VERTICAL',failed_step='portrait_frames')
+                result=call('vertical_enable',dict(common,workspace=str(root/'vertical'),drivers_prepared=True,combined=True),
+                            'vertical-frames-'+uuid.uuid4().hex[:6])
+                if result.get('phase') not in ('AWAITING_RELOAD','LOADED','COMPLETE'):
+                    raise ValueError('竖屏线框步骤没有返回已写入／已符合目标状态，请保留日志')
+                state['portrait_frames_preinstalled']=True
+                state['portrait_frames_result']=result
+                state.pop('failed_step',None)
+                save('PREPARED')
             save('INSTALLING')
             result = call('direct_install_all', dict(common, workspace=str(install), options=options), 'install')
             state['install_result'] = result

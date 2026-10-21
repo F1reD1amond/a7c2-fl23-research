@@ -51,8 +51,10 @@ Windows/macOS runners without publishing a Release.
   with verified look activations. ExifTool 13.59 and its complete official runtime are bundled; missing/stale
   paths automatically fall back to bundled/PATH/download preparation. DCP and ST/sRGB CUBE compilation run offline without Lightroom or a renderer;
   Lightroom is needed only to use the optional Lightroom plugin.
-- Vertical Display saves its native shooting-information/layout switch, with
-  reversible resource aliases. Do not reuse the failed image-bank/ELF display patch.
+- Vertical Display saves its native shooting-information/layout switch with
+  reversible aliases and four small appended frame images. Only portrait data
+  references change; no executable hooks or full-bank copies. See
+  `dev/vertical/portrait-line-notes.md` for the manual-test scope and inverse.
 - Sound uses the current converted payload directly. Audition/confirmation/recovery
   records are optional and do not gate sound on/off or saving.
   Volume decrease/increase/reset are host-only actions; each re-encodes the unchanged

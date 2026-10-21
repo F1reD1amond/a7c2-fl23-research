@@ -549,10 +549,11 @@ class Window(W.QMainWindow):
         form = self.box(layout, '显示任务')
         self.field(form, 'vertical_work', '任务目录', kind='folder', value=str(data_root() / 'vertical'))
         args = lambda: dict(self.common(), workspace=self.text('vertical_work'))
-        self.button(layout, '读取当前显示状态', 'vertical_status', args)
-        self.button(layout, '开启竖屏显示', 'vertical_enable', args, primary=True)
+        self.button(layout, '启用竖屏显示', 'vertical_enable', args, primary=True)
         self.button(layout, '关闭竖屏显示', 'vertical_disable', args)
-        hint = W.QLabel('沿用共用横屏图片的竖屏显示，不含 Fn／子菜单线条修正，不复制整份图形库。已开启时可以再次点“开启竖屏显示”；相同状态不重复写入。开启／关闭后按弹窗断电重开。')
+        frame_hint=W.QLabel('启用会一起保存竖屏开关并应用 Fn／子菜单线框修正；关闭会先关闭竖屏，再撤销线框和辅助资源。两个操作都可重复点击。本轮修正四组线框，三个刻度图暂不改。')
+        frame_hint.setWordWrap(True);layout.addWidget(frame_hint)
+        hint = W.QLabel('启用／关闭会一次完成所选写入和读回，再统一弹窗提示断电加载。相同状态可重复点击，相同内容不重复写入。')
         hint.setWordWrap(True)
         layout.addWidget(hint)
         layout.addStretch()
@@ -696,6 +697,8 @@ class Window(W.QMainWindow):
                           if action == 'direct_looks_import' else
                           '继续已写好名称的外观安装：'+arguments.get('failed_workspace','') if action=='direct_resume_looks' else
                           '继续完成名称／设置恢复：' + arguments.get('failed_workspace', '') if action == 'direct_resume_factory' else
+                          '竖屏显示＋Fn／子菜单线框修正' if action=='vertical_enable' else
+                          '关闭竖屏显示并撤销线框修正' if action=='vertical_disable' else
                           '原厂 2.01 功能' if action == 'direct_factory_reset' else
                           'FL2／FL3：启用' if action == 'direct_fl23_enable' else
                           'FL2／FL3：从列表移除' if action == 'direct_fl23_disable' else

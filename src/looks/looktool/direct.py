@@ -167,6 +167,12 @@ def plan(current, records, mode, *, factory=None, slot=None, look=None, name=Non
                     target[key] = resources.rename(current[key], *rename)[0]
     else:
         raise ValueError('Unknown direct operation: ' + mode)
+    if mode in ('vertical_disable','factory_reset'):
+        import sys
+        sys.path.insert(0,str(nativebuild.ROOT/'src/vertical'))
+        from verticaltool import portraitlayout
+        if portraitlayout.active(target['appFw.so']):
+            target['appFw.so']=portraitlayout.references(target['appFw.so'],False)[0]
     return target, wanted, rename
 
 
