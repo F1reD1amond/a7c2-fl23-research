@@ -21,11 +21,13 @@ POWER_ACTIONS = {'restore', 'restore_auto', 'fl23_install', 'look_install', 'loo
                  'sound_on', 'sound_off', 'sound_audition', 'sound_install', 'sound_restore_sound'}
 DIRECT_ACTIONS = {'direct_fl23_enable', 'direct_fl23_disable', 'direct_vertical_enable', 'direct_vertical_disable', 'direct_slot_default',
                   'direct_look_import', 'direct_looks_import', 'direct_resume_looks', 'direct_factory_reset', 'direct_resume_factory', 'direct_install_all'}
+DIRECT_ACTIONS |= {'direct_sound_enable','direct_sound_disable'}
 POWER_ACTIONS |= DIRECT_ACTIONS
 CAMERA_ACTIONS |= DIRECT_ACTIONS | {'direct_verify'}
 POWER_ACTIONS.add('setup_all')
 CAMERA_ACTIONS.add('setup_all')
 CAMERA_ACTIONS.add('review_failed_names')
+CAMERA_ACTIONS.add('usb_stability')
 
 
 def new_job(action, arguments):
@@ -90,7 +92,7 @@ def export_support(job, destination):
         for name in ['request.private.json', 'status.private.json', 'worker.log',
                      'process.log', 'result.private.json', 'driver-report.private.json',
                      'authorization.private.json','authorization.stdout.log','authorization.stderr.log',
-                     'privilege.private.json']:
+                     'privilege.private.json','usb-stability.private.json']:
             path = job / name
             if path.is_file():
                 archive.write(path, 'diagnostics/' + name)

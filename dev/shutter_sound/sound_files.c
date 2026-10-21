@@ -7,7 +7,10 @@
 #undef _init
 #include PATCH_MANIFEST
 
-static const char *paths[]={"/usr/share/avsystemsound/custom-shutter.bin",
+#ifndef SOUND_AUDIO_PATH
+#define SOUND_AUDIO_PATH "/usr/share/avsystemsound/custom-shutter.bin"
+#endif
+static const char *paths[]={SOUND_AUDIO_PATH,
                            "/usr/share/avsystemsound/custom.txt"};
 static u8 scratch[65536];
 struct FilesReport {
@@ -76,6 +79,44 @@ static i64 create(u32 index) {
     if(!v)v=check(index,1);
     return v;
 }
+#ifdef SOUND_UPDATE
+static const char *temporary[2]={"/usr/share/avsystemsound/.a7c2-sound-audio.tmp","/usr/share/avsystemsound/.a7c2-sound-csv.tmp"};
+static i64 old_csv(void) {
+    i64 fd=op(paths[1],0x20000);
+    if(fd==-2&&!previous_csv_size)return 0;
+    if(fd<0)return fd;
+    u64 st[16];i64 v=stat_file(fd,st);
+    if(!v&&st[6]!=previous_csv_size)v=-116;
+    if(!v&&sc(67,fd,(i64)scratch,previous_csv_size,0,0,0)!=(i64)previous_csv_size)v=-5;
+    if(!v&&!equal(scratch,previous_csv,previous_csv_size))v=-116;
+    close_file(&fd);return v;
+}
+static i64 check_temporary(u32 i,int prefix) {
+    i64 fd=op(temporary[i],0x20000);if(fd<0)return fd;
+    u64 st[16];i64 v=stat_file(fd,st);
+    if(!v&&(st[6]>sound_sizes[i]||(!prefix&&st[6]!=sound_sizes[i])))v=-17;
+    if(!v&&sc(67,fd,(i64)scratch,st[6],0,0,0)!=(i64)st[6])v=-5;
+    if(!v&&!equal(scratch,sound_data[i],st[6]))v=-17;
+    close_file(&fd);return v;
+}
+static i64 replace_atomic(u32 i) {
+    i64 fd=op(temporary[i],0x200c1);
+    if(fd==-17) {
+        i64 v=check_temporary(i,1);if(v)return v;
+        v=sc(35,-100,(i64)temporary[i],0,0,0,0);if(v)return v;
+        fd=op(temporary[i],0x200c1);
+    }
+    if(fd<0)return fd;
+    i64 v=write_all(fd,sound_data[i],sound_sizes[i]);
+    if(!v)v=sc(82,fd,0,0,0,0,0);
+    close_file(&fd);
+    if(!v)v=check_temporary(i,0);
+    if(!v)v=sc(38,-100,(i64)temporary[i],-100,(i64)paths[i],0,0);
+    if(v)sc(35,-100,(i64)temporary[i],0,0,0,0);
+    else {out.created|=1U<<i;v=sync_directory();}
+    return v;
+}
+#endif
 __attribute__((visibility("default"))) void _init(void) {
     files_base_init();
     const u8 tag[]="A7SFILE1";for(u32 i=0;i<8;i++)out.magic[i]=tag[i];
@@ -90,11 +131,29 @@ __attribute__((visibility("default"))) void _init(void) {
     }
     if(!out.status) {
         out.phase=1;out.status=mount_state(1);
+#ifdef SOUND_UPDATE
+        if(out.mode>1)out.status=-22;
+        if(!out.status)out.status=old_csv();
+        /* The new audio slot may never be the currently referenced slot. */
+        const char *name=SOUND_AUDIO_PATH;
+        for(const char *p=SOUND_AUDIO_PATH;*p;p++)if(*p=='/')name=p+1;
+        u32 len=0;while(name[len])len++;
+        for(u32 i=0;i+len<=previous_csv_size&&!out.status;i++)
+            if(equal(previous_csv+i,(const u8*)name,len))out.status=-22;
+#else
         for(u32 i=0;i<2&&!out.status;i++)out.status=check(i,out.mode==2);
+#endif
     }
     if(!out.status&&out.mode) {
         out.phase=2;rw_attempted=1;out.remount=remount(0);out.status=out.remount;
         if(!out.status&&out.mode==1) {
+#ifdef SOUND_UPDATE
+            out.phase=3;out.status=replace_atomic(0);
+            if(!out.status)out.status=old_csv();
+            /* Publishing CSV last makes a power loss use either the complete
+             * previous audio or the complete new audio, never a mixed pair. */
+            if(!out.status){out.phase=4;out.status=replace_atomic(1);}
+#else
             for(u32 i=0;i<2&&!out.status;i++) {out.phase=3+i;out.status=create(i);}
             if(!out.status)out.status=sync_directory();
             if(out.status) {
@@ -103,6 +162,7 @@ __attribute__((visibility("default"))) void _init(void) {
                 }
                 i64 v=sync_directory();if(v&&!out.rollback)out.rollback=v;
             }
+#endif
         } else if(!out.status) {
             /* Remove the CSV first: even an accidentally retained boot hook
              * then falls back to its native bank before the audio disappears. */

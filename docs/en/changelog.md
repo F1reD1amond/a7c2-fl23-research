@@ -1,10 +1,17 @@
 # Changelog
 
+## Desktop preview.10.18 — repeatable actions and optional USB sample — 2026-10-21
+
+- Keep the button named **Enable Vertical Display** while retaining in-place upgrades. FL23 and selected looks continue to re-plan from fresh state; identical content does not need another write.
+- Native sound ON/OFF now use fresh byte-based direct plans, without requiring a previous sound job or restoration. Replacing a saved custom sound keeps the existing boot hook and writes a complete inactive audio file before atomically publishing its CSV reference. Same audio is not rewritten. No manual original-sound recovery is required. Final cold reload remains necessary for a changed loaded sound.
+- Add **Check USB connection stability (read-only)** to the connection page: three bulk reads of a fixed graphic bank, byte comparison without hashes, first-error stop, detailed round/error report included in support ZIPs. This optional sample never writes firmware/settings or executes a native worker, and is not a guarantee against later disconnects or a new installation gate.
+- Strengthen offline tests and the packaged self-test to forbid physical USB enumeration unless explicitly replaced with a simulated camera. Native sound-update tests cover alternating slots and failures before/after CSV publication. Physical acceptance of the new overwrite workflow and portrait rendering remains outstanding.
+
 ## Desktop preview.10.17 — portrait Fn / submenu line geometry — 2026-10-21
 
 - Replace the landscape fallback for seven portrait-only Fn grid, submenu frame and scale assets. Fn rows use the native 480-pixel portrait geometry; submenu dividers use their native orientation and dimensions. The corresponding A7C II landscape rasters were compared equal to the A1 II reference; generated portrait visible pixels match its original portrait geometry offline.
 - Derive two corrected portrait banks from the connected body's original graphics, retaining every unrelated record/index/payload. Do not modify original landscape banks, application code, color tables or recipes. The third bank retains its original alias.
-- Existing installations can use **Enable / update Vertical Display** without disabling first. Files are completely verified before atomic replacement; OFF and factory recovery also recognize/remove these exact corrected files. Unknown resource files are preserved. Added native syscall tests cover fresh install, legacy upgrade, repeat install, removal and rollback after space/sync/rename failures.
+- Existing installations can use **Enable Vertical Display** without disabling first. Files are completely verified before atomic replacement; OFF and factory recovery also recognize/remove these exact corrected files. Unknown resource files are preserved. Added native syscall tests cover fresh install, legacy upgrade, repeat install, removal and rollback after space/sync/rename failures.
 - Offline geometry, native transactions and host workflow tests passed. No camera I/O was performed; actual portrait menus, both grip directions and loaded rendering remain manual acceptance checks.
 
 ## Desktop preview.10.16 — shared built-in recovery — 2026-10-21

@@ -344,6 +344,7 @@ class Window(W.QMainWindow):
         if sys.platform == 'darwin':
             self.button(layout, '推出选中的相机存储卷', 'mac_unmount', lambda: {'volume': self.text('mac_volume')})
         self.button(layout, '测试服务连接（不写固件）', 'connect')
+        self.button(layout, '检测 USB 连接稳定性（只读）', 'usb_stability')
         if sys.platform == 'win32':
             self.button(layout, '卸载相机驱动，恢复 Windows 默认连接', 'driver_uninstall',
                         lambda: {'pids': ['0e8a', '0336']})
@@ -545,9 +546,9 @@ class Window(W.QMainWindow):
         self.field(form, 'vertical_work', '任务目录', kind='folder', value=str(data_root() / 'vertical'))
         args = lambda: dict(self.common(), workspace=self.text('vertical_work'))
         self.button(layout, '读取当前显示状态', 'vertical_status', args)
-        self.button(layout, '开启／更新竖屏显示', 'vertical_enable', args, primary=True)
+        self.button(layout, '开启竖屏显示', 'vertical_enable', args, primary=True)
         self.button(layout, '关闭竖屏显示', 'vertical_disable', args)
-        hint = W.QLabel('旧版已开启也可点“开启／更新竖屏显示”，更新 Fn／子菜单线框；不用先关闭或恢复。写入后按弹窗断电重开。关闭会保存 OFF 并清理竖屏辅助资源；恢复原厂也会移除。线框修正版待实机验收。')
+        hint = W.QLabel('已开启时仍可点“开启竖屏显示”覆盖更新 Fn／子菜单线框，不用先关闭或恢复；相同版本不重复写。写入后按弹窗断电重开。关闭及原厂恢复会清理竖屏辅助资源。线框修正版待实机验收。')
         hint.setWordWrap(True)
         layout.addWidget(hint)
         layout.addStretch()
@@ -842,6 +843,13 @@ class Window(W.QMainWindow):
                 self.show_reload_guide(mode='factory_prewrite_temporary')
         if sound_notice:
             W.QMessageBox.information(self,sound_notice['title'],sound_notice['text'])
+        elif status.get('action')=='usb_stability':
+            if success:
+                result=status['result']
+                W.QMessageBox.information(self,'USB 只读检测通过',
+                    '已完成 %d 轮、共 %.1f MB 只读传输，读回字节一致。\n\n没有写入固件、设置或运行原生写入程序。\n\n%s'%
+                    (len(result['rounds']),result['total_bytes']/1024/1024,result['note']))
+            else:W.QMessageBox.warning(self,'USB 连接检测未通过',status.get('error','请查看日志并换线后重测。'))
         elif waiting:
             self.show_reload_guide(setup=status.get('action')=='setup_all', mode=('resource_reload' if resource_wait else status.get('action') if
                 status.get('action','').startswith('sound_') else status.get('result',{}).get('mode')))

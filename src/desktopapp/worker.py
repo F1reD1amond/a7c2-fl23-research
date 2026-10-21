@@ -59,6 +59,13 @@ def run(action, args, job):
     if action == 'review_failed_names':
         from . import reviewnames
         return reviewnames.run(args['workspace'],job)
+    if action in ('sound_on','sound_off'):
+        mode='sound_enable' if action=='sound_on' else 'sound_disable'
+        result=run('direct_'+mode,dict(args,workspace=str(Path(args['workspace'])/('switch-'+uuid.uuid4().hex[:8]))),job)
+        result['command']='on' if action=='sound_on' else 'off'
+        if result['phase']=='AWAITING_RELOAD':
+            result.update(phase='written' if action=='sound_on' else 'restored',reload_required=True)
+        return result
     if action in ('vertical_enable','vertical_disable') and not args.get('session_only'):
         work=Path(args['workspace']) / ('persistent-'+uuid.uuid4().hex[:8])
         return run('direct_'+action, dict(args, workspace=str(work)), job)
@@ -186,6 +193,9 @@ def run(action, args, job):
         with Camera() as camera:
             return {'model': camera.identity['model'], 'service_connected': True,
                     'firmware_programs_written': False}
+    if action=='usb_stability':
+        from .usbcheck import run as check_usb
+        return check_usb(job)
     if action.startswith('fl23_'):
         # The tested flexible planner, with PR #5's revised color/curve assets.
         # The PR's original standalone GUI/CLI remains untouched in src/fl23.

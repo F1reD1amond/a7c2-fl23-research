@@ -318,9 +318,8 @@ def install(root, state, battery, zig=None, *, power_confirmed=False):
         print('自动准备电子快门声支援；已有开关直接接入，不要求先手动开启或关联旧任务。',flush=True)
         on(root,state,battery,zig,power_confirmed=power_confirmed,defer_reload=True)
     original, _ = native_job(state)
-    if state.get('boot_job') and load_job(state['boot_job'])['phase'] != 'restored_cold_test_pending':
-        raise ValueError('Restore the previous persistent sound before installing another')
-    boot_trial.require_dependencies()
+    # Each Save derives the current hook/files from the camera. A previous
+    # completed installation is not a restore/old-job prerequisite.
     from looktool.power import require_power
     state['power_confirmation'] = require_power(battery, confirmed=power_confirmed)
     # Save the current converted bytes. Audition and cold recovery are optional.
@@ -510,6 +509,7 @@ def main(argv=None, *, report=None):
         public = {key: result[key] for key in ('phase', 'camera_io', 'camera_firmware_written',
             'complete_readback_and_settings_verified', 'owner_audio_correct', 'bytes', 'preview',
             'adopted_existing_enabled', 'sound_support_enabled_on_disk','audio_registration_started',
+            'audio_resources_written','resource_update','adopted_same_sound',
             'completed_prior_marker_replaced','previous_marker_absent','previous_cp_handle_released') if key in result}
         public.update({key:result[key] for key in ('next_action','user_action_required') if key in result})
         if report is not None:

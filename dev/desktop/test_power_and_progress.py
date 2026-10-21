@@ -356,7 +356,7 @@ class PowerProgressTests(unittest.TestCase):
         self.assertEqual(sorted(text.index(step) for step in steps), [text.index(step) for step in steps])
         self.assertIn('至少等待 1 分钟', text)
         self.assertIn('此前恢复原厂', text)
-        self.assertIn('不会再刷一次', text)
+        self.assertIn('不会再刷一次', reloadguide.text(setup=True))
         self.assertIn('不必再接电脑点击核对', text)
         self.assertIn('继续安装', reloadguide.text(setup=True))
 

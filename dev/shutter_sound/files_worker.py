@@ -11,13 +11,21 @@ import struct
 import candidate
 
 
-def build(audio, csv, output, zig=None):
+def build(audio, csv, output, zig=None,*,audio_path=None,previous_csv=None):
     from looktool import nativebuild
     if not 0 < len(audio) <= 51200 or len(audio) % 64 or not 0 < len(csv) < 4096:
         raise ValueError('Sound resource size exceeds its native limits')
     root = Path(output)
     root.mkdir(parents=True, exist_ok=False)
     lines = []
+    if previous_csv is not None:
+        if len(previous_csv)>=4096 or not audio_path:raise ValueError('Invalid sound update reference')
+        lines.extend(['#define SOUND_UPDATE 1','static const u8 previous_csv[]={' +
+            ','.join(map(str,previous_csv or b'\0'))+'};','static const u32 previous_csv_size='+str(len(previous_csv))+';'])
+    if audio_path:
+        if audio_path not in ('/usr/share/avsystemsound/custom-shutter-a.bin','/usr/share/avsystemsound/custom-shutter-b.bin'):
+            raise ValueError('Unknown private sound filename')
+        lines.append('#define SOUND_AUDIO_PATH '+json.dumps(audio_path))
     for index, data in enumerate((audio, csv)):
         lines.append('static const u8 sound_' + str(index) + '[]={' + ','.join(map(str, data)) + '};')
     lines += ['static const u8 *sound_data[]={sound_0,sound_1};',

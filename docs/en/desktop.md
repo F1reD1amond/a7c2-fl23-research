@@ -31,7 +31,7 @@ Diagnostics enumerate all Sony identities, names and interfaces. A different PID
 
 - **FL23:** enable, re-enable or hide the two menu entries. After writing/readback, follow the cold-restart instructions and check the camera; the computer's loaded-state check is optional diagnostics, not a prerequisite for use. Hiding preserves custom-look/shared code so it can be enabled again.
 - **Custom looks:** start with an empty list. Add an operation, choose its slot and Restore ST or Write A7Look; new items default to Restore. File and optional camera name share the same item. Mix imports and resets in one batch; omitted slots stay unchanged. Reset does not recover former recipes. Imported slots use ST; the base picker remains editable.
-- **Vertical Display:** shooting information/icons/layout rotate, not the entire MENU. Existing installations can click **Enable / update Vertical Display** to replace the old landscape fallback for seven Fn/submenu line assets; follow the final cold-reload dialog. Original landscape graphics stay unchanged. Off saves OFF before removing both corrected portrait files and the remaining alias; factory recovery removes them too.
+- **Vertical Display:** shooting information/icons/layout rotate, not the entire MENU. Existing installations can click **Enable Vertical Display** to replace the old landscape fallback for seven Fn/submenu line assets; follow the final cold-reload dialog. Original landscape graphics stay unchanged. Off saves OFF before removing both corrected portrait files and the remaining alias; factory recovery removes them too.
 - **Sound:** native on/off and direct saving after conversion; temporary audition and confirmation records are optional. Existing sound enabled by one-click setup can be adopted without rewriting firmware. Check the camera's Audio Signals setting if silent.
 
 Repeated identical titles do not append new records. Names complete before programs reference them. New byte-based name transactions replace one file atomically at a time, avoiding 68 simultaneous staging copies; restart instructions appear after complete readback.
@@ -55,6 +55,10 @@ Use the unified restore/continue button, without an old backup or complete firmw
 After interruption click Home’s **继续安装 (Continue installation)**. It reads existing results/current bytes and plans remaining work; unknown outcomes stop with evidence retained. Resource-space exhaustion and a busy read-only remount are handled separately. Deferral is allowed only after complete program/name verification with no further program/name edits needed. Settings/reload preparation can then finish; a new boot and read-only mount must be verified afterward.
 
 ## Errors and verification limits
+
+The connection page offers an optional **Check USB connection stability (read-only)** button. It reads a fixed graphics file three times and compares the returned bytes, without firmware/settings writes or native-worker execution. A disconnect, timeout or mismatch stops the sample and retains its original error. Try a different cable/direct USB port before retesting. Passing this short sample cannot guarantee uninterrupted flashing; it is not a required installation gate.
+
+You can click Enable Vertical Display again to update existing resources. Native sound ON/OFF also re-plan from the current switch. Saving a new converted sound over an installed one publishes complete replacement files without requiring manual restoration; follow the final cold-reload dialog. Other slots and unrelated features remain unchanged.
 
 Full exceptions remain in the window and private logs. Support exports contain device information/local paths; review them before sharing. Do not repeatedly flash an unconfirmed outcome.
 

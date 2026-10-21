@@ -209,15 +209,13 @@ class IntegrationTests(unittest.TestCase):
         self.assertEqual(result['vertical_result']['saved'],'OFF')
 
     def test_sound_worker_returns_actual_phase_for_reload_dialog(self):
-        sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'dev/shutter_sound'))
-        def success(argv, *, report):
-            report(dict(phase='written', adopted_existing_enabled=True))
-            return 0
-        with patch('sound_cli.main', side_effect=success):
+        obj=Mock();obj.root=self.root/'direct-switch'
+        obj.run_direct.return_value=dict(phase='LOADED',mode='sound_enable')
+        with patch('looktool.direct.DirectJob',return_value=obj):
             result = worker.run('sound_on', dict(workspace=str(self.root), backup='backup',
                 firmware='2.01', power_confirmed=True), self.root)
-        self.assertEqual(result['phase'], 'written')
-        self.assertTrue(result['adopted_existing_enabled'])
+        self.assertEqual(result['phase'], 'LOADED')
+        self.assertEqual(obj.run_direct.call_args.args,('sound_enable',))
         from desktopapp import reloadguide
         self.assertFalse(reloadguide.required('sound_on',result))
 

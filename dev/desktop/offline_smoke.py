@@ -130,6 +130,10 @@ def check_audio_conversion():
 
 
 def run():
+    import usb.core
+    def no_device(*args,**kwargs):
+        raise AssertionError('Packaged offline self-test must never enumerate physical USB')
+    usb.core.find=no_device
     from desktopapp.worker import setup_runtime
     from desktopapp.paths import ROOT
     setup_runtime()

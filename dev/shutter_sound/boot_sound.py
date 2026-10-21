@@ -35,19 +35,13 @@ def adrp(at, target, register):
                        (((delta >> 2) & 0x7ffff) << 5) | register)
 
 
-def windows(ap):
+def expected_windows():
     # Derive the exact original BL-to-logger bytes from the documented native
     # targets, without accepting arbitrary instructions supplied as a source.
     original_boot = adrp(BOOT, 0x4c14000, 0) + bytes.fromhex('b53f40f9000c2b91') + branch(BOOT + 12, 0x36804c8, True)
-    if ap[BOOT:BOOT + 16] != original_boot:
-        raise ValueError('Original boot log/retained bank load block differs')
-    if ap[PATH:PATH + len(OLD_PATH)] != OLD_PATH:
-        raise ValueError('Original CSV-reader path differs')
     # This is the first instruction of the original fopen-failure fatal path.
     # Reuse its own clean return epilogue at 2759bc8; no new code storage.
     original_missing = adrp(MISSING, 0x48cf000, 20)
-    if ap[MISSING:MISSING + 4] != original_missing:
-        raise ValueError('Original reader missing-file path differs')
     new_boot = (branch(BOOT, 0x2885488, True) + bytes.fromhex('00800591') +
                 branch(BOOT + 8, 0x2759ae8, True) + bytes.fromhex('b53f40f9'))
     edits = [(MISSING, original_missing, branch(MISSING, 0x2759bc8))]
@@ -64,21 +58,32 @@ def windows(ap):
         (0x2759c0c, 'mov x0,#0x77ff', 'mov x0,#0x7ff')):
         before = bytes(assembler.asm(old, at)[0])
         after = bytes(assembler.asm(new, at)[0])
-        if ap[at:at + 4] != before:
-            raise ValueError('Original CSV stack/buffer instruction differs at ' + hex(at))
         edits.append((at, before, after))
     # Oversized CSV: the original path has just fclose'd at c24. Return using
     # its clean epilogue, preserving the stock descriptor instead of asserting.
     too_large = 0x2759c28
     before = bytes(assembler.asm('add x20,x20,#0xa66', too_large)[0])
-    if ap[too_large:too_large + 4] != before:
-        raise ValueError('Original oversized-file cleanup path differs')
     edits.append((too_large, before, branch(too_large, 0x2759bc8)))
     edits.append((PATH, OLD_PATH, NEW_PATH.ljust(len(OLD_PATH), b'\0')))
     # Prepare the reader and private path before enabling the boot call. The
     # inverse must use reverse order, removing the call before its prerequisites.
     edits.append((BOOT, original_boot, new_boot))
     return edits
+
+
+def windows(ap):
+    edits=expected_windows()
+    for at,old,new in edits:
+        if ap[at:at+len(old)]!=old:
+            raise ValueError('Original boot-sound instruction differs at '+hex(at))
+    return edits
+
+
+def installed(ap):
+    edits=expected_windows()
+    if all(ap[at:at+len(old)]==old for at,old,new in edits):return False
+    if all(ap[at:at+len(new)]==new for at,old,new in edits):return True
+    raise ValueError('Boot-sound regions contain an incomplete or different modification')
 
 
 def patch(ap, edits, reverse=False):

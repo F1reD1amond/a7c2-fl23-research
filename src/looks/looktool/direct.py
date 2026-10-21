@@ -105,6 +105,14 @@ def plan(current, records, mode, *, factory=None, slot=None, look=None, name=Non
     elif mode in ('vertical_enable', 'vertical_disable'):
         from .verticalpersist import field
         wanted[0].update(field(ap, records, mode == 'vertical_enable'))
+    elif mode in ('sound_enable','sound_disable'):
+        import sys
+        sys.path.insert(0,str(nativebuild.ROOT/'dev/shutter_sound'))
+        import candidate
+        enabled=cp[candidate.OFFSET:candidate.OFFSET+2]==candidate.AFTER
+        candidate.guard(ap,cp,installed=enabled)
+        desired=mode=='sound_enable'
+        if enabled!=desired:target.update(candidate.patch(ap,cp,restore=not desired))
     elif mode == 'fl23_enable':
         import compat
         target.update(compat.plan(ap, cp, '2.01', transitions=False)[2])

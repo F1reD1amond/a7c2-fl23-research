@@ -9,6 +9,7 @@ import argparse
 import json
 from pathlib import Path
 import struct
+import re
 
 import boot_sound
 import candidate
@@ -18,6 +19,58 @@ import trial
 
 PATHS = ('/usr/share/avsystemsound/custom-shutter.bin',
          '/usr/share/avsystemsound/custom.txt')
+
+
+def current_sound(csv):
+    """Read only this tool's fixed one-row format, with three private slots."""
+    if not csv:return None
+    match=re.search(rb'CUSTOM,0x0003,APP,(custom-shutter(?:-[ab])?\.bin),(0x[0-9A-F]+),',csv)
+    if not match:raise ValueError('Current custom-sound CSV has an unsupported format')
+    name=match[1].decode('ascii');size=int(match[2],16)
+    expected=boot_sound.CSV.replace(b'custom-shutter.bin',match[1]).replace(b'0xEC0',('0x%X'%size).encode())
+    if csv!=expected or not 0<size<=51200 or size%64:raise ValueError('Current custom-sound CSV differs from the supported format')
+    return '/usr/share/avsystemsound/'+name,size
+
+
+def replace_connected(camera,before,root,backup_copy,state,payload,zig):
+    """Keep the boot hook; publish a complete new audio through atomic CSV."""
+    edits=boot_sound.expected_windows()
+    stock=boot_sound.patch(before['appFw.so'],edits,reverse=True)
+    target,components=prepare(stock,before['cpapp-b.bin'],payload,root/'build',zig)
+    if target['appFw.so']!=before['appFw.so']:raise ValueError('Existing sound hook differs; no resource update started')
+    old_csv=camera.read(PATHS[1],True) or b'';active=current_sound(old_csv)
+    prior_audio=camera.read(active[0]) if active else None
+    if active and len(prior_audio)!=active[1]:raise ValueError('Current sound length differs from its CSV')
+    same=prior_audio==payload
+    name=(active[0] if same else '/usr/share/avsystemsound/custom-shutter-'+
+          ('b' if active and active[0].endswith('-a.bin') else 'a')+'.bin')
+    csv=old_csv if same else boot_sound.CSV.replace(b'custom-shutter.bin',Path(name).name.encode()).replace(b'0xEC0',('0x%X'%len(payload)).encode())
+    Path(components['csv']).write_bytes(csv)
+    audio_path=None if name==PATHS[0] else name
+    components['files']=str(files_worker.build(payload,csv,root/'current-files',zig,audio_path=audio_path))
+    components['paths']=[name,PATHS[1]]
+    state['components']=components;state['resource_update']=True
+    small={'custom.txt':old_csv} if old_csv else {}
+    if prior_audio is not None:small[Path(active[0]).name]=prior_audio
+    state['backup_copy']=trial.backup(root,backup_copy,small)
+    trial.save(root,state);camera.programs_pinned=True
+    runtime=probe(camera,root,state,components)
+    if not same:
+        worker=files_worker.build(payload,csv,root/'update-files',zig,audio_path=name,previous_csv=old_csv)
+        state['phase']='preparing_resource_replacement';trial.save(root,state)
+        invoke_files(camera,root,state,worker,0)
+        state['phase']='writing_inactive_audio_then_publishing_csv';trial.save(root,state)
+        invoke_files(camera,root,state,worker,1)
+    for path,raw in ((name,payload),(PATHS[1],csv)):
+        if camera.read(path)!=raw:raise ValueError('Updated custom sound readback differs: '+path)
+    for program,path in (('appFw.so','/usr/lib/appFw.so'),('cpapp-b.bin','/cp/cpapp-b.bin')):
+        if camera.read(path)!=before[program]:raise ValueError('Programs changed during sound-resource replacement')
+    check_settings(camera,before)
+    if not same and runtime['image_mode']=='2':trial.run_native(camera,root,state,components['wbi'],'wbi',1)
+    state.update(phase='installed_cold_test_pending',complete_readback_and_settings_verified=True,
+                 camera_firmware_written=False,audio_resources_written=not same,adopted_same_sound=same)
+    trial.save(root,state)
+    return state
 
 
 def require_dependencies():
@@ -142,6 +195,8 @@ def install(root, backup_copy, native_job, audio_job, payload, battery, zig=None
     try:
         with camera_factory(original['identity']) as camera:
             before = trial.capture(camera)
+            if len(before['appFw.so'])>boot_sound.PATH+len(boot_sound.OLD_PATH) and boot_sound.installed(before['appFw.so']):
+                return replace_connected(camera,before,root,backup_copy,state,payload,zig)
             target, components = prepare(before['appFw.so'], before['cpapp-b.bin'], payload, root / 'build', zig)
             state['components'] = components
             state['backup_copy'] = trial.backup(root, backup_copy, before)
@@ -206,7 +261,7 @@ def restore(root, zig=None, camera_factory=trial.factory):
             state['phase'] = 'boot_hook_restored_removing_audio_files'
             trial.save(root, state)
             invoke_files(camera, root, state, components['files'], 2)
-            if any(camera.read(path, True) is not None for path in PATHS):
+            if any(camera.read(path, True) is not None for path in components.get('paths',PATHS)):
                 raise ValueError('Audio file removal not confirmed')
             check_settings(camera, before)
             if runtime['image_mode'] == '2':
@@ -234,7 +289,7 @@ def verify_loaded(root, heard_correct=False, camera_factory=trial.factory):
         if (selected['kind'] != 3 or selected['length'] != Path(components['audio']).stat().st_size
                 or selected['filename_prefix'] != '/usr' or not selected['native_handle'] & 0x8000):
             raise ValueError('Loaded kind3 does not show the original file-loader CP lease')
-        for path, local in zip(PATHS, (components['audio'], components['csv'])):
+        for path, local in zip(components.get('paths',PATHS), (components['audio'], components['csv'])):
             if camera.read(path) != Path(local).read_bytes():
                 raise ValueError('Installed private audio files differ')
         state['loaded_code_and_owned_custom_descriptor_verified'] = True
