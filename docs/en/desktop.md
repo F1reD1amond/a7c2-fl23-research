@@ -48,7 +48,7 @@ This desktop build includes [FL23 PR #6](https://github.com/QAQLeonard/a7c2-fl23
 
 Writing/readback alone leaves recovery **pending at 70%**. Follow the restart dialog, reconnect in Mass Storage and click **Restart, Verify and Finish Recovery** on the recovery page. Only a successful loaded-state check marks recovery verified and reaches 100%; closing the dialog does not confirm anything. The tool keeps the pending button/status after reopening.
 
-A historical recovery with completed loaded-state/read-only verification does not block a new restore. After later feature installation, the main Restore button creates a fresh current-state plan; only genuinely unfinished transactions are continued automatically.
+A historical recovery with completed loaded-state/read-only verification does not block a new restore. After later feature installation, the main Restore button creates a fresh current-state plan. A failed reset also re-plans from current camera bytes using the built-in reference; old worker binaries, old LUT jobs and ancestor directories are not required. Inert project work files are privately archived and cleared first. An active loader or changing temporary state still stops the operation. Writes already awaiting reload use the completion-verification step.
 
 Use the unified restore/continue button, without an old backup or complete firmware download. Supported project modifications are removed and all six custom recipes return to ST defaults. Body calibration, counters and unrelated settings are preserved. Optional historical-backup recovery remains separate. This is neither an updater downgrade nor a full flash-image overwrite.
 

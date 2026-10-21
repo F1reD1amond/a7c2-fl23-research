@@ -579,7 +579,7 @@ class Window(W.QMainWindow):
             start=self.sound_start.value(), duration=self.sound_duration.value(), peak=.4))
         self.button(row, '相机内临时试听', 'sound_audition', args)
         self.button(layout, '保存当前自定义声音', 'sound_install', args, primary=True)
-        hint=W.QLabel('转换成功即可直接保存；试听和恢复记录均为可选。写入完成后，按弹窗断电加载。')
+        hint=W.QLabel('转换成功即可直接保存；自动建立工作区并准备电子快门声支援，不必先开启或关联旧任务。试听可选；全部写入完成后按弹窗统一断电加载。')
         hint.setWordWrap(True);layout.addWidget(hint)
         optional=self.advanced(layout,'试听确认与恢复记录（可选，不影响保存）')
         self.button(optional, '确认试听正确', 'sound_confirm', lambda: dict(args(), result='correct'))

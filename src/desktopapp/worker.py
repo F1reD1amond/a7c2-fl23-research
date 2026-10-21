@@ -112,18 +112,21 @@ def run(action, args, job):
             else:
                 result = obj.verify_direct(factory_values=reference, accepted=bool(args.get('accepted')))
         elif mode == 'resume_factory':
-            from looktool.factoryrecover import chain, FINISHED
+            from looktool.factoryrecover import FINISHED
             from .official import load
-            prior_root, prior = chain(args['failed_workspace'])[-1]
-            reference = load(prior['factory_path'])
+            prior_root=Path(args['failed_workspace']).resolve()
+            prior=json.loads((prior_root/'direct.private.json').read_text(encoding='utf-8'))
+            if prior.get('mode')!='factory_reset':raise ValueError('所选目录不是恢复任务')
+            reference = load(reference_path)
             if prior['phase'] in FINISHED:
                 print('恢复写入已结束；仅核对加载状态，不重复写入。', flush=True)
                 obj = DirectJob(prior_root)
                 result = obj.verify_direct(factory_values=reference, accepted=bool(args.get('accepted')))
             else:
-                print('发现未完成恢复，读取当前字节后继续：' + str(prior_root), flush=True)
-                result = obj.continue_factory(prior_root,
-                    power_confirmed=args.get('power_confirmed', False), factory_values=reference)
+                print('保留旧恢复记录，从当前相机重新生成内建原厂恢复计划；不重放旧任务。', flush=True)
+                result = obj.run_direct('factory_reset',version=args['firmware'],
+                    power_confirmed=args.get('power_confirmed', False),factory_values=reference,
+                    factory_path=reference_path,recovery_identity=prior.get('identity'),recovery_source=str(prior_root))
         else:
             if mode == 'factory_reset':
                 from .official import load
@@ -276,8 +279,10 @@ def run(action, args, job):
         elif command=='compile-install':
             argv += ['--ap',args['ap'],'--cp',args['cp'],'--native-bin',args['native_bin']]
         argv += ['--workspace', args['workspace']]
+        if command in ('on','install','audition') and args.get('backup'):
+            argv += ['--backup-copy',args['backup']]
         if command == 'on':
-            argv += ['--backup-copy', args['backup'], '--firmware', args['firmware']]
+            argv += ['--firmware', args['firmware']]
         if command in ('on', 'install'):
             argv += ['--power-confirmed'] if args.get('power_confirmed') else ['--battery-percent', str(args['battery'])]
         elif command == 'confirm':

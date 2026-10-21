@@ -264,6 +264,8 @@ class DirectJob(Rollback):
                 prepared = self.settings(camera, current, wanted)
                 names = checkpointworker.build_names(current, target, self.root / 'worker', self.state['job_id'], self.zig)
                 directresume.cleanup(camera, prior_root, prior, raw, self.record)
+                from .factoryrecover import supersede_temporary
+                supersede_temporary(camera,self.root/'evidence/superseded-temporary',self.record)
                 self.prepare_vertical(camera)
                 runtime = self.native(camera, 'runtime', 0)
                 if runtime['image_mode'].strip() not in ('0', '2') or not runtime.get('boot_id', '').strip():
@@ -296,7 +298,8 @@ class DirectJob(Rollback):
             raise
 
     def run_direct(self, mode, *, version, power_confirmed, factory_values=None,
-                   factory_path=None, slot=None, look_path=None, name=None, bundle_options=None):
+                   factory_path=None, slot=None, look_path=None, name=None, bundle_options=None,
+                   recovery_identity=None,recovery_source=None):
         require_power(confirmed=power_confirmed)
         if version != '2.01':
             raise ValueError('Direct operations support ILCE-7CM2 2.01 only')
@@ -316,12 +319,17 @@ class DirectJob(Rollback):
         self.state = dict(schema='a7c2-direct-job/1', mode=mode, slot=slot, name=name,
             factory_path=factory_path, job_id=uuid.uuid4().hex[:16], journal=[], backup_created=False,
             power_confirmation=require_power(confirmed=True))
+        if mode=='factory_reset' and recovery_source:self.state['supersedes_workspace']=str(recovery_source)
         if mode == 'install_all':self.state['bundle_options'] = bundle_options
         self.save('READING')
         resource_pause=False
         try:
-            with self.factory() as camera:
+            context=(self.recovery_session(recovery_identity) if mode=='factory_reset' and recovery_identity else self.factory())
+            with context as camera:
                 self.state['identity'] = camera.identity
+                if mode=='factory_reset':
+                    from .factoryrecover import supersede_temporary
+                    supersede_temporary(camera,self.root/'evidence/superseded-temporary',self.record)
                 current = self.capture(camera)
                 if mode == 'install_all':
                     target, wanted, rename = bundle.plan(current, camera.records(current['settings-ram.bin']), bundle_options, bundle_rows)
@@ -362,7 +370,10 @@ class DirectJob(Rollback):
                 self.state['source_boot_id'] = runtime.get('boot_id', '').strip()
                 for span in runtime['spans']:
                     expected = current['appFw.so'][span['offset']:span['offset'] + span['length']].hex()
-                    if span['memory'] != expected or span['disk'] != expected:
+                    allowed={expected}
+                    if mode=='factory_reset':
+                        allowed.add(target['appFw.so'][span['offset']:span['offset'] + span['length']].hex())
+                    if span['memory'] not in allowed or span['disk'] != expected:
                         raise ValueError('Finish the previous cold reload before changing another feature')
                 for build in programs:
                     self.native(camera, 'program', 0, build)
@@ -515,6 +526,7 @@ class DirectJob(Rollback):
                 if recovered.get('readonly_deferred_busy'):
                     self.state['readonly_deferred_busy'] = True
                     print('已完整读回确认程序与名称均符合原厂目标；只继续设置和重新加载准备，只读挂载将在新开机后核对。', flush=True)
+                factoryrecover.supersede_temporary(camera,self.root/'evidence/superseded-temporary',self.record)
                 runtime = self.native(camera, 'runtime', 0)
                 self.prepare_vertical(camera)
                 if runtime['image_mode'].strip() not in ('0', '2') or not runtime.get('boot_id', '').strip():

@@ -16,6 +16,55 @@ import trial
 
 
 class IntegratedSoundTests(unittest.TestCase):
+    def test_diagnostic25_fresh_conversion_can_save_without_on_or_attach(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base=Path(temp);root=base/'sound';root.mkdir()
+            converted=root/'jobs/converted';converted.mkdir(parents=True)
+            payload=bytes(64);(converted/'custom-native.private.bin').write_bytes(payload)
+            (root/'conversion.private.json').write_text(json.dumps(dict(conversion=str(converted))))
+            identity=dict(model='ILCE-7CM2',serial_sha256='fixture-body')
+            calls=[]
+            def adopt(job,backup,zig=None,**kwargs):
+                calls.append('adopt')
+                job.mkdir(parents=True)
+                value=dict(phase='written',identity=identity,complete_readback_and_settings_verified=True,
+                    adopted_existing_enabled=True,camera_firmware_written=False)
+                trial.save(job,value);return value
+            def install(job,backup,native,audio,actual,*args,**kwargs):
+                calls.append('install');self.assertEqual(actual,payload);self.assertIsNone(audio)
+                return dict(phase='installed_cold_test_pending')
+            results=[]
+            with patch.object(trial,'preflight',side_effect=adopt),patch.object(trial,'change') as change, \
+                 patch.object(boot_trial,'install',side_effect=install):
+                code=cli.main(['install','--workspace',str(root),'--power-confirmed'],report=results.append)
+            self.assertEqual(code,0);self.assertEqual(calls,['adopt','install']);change.assert_not_called()
+            self.assertEqual(results[0]['phase'],'installed_cold_test_pending')
+            self.assertTrue((root/'sound.private.json').is_file())
+
+    def test_fresh_save_without_conversion_requests_conversion_without_camera(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp)/'sound';results=[]
+            with patch.object(trial,'preflight',side_effect=AssertionError('No camera')):
+                code=cli.main(['install','--workspace',str(root),'--power-confirmed'],report=results.append)
+            self.assertEqual(code,0);self.assertEqual(results[0]['phase'],'sound_conversion_required')
+
+    def test_fresh_save_enables_support_then_installs_before_single_final_reload(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base=Path(temp);root,state=cli.workspace(base/'sound',True,base/'backup')
+            converted=base/'converted';converted.mkdir();(converted/'custom-native.private.bin').write_bytes(bytes(64))
+            state['conversion']=str(converted);calls=[]
+            def prepare(job,*args,**kwargs):
+                job.mkdir(parents=True);calls.append('prepare');return dict(phase='ready')
+            def change(job,**kwargs):
+                calls.append('enable')
+                value=dict(phase='written',identity=dict(model='ILCE-7CM2'),complete_readback_and_settings_verified=True)
+                trial.save(job,value);return value
+            with patch.object(trial,'preflight',side_effect=prepare),patch.object(trial,'change',side_effect=change), \
+                 patch.object(boot_trial,'install',side_effect=lambda *a,**k:calls.append('install') or dict(phase='installed_cold_test_pending')):
+                result=cli.install(root,state,None,power_confirmed=True)
+            self.assertEqual(calls,['prepare','enable','install'])
+            self.assertEqual(result['phase'],'installed_cold_test_pending')
+
     def test_main_reports_only_public_outcome_to_desktop(self):
         report = []
         with patch.object(cli, 'doctor', return_value=dict(phase='diagnostic', camera_io=False,

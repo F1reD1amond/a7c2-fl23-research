@@ -46,6 +46,8 @@ class Camera:
     def __enter__(self):return self
     def __exit__(self,*a):pass
     def read(self,path,missing=False):return self.files.get(path)
+    def temp_read(self,name,missing=False):return self.files.get('/tmp/jiritsu/'+name)
+    def temp_remove(self,name):self.files.pop('/tmp/jiritsu/'+name,None)
     def snapshot(self,memory):
         return json.dumps([{str(k):[v.data.hex(),v.attr] for k,v in p.items()} for p in (self.ram if memory else self.saved)]).encode()
     records=staticmethod(records)

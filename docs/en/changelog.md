@@ -1,5 +1,13 @@
 # Changelog
 
+## Desktop preview.10.16 — shared built-in recovery — 2026-10-21
+
+- Fix diagnostic (25): Save Custom Sound creates its workspace and automatically prepares/adopts electronic-sound support before saving the converted clip. No manual On/Attach prerequisite. With no converted clip it requests conversion without camera I/O; a missing dependency stops before enabling support. All writes share the final cold-reload instructions.
+- Change the common Windows/Mac recovery backend, beyond preview.10.15's retry instructions: privately archive inert project worker/request/report files, clear their shared namespace, then capture current camera programs/settings/names and build a new reset against the bundled original reference. Missing or incomplete old reports do not require an old LUT job. Never execute old work files.
+- Failed GUI restores now use a fresh built-in reset plan instead of requiring the old worker binaries, source reference, ancestor directories or attempted-write windows. Saved body identity may reconnect an existing service session. Already-written recovery still requires a final cold-start verification.
+- Retain an active-loader/concurrent-operation stop and exact fresh byte preflight/readback. Archive failures never delete camera work files. Preserve calibration and all settings outside the declared project reset scope; do not add firmware hash gates or full body backups.
+- Focused offline recovery, dispatch and GUI cases passed, including both OS paths and partial/missing/stale reports. Recipient camera recovery remains unverified.
+
 ## Desktop preview.10.15 — recovery pre-write retry guidance — 2026-10-21
 
 - Handle diagnostic (21)'s shared temporary-name conflict during a fresh factory reset. When all workers in this attempt were read-only and completed cleanup, show explicit cold-restart instructions and a "retry recovery; not written yet" button instead of an unexplained exception or a completion message.

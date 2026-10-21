@@ -53,7 +53,7 @@ jobs:
       - name: Focused desktop contracts
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest dev/desktop/test_packaging.py dev/desktop/test_macos_host.py dev/desktop/test_reloadguide.py dev/desktop/test_recovery_completion_ui.py dev/desktop/test_exiftool.py dev/desktop/test_allinone.py dev/desktop/test_macadmin.py src/looks/tests/test_compile_dcp_offline.py src/looks/tests/test_compile_cube.py -q
+        run: python -m pytest dev/desktop/test_packaging.py dev/desktop/test_macos_host.py dev/desktop/test_reloadguide.py dev/desktop/test_recovery_completion_ui.py dev/desktop/test_exiftool.py dev/desktop/test_allinone.py dev/desktop/test_macadmin.py dev/desktop/test_factory_supersede.py dev/desktop/test_factory_recovery.py dev/desktop/test_direct.py dev/desktop/test_direct_resume.py dev/shutter_sound/tests/test_sound_cli.py src/looks/tests/test_compile_dcp_offline.py src/looks/tests/test_compile_cube.py -q
       - name: Build native package
         run: python dev/desktop/build.py
       - name: Windows packaged offline checks

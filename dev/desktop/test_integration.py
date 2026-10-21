@@ -226,6 +226,17 @@ class IntegrationTests(unittest.TestCase):
         with patch('sound_cli.main', return_value=2), self.assertRaisesRegex(RuntimeError,'Sound operation stopped'):
             worker.run('sound_install', dict(workspace=str(self.root), firmware='2.01', power_confirmed=True), self.root)
 
+    def test_sound_save_forwards_backup_for_automatic_workspace_creation(self):
+        sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'dev/shutter_sound'))
+        def success(argv,*,report):
+            self.assertIn('--backup-copy',argv)
+            self.assertEqual(argv[argv.index('--backup-copy')+1],str(self.root/'backup'))
+            report(dict(phase='installed_cold_test_pending'));return 0
+        with patch('sound_cli.main',side_effect=success):
+            result=worker.run('sound_install',dict(workspace=str(self.root/'sound'),backup=str(self.root/'backup'),
+                firmware='2.01',power_confirmed=True),self.root)
+        self.assertEqual(result['phase'],'installed_cold_test_pending')
+
     def test_slot_restore_tracks_fresh_transaction_for_reload_verification(self):
         def invoke(argv):
             self.assertEqual(argv[:2], ['restore-slot', 'original-job'])

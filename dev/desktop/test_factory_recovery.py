@@ -195,19 +195,22 @@ class FactoryRecoveryTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         factoryrecover.outcome(raw, 'checkpoint.program.result', 1, self.prior, self.camera)
 
-    def test_host_dispatch_uses_unified_resume_without_opening_a_new_full_reset(self):
+    def test_host_dispatch_replans_builtin_reset_without_old_worker_dependency(self):
         from desktopapp import worker
         from unittest.mock import Mock
         instance = Mock()
         instance.root = self.root / 'next'
-        instance.continue_factory.return_value = {'phase': 'AWAITING_RELOAD', 'mode': 'factory_reset'}
+        instance.run_direct.return_value = {'phase': 'AWAITING_RELOAD', 'mode': 'factory_reset'}
         args = dict(workspace=str(instance.root), firmware='2.01', power_confirmed=True)
         with patch('looktool.factoryrecover.pending', return_value=(self.failed, self.prior)), \
              patch('looktool.direct.DirectJob', return_value=instance), \
              patch('desktopapp.official.load', return_value={}):
             result = worker.run('direct_factory_reset', args, self.root)
-        instance.run_direct.assert_not_called()
-        instance.continue_factory.assert_called_once()
+        instance.continue_factory.assert_not_called()
+        instance.run_direct.assert_called_once()
+        self.assertEqual(instance.run_direct.call_args.args,('factory_reset',))
+        self.assertEqual(instance.run_direct.call_args.kwargs['factory_path'],'builtin')
+        self.assertEqual(instance.run_direct.call_args.kwargs['recovery_identity'],self.prior['identity'])
         self.assertEqual(result['phase'], 'AWAITING_RELOAD')
 
     def test_empty_temporary_namespace_without_any_completion_proof_stops(self):

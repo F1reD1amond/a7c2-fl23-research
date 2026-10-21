@@ -173,7 +173,7 @@ def operate(root, state, command, job, operation):
     return result
 
 
-def on(root, state, battery, zig=None, *, power_confirmed=False):
+def on(root, state, battery, zig=None, *, power_confirmed=False,defer_reload=False):
     import trial
     require_idle(state, root)
     from looktool.power import require_power
@@ -188,7 +188,8 @@ def on(root, state, battery, zig=None, *, power_confirmed=False):
             return prepared
         return trial.change(job, zig=zig)
     result = operate(root, state, 'on', job, run)
-    print('本次只接入已启用的声音开关，保持开机继续。' if result.get('adopted_existing_enabled') else RELOAD)
+    print('声音支援已准备，继续保存当前片段；全部写入结束后统一提示断电。' if defer_reload else
+          '本次只接入已启用的声音开关，保持开机继续。' if result.get('adopted_existing_enabled') else RELOAD)
     return result
 
 
@@ -298,7 +299,6 @@ def confirm_recovery(root, state):
 def install(root, state, battery, zig=None, *, power_confirmed=False):
     import boot_trial
     require_idle(state,root)
-    original, _ = native_job(state)
     conversion=selected_conversion(root,state)
     audio=Path(state['audio_job']) if state.get('audio_job') else None
     if conversion:
@@ -308,6 +308,16 @@ def install(root, state, battery, zig=None, *, power_confirmed=False):
         payload=(audio/'payload.private.bin').read_bytes()
     else:
         return installation_step('sound_conversion_required','import')
+    # Conversion deliberately has no camera/workspace dependency. Saving its
+    # output must prepare/adopt native support itself, including after a reset.
+    boot_trial.require_dependencies()
+    previous_native=load_job(state['native_job']) if state.get('native_job') else None
+    if previous_native and previous_native.get('phase')=='restored':
+        state['native_identity']=previous_native['identity']
+    if not previous_native or previous_native.get('phase')=='restored':
+        print('自动准备电子快门声支援；已有开关直接接入，不要求先手动开启或关联旧任务。',flush=True)
+        on(root,state,battery,zig,power_confirmed=power_confirmed,defer_reload=True)
+    original, _ = native_job(state)
     if state.get('boot_job') and load_job(state['boot_job'])['phase'] != 'restored_cold_test_pending':
         raise ValueError('Restore the previous persistent sound before installing another')
     boot_trial.require_dependencies()
@@ -433,7 +443,7 @@ def parser():
         ('status', 'Read local workspace state; no camera connection')):
         s = sub.add_parser(name, help=help_text)
         s.add_argument('--workspace', required=True, type=Path)
-        if name in ('on', 'attach', 'import'):
+        if name in ('on', 'attach', 'import','install','audition'):
             s.add_argument('--backup-copy', type=Path)
         if name in ('on', 'install'):
             power = s.add_mutually_exclusive_group(required=True)
@@ -477,8 +487,11 @@ def main(argv=None, *, report=None):
         else:
             if sys.version_info < (3, 10) or struct.calcsize('P') != 8:
                 raise ValueError('Use 64-bit Python 3.10 or newer')
-            root, state = workspace(args.workspace, args.command in ('on', 'attach', 'import'),
-                                    getattr(args, 'backup_copy', None))
+            creates=args.command in ('on','attach','import','install','audition')
+            backup=getattr(args,'backup_copy',None)
+            if args.command in ('install','audition') and not backup and not (args.workspace/'sound.private.json').exists():
+                backup=args.workspace.with_name(args.workspace.name+'-backup')
+            root, state = workspace(args.workspace,creates,backup)
             command = args.command
             if command == 'on': result = on(root, state, args.battery_percent, args.zig, power_confirmed=args.power_confirmed)
             elif command == 'off': result = off(root, state, args.zig)
