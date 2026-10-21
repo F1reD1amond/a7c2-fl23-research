@@ -277,7 +277,8 @@ class Window(W.QMainWindow):
         return confirm
 
     def show_reload_guide(self, *, setup=False, mode=None):
-        title = ('恢复尚未完成，请重启后核对' if mode=='factory_reset' else
+        title = ('恢复尚未开始，请断电后重试' if mode=='factory_prewrite_temporary' else
+                 '恢复尚未完成，请重启后核对' if mode=='factory_reset' else
                  '试听结果已记录，请断电恢复原声' if mode=='sound_confirm' else '读写已结束，请断电重开')
         W.QMessageBox.information(self, title, reloadguide.text(setup=setup, mode=mode))
 
@@ -391,7 +392,11 @@ class Window(W.QMainWindow):
             self.factory_button.setText('重新恢复原厂 2.01 功能（无需旧备份）')
             self.factory_status.setText('上次恢复核对已通过。程序、设置、加载状态及只读挂载已核对；当前功能和拍摄验收以机身为准。')
         elif phase=='NEEDS_REVIEW':
-            from looktool.factoryrecover import connection_failed_before_restore
+            from looktool.factoryrecover import connection_failed_before_restore,prewrite_temporary_conflict
+            if prewrite_temporary_conflict(state):
+                self.factory_button.setText('断电后重试恢复（本次尚未写入）')
+                self.factory_status.setText('本次恢复尚未写入，遇到相机临时文件冲突。请按弹窗完整断电，接回 USB，再点击上方按钮重试；不需要旧 LUT 记录。')
+                return
             if connection_failed_before_restore(state):
                 self.factory_button.setText('恢复原厂 2.01 功能（上次尚未开始）')
                 self.factory_status.setText('上次在 USB 连接阶段停止，尚未开始恢复写入。点击上方按钮，完成系统授权后重新连接。')
@@ -826,6 +831,15 @@ class Window(W.QMainWindow):
         self.refresh_look_controls()
         self.refresh_setup_controls()
         self.refresh_factory_controls()
+        if not success and status.get('action')=='direct_factory_reset':
+            from looktool.factoryrecover import prewrite_temporary_conflict
+            work=self.settings.get('factory_direct_work')
+            path=Path(work,'direct.private.json') if work else None
+            try:state=json.loads(path.read_text(encoding='utf-8')) if path and path.is_file() else {}
+            except (OSError,ValueError):state={}
+            if prewrite_temporary_conflict(state) and state.get('error')==status.get('error'):
+                self.status.setText('本次恢复尚未写入。按弹窗完整断电、接回 USB，再点“断电后重试恢复”。')
+                self.show_reload_guide(mode='factory_prewrite_temporary')
         if sound_notice:
             W.QMessageBox.information(self,sound_notice['title'],sound_notice['text'])
         elif waiting:

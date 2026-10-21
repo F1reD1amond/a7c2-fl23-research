@@ -1,5 +1,11 @@
 # Changelog
 
+## Desktop preview.10.15 — recovery pre-write retry guidance — 2026-10-21
+
+- Handle diagnostic (21)'s shared temporary-name conflict during a fresh factory reset. When all workers in this attempt were read-only and completed cleanup, show explicit cold-restart instructions and a "retry recovery; not written yet" button instead of an unexplained exception or a completion message.
+- Retry creates a fresh plan from the current camera state without requiring an older LUT job. Keep the failed record; do not overwrite or delete unknown camera files. Started writes, unfinished workers, active plugins and resumed transactions retain their distinct recovery handling.
+- Add this existing-state startup case to native package checks. Offline UI/recovery cases passed; clearing the recipient camera's temporary state by a cold restart remains a physical test.
+
 ## Desktop preview.10.14 — Mac / standalone DCP integration — 2026-10-21
 
 - Integrate the reviewed Mac connection sequence and the existing-record startup fix with standalone offline DCP conversion. Windows and Mac retain the same camera install/recovery engines; Mac-specific changes cover authorization and USB ownership only.

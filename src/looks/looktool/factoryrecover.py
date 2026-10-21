@@ -11,6 +11,28 @@ from . import checkpointworker, nameworker, nativebuild, worker
 FINISHED = {'AWAITING_RELOAD', 'LOADED', 'COMPLETE'}
 
 
+def prewrite_temporary_conflict(state):
+    """A fresh restore stopped on shared names before any changing worker."""
+    if (state.get('mode')!='factory_reset' or state.get('phase')!='NEEDS_REVIEW'
+            or state.get('failed_during') not in ('READING','PLANNED','PREFLIGHT_VERIFIED')
+            or state.get('resume_from')):
+        return False
+    if state.get('error') not in {
+        'Existing temporary state needs recovery: '+name for name in
+        ('lut-names-staged.so','a7c2.names.request','a7c2.names.result')
+    }:return False
+    outstanding=set()
+    for event in state.get('journal',[]):
+        kind=event.get('event','')
+        if kind.endswith('native_intent') and event.get('mode')!=0:return False
+        if kind.endswith('native_stage_intent'):
+            if event.get('mode')!=0:return False
+            outstanding.add((kind[:-len('stage_intent')],event.get('stage')))
+        elif kind.endswith('native_cleanup_verified'):
+            outstanding.discard((kind[:-len('cleanup_verified')],event.get('stage')))
+    return not outstanding
+
+
 def connection_failed_before_restore(state):
     return (state.get('mode')=='factory_reset' and state.get('phase')=='NEEDS_REVIEW'
             and state.get('failed_during')=='READING' and state.get('journal')==[]

@@ -25,10 +25,10 @@ def pending_window(tmp_path,monkeypatch):
     window.process=None;window.close()
 
 
-def finish(window,work,phase,action='direct_factory_reset',success=True):
+def finish(window,work,phase,action='direct_factory_reset',success=True,error='not loaded'):
     window.current_job=jobs.new_job(action,{})
     (window.current_job/'status.private.json').write_text(json.dumps(dict(
-        phase='SUCCEEDED' if success else 'FAILED',action=action,error='not loaded',
+        phase='SUCCEEDED' if success else 'FAILED',action=action,error=error,
         result=dict(workspace=str(work),mode='factory_reset',phase=phase))))
     window.process=Mock()
     window.finished(0 if success else 2,None)
@@ -126,3 +126,50 @@ def test_existing_recovery_startup_uses_real_app_entry_without_pytest_module_pat
     from desktopapp.paths import ROOT
     result=run([sys.executable,str(ROOT/'desktop.py')],cases=('factory_connection_failed',))
     assert result['cases']['factory_connection_failed']['pages']==7
+
+
+def temporary_conflict_state():
+    # Diagnostic (21): runtime and vertical probes completed, alias stage did
+    # not start because a shared name worker already existed on the camera.
+    journal=[]
+    for prefix,stage in (('', 'checkpoint.staged.so'),('vertical_', 'lut-runtime-staged.so')):
+        journal.extend(dict(event=prefix+kind,stage=stage,mode=0) for kind in
+                       ('native_stage_intent','native_intent','native_result_verified','native_cleanup_verified'))
+    return dict(mode='factory_reset',phase='NEEDS_REVIEW',failed_during='PLANNED',
+                identity=dict(model='ILCE-7CM2',serial_sha256='test-body'),journal=journal,
+                error='Existing temporary state needs recovery: lut-names-staged.so')
+
+
+def test_diagnostic21_offers_prewrite_restart_without_claiming_recovery_complete(pending_window):
+    from desktopapp.paths import write_json
+    from looktool.factoryrecover import pending
+    window,work,_=pending_window
+    state=temporary_conflict_state()
+    write_json(work/'direct.private.json',state)
+    original=(work/'direct.private.json').read_bytes()
+    with patch.object(window,'show_reload_guide') as popup:
+        finish(window,work,'NEEDS_REVIEW',success=False,error=state['error'])
+    popup.assert_called_once_with(mode='factory_prewrite_temporary')
+    assert window.progress.value()==0
+    assert window.factory_button.text()=='断电后重试恢复（本次尚未写入）'
+    assert '本次恢复尚未写入' in window.status.text()
+    assert (work/'direct.private.json').read_bytes()==original
+    assert pending(work.parent,work) is None  # Next click plans a fresh restore.
+
+
+@pytest.mark.parametrize('change', ['write','unclean','resume','writing_phase','active_plugin'])
+def test_unknown_or_started_recovery_never_gets_prewrite_retry_advice(change):
+    from looktool.factoryrecover import prewrite_temporary_conflict
+    state=temporary_conflict_state()
+    if change=='write':state['journal'].append(dict(event='native_intent',mode=1))
+    elif change=='unclean':state['journal'].pop()
+    elif change=='resume':state['resume_from']='previous-restore'
+    elif change=='writing_phase':state['failed_during']='WRITING'
+    elif change=='active_plugin':state['error']='Existing temporary state needs recovery: libJit.so'
+    assert not prewrite_temporary_conflict(state)
+
+
+def test_temporary_conflict_guidance_requires_restart_then_retry_not_verify():
+    text=reloadguide.text(mode='factory_prewrite_temporary')
+    for phrase in ('尚未开始写入','至少等待 1 分钟','接回 USB','断电后重试恢复','不需要旧 LUT 任务'):
+        assert phrase in text

@@ -11,7 +11,7 @@ ROOT=Path(__file__).resolve().parents[2]
 
 
 def run(command,*,cases=None):
-    cases=cases or ('factory_connection_failed','factory_interrupted','factory_awaiting_reload','factory_loaded','setup_waiting')
+    cases=cases or ('factory_connection_failed','factory_interrupted','factory_awaiting_reload','factory_loaded','factory_temp_conflict','setup_waiting')
     results={}
     with tempfile.TemporaryDirectory(prefix='a7c2-existing-state-') as temporary:
         for name in cases:
@@ -29,6 +29,8 @@ def run(command,*,cases=None):
                     journal=[dict(event='native_intent',mode=2)])
                 if name=='factory_awaiting_reload':state.update(phase='AWAITING_RELOAD')
                 if name=='factory_loaded':state.update(phase='LOADED',readonly_after_reload_verified=True)
+                if name=='factory_temp_conflict':state.update(failed_during='PLANNED',
+                    error='Existing temporary state needs recovery: lut-names-staged.so')
                 settings=dict(factory_direct_work=str(work),factory_failed_work=str(work))
             record.write_text(json.dumps(state),encoding='utf-8')
             config=root/'desktop.json';config.write_text(json.dumps(settings),encoding='utf-8')
