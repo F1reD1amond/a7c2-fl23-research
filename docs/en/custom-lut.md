@@ -16,6 +16,8 @@ All attachments and checksums are on the [release page](https://github.com/QAQLe
 
 Open a terminal in the folder containing `lut.py` and run the commands below there. Use `python` on Windows or `python3` on Mac; if you created a virtual environment, use its interpreter with the installed dependencies. Both downloads use the same commands; only [dependency setup](manual.md#python-and-dependencies) differs.
 
+The desktop page imports `.a7look`; direct CUBE conversion expects ST / sRGB, not S-Log3. [Formats and color spaces](lut-formats.md). The steps below describe the independent CLI.
+
 ## 1. Choose DCP / LUT
 
 Obtain your `.dcp` or `.cube`; the [reference pack](profiles.md) contains original DCPs. Choose custom slot 1–6 and its displayed name. Import one slot per job; repeat for additional looks and keep each job's restoration history.

@@ -10,7 +10,7 @@ def archive_error(state):
 
 
 def text(state):
-    if state.get('phase')!='COMPLETE':raise ValueError('上次安装尚未结束，请使用“继续上次安装”。')
+    if state.get('phase')!='COMPLETE':raise ValueError('上次安装尚未结束，请使用“继续安装”。')
     options=state.get('options',{})
     lines=['本次所选操作已完成，程序与设置核对通过。','请在机身检查预览、拍摄和回放。','',
         'FL2／FL3：'+('已启用' if options.get('fl23',True) else '本次未改动')]

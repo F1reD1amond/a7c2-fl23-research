@@ -1,6 +1,11 @@
 name: Desktop preview packages
 on:
   workflow_dispatch:
+    inputs:
+      preset_archive_url:
+        description: 'URL of exported desktop-presets.zip or existing desktop Windows ZIP (six looks + notices)'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -10,20 +15,30 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS packaging is deferred until Windows physical testing finishes.
-        os: [windows-latest]
+        os: [windows-latest, macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '14.0'
+      A7C2_PRESET_ARCHIVE_URL: ${{ inputs.preset_archive_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: macOS native compiler dependencies
+        if: runner.os == 'macOS'
+        run: python -m pip install cmake==3.31.6 setuptools wheel
       - name: Dependencies
-        run: python -m pip install -r desktop-requirements.txt pyinstaller==6.16.0 pytest==8.3.5
-      - name: Desktop contract tests
-        run: python -m pytest dev/desktop -q
+        # Keystone and Unicorn lack ARM64 Mac wheels at these versions;
+        # compile them natively, instead of bundling Intel libraries into ARM64.
+        run: python -m pip install --no-build-isolation -r desktop-requirements.txt pyinstaller==6.16.0 pytest==8.3.5
       - name: Prepare build assets
         run: python dev/desktop/prepare_assets.py
+      - name: Focused desktop contracts
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest dev/desktop/test_packaging.py dev/desktop/test_macos_host.py dev/desktop/test_reloadguide.py dev/desktop/test_recovery_completion_ui.py -q
       - name: Build native package
         run: python dev/desktop/build.py
       - name: Windows packaged offline checks
@@ -44,6 +59,7 @@ jobs:
         run: |
           dist/A7C2Tools.app/Contents/MacOS/A7C2Tools --offline-self-test "$PWD/dist/packaged-self-test.json"
           QT_QPA_PLATFORM=offscreen A7C2_DESKTOP_DATA="$PWD/dist/ui-smoke" dist/A7C2Tools.app/Contents/MacOS/A7C2Tools --smoke-test
+          codesign --verify --deep --strict dist/A7C2Tools.app
           hdiutil verify dist/*.dmg
       - uses: actions/upload-artifact@v4
         with:
@@ -52,5 +68,5 @@ jobs:
             dist/*.zip
             dist/*.dmg
             dist/*self-test.json
-            dist/ui-smoke/*.png
+            dist/ui-smoke/**/*.png
           if-no-files-found: error

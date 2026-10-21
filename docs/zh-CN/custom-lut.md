@@ -16,6 +16,8 @@
 
 在 `lut.py` 所在目录打开终端，以下命令都从这里执行。Windows 使用 `python`，Mac 换成 `python3`；若按安装说明建立了虚拟环境，使用其中安装依赖的 Python。单文件和完整工具包的操作相同，区别只是[安装依赖的方法](manual.md#python-和依赖)。
 
+桌面版选 `.a7look`，CUBE 转换要求 ST / sRGB，不能直接用 S-Log3。[格式与色彩空间说明](lut-formats.md)。下方是独立 CLI 流程。
+
 ## 1. 选择 DCP／LUT
 
 准备自己的 `.dcp` 或 `.cube`；[参考包](profiles.md)提供原始 DCP。选一个自订栏位 1–6，填写希望显示的名称。一次导入一个栏位，多款依次执行；每次工作目录及还原记录都单独保存。

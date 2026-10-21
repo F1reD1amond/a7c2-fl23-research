@@ -1,5 +1,6 @@
 """Bounded Sony service transport. All device access stays in this module."""
 import struct
+import sys
 import time
 import core
 import usb.core
@@ -159,12 +160,18 @@ def service_identity(snapshot,model):
 class Session:
     def __init__(self,expected=None):self.expected=expected;self.healthy=True
     def __enter__(self):
+        if sys.platform=='darwin':
+            from macos_host import unmount_camera
+            unmount_camera()
         dev=get_device(0x0e8a)
         try:
             # Standard USB strings remain usable when the storage LUN and
             # DevInfoSender_GetModelInfo are busy. Neither is a service gate.
             model=usb.util.get_string(dev,dev.iProduct) if dev.iProduct else None
             if model!=core.MODEL:raise RuntimeError('只支援 '+core.MODEL+'；USB 型號不符')
+            if sys.platform=='darwin':
+                from macos_host import claim_camera_interface
+                claim_camera_interface(dev)
             auth=SonySenserAuthDevice(GenericUsbDriver(Bounded(dev,20)))
             auth.start();auth.authenticate()
             # An ambiguous authentication is not retried or followed by stop.
@@ -177,6 +184,9 @@ class Session:
                 if time.monotonic()>=deadline:raise RuntimeError('服務身份未出現；若是第一次，請依文件安裝0336驅動')
                 time.sleep(.5)
         time.sleep(2)
+        if sys.platform=='darwin':
+            from macos_host import claim_camera_interface
+            claim_camera_interface(self.dev)
         self.backend=Bounded(self.dev)
         self.auth=SonySenserAuthDevice(GenericUsbDriver(self.backend))
         authenticated=False
@@ -244,6 +254,9 @@ class RecoverySession(Session):
         if not self.expected or self.expected.get('model') != core.MODEL or not self.expected.get('serial_sha256'):
             raise ValueError('Existing service recovery requires a recorded A7C II body identity')
         self.dev = get_device(0x0336)
+        if sys.platform=='darwin':
+            from macos_host import claim_camera_interface
+            claim_camera_interface(self.dev)
         self.backend = Bounded(self.dev, 30)
         self.auth = SonySenserAuthDevice(GenericUsbDriver(self.backend))
         self.channel = SonySenserDevice(self.auth.driver)

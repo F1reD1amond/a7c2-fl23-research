@@ -158,7 +158,7 @@ class LookEditorTests(unittest.TestCase):
         write_json(window.current_job/'status.private.json',dict(action='setup_all',phase='SUCCEEDED',result=state))
         window.process=Mock()
         with patch.object(window,'show_reload_guide'):window.finished(0,None)
-        self.assertEqual(window.setup_button.text(),'继续上次安装')
+        self.assertEqual(window.setup_button.text(),'继续安装')
         self.assertFalse(window.setup_fl23.isEnabled())
         self.assertEqual(window.setup_args()['workspace'],str(root))
         state['phase']='COMPLETE';write_json(root/'setup.private.json',state)

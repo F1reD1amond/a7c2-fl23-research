@@ -1,6 +1,6 @@
-# A7C II Windows desktop tools
+# A7C II desktop tools
 
-For **ILCE-7CM2 firmware 2.01, 64-bit Windows 10–11**. This is a development preview. Startup does not open or flash a camera. macOS builds are deferred.
+For **ILCE-7CM2 firmware 2.01, 64-bit Windows 10–11**. This is a development preview. Startup does not open or flash a camera. Native Apple Silicon / Intel APP and DMG builds for macOS 14+ are wired in; no DMG has been produced or physically validated in this update.
 
 ## Home: guided one-click installation
 
@@ -15,9 +15,9 @@ When finished, an **Installation complete** dialog lists the selected looks and 
 
 **New setups save Vertical Display in the combined installation.** Resources are verified before the native switch is saved; it loads with the other selected features after the final cold restart. No per-boot computer connection is intended. Older jobs keep their original plan and can be upgraded from the Vertical Display page. Persistent operation still requires the owner's physical acceptance.
 
-If the dialog says names are complete but programs are not yet written, old resources remain occupied and the read-only mount must recover first. Follow the full power-removal instructions, reconnect and use the same button; no photographs, driver reinstall or file reselection are needed at this stage. Names are not rewritten. A final reload prompt follows the program installation. If the read-only state has already recovered, no extra power cycle is requested.
+If the dialog says names are complete but programs are not yet written, old resources remain occupied and the read-only mount must recover first. Follow the full power-removal instructions, reconnect and click Home’s **继续安装 (Continue installation)**; no photographs, driver reinstall or file reselection are needed at this stage. Names are not rewritten. A final reload prompt follows the program installation. If the read-only state has already recovered, no extra power cycle is requested.
 
-An unchanged target does not request an unnecessary power cycle. Factory recovery, driver removal and slot deletion are not installation steps. Custom audio still requires audition and owner confirmation before persistence. Enable the installed Lightroom plugin once in its Plug-in Manager. It routes later RAW development; it does not bake DCP processing into RAW sensor samples.
+An unchanged target does not request an unnecessary power cycle. Factory recovery, driver removal and slot deletion are not installation steps. Converted custom audio can be saved directly; audition and confirmation are optional. Enable the installed Lightroom plugin once in its Plug-in Manager. It routes later RAW development; it does not bake DCP processing into RAW sensor samples.
 
 Enabling FL23 after factory recovery is a new program change and needs another restart to load it; loaded-state verification is read-only. In-progress older setups keep their saved plan without silently adding the six looks. Built-in looks approximate their source DCPs. Attribution and original rights are recorded in the bundle's `desktop-assets/presets/default-six-v1/credits.json`.
 
@@ -52,7 +52,7 @@ A historical recovery with completed loaded-state/read-only verification does no
 
 Use the unified restore/continue button, without an old backup or complete firmware download. Supported project modifications are removed and all six custom recipes return to ST defaults. Body calibration, counters and unrelated settings are preserved. Optional historical-backup recovery remains separate. This is neither an updater downgrade nor a full flash-image overwrite.
 
-After interruption use the same button. It reads existing results/current bytes and plans remaining work; unknown outcomes stop with evidence retained. Resource-space exhaustion and a busy read-only remount are handled separately. Deferral is allowed only after complete program/name verification with no further program/name edits needed. Settings/reload preparation can then finish; a new boot and read-only mount must be verified afterward.
+After interruption click Home’s **继续安装 (Continue installation)**. It reads existing results/current bytes and plans remaining work; unknown outcomes stop with evidence retained. Resource-space exhaustion and a busy read-only remount are handled separately. Deferral is allowed only after complete program/name verification with no further program/name edits needed. Settings/reload preparation can then finish; a new boot and read-only mount must be verified afterward.
 
 ## Errors and verification limits
 
@@ -75,3 +75,15 @@ Before audition, completed owned markers are archived/replaced automatically; no
 After conversion, click Save Current Custom Sound directly; no prior audition, confirmation or cold recovery is required. Optional audition opens powered-on listening instructions; reconnect afterward and save directly. Listening/recovery records are optional controls. Follow the cold-reload dialog only after actual write/readback: unplug USB, wait for access activity to stop, switch off, remove the battery for at least one minute, then restart to load the change.
 
 One-click installation does not inspect historical factory-verification records at startup. Sound On/Off and repeated completed auditions do not require a cold-recovery record. Actual unknown writes and unfinished resources remain distinct from optional user confirmation.
+
+## LUT inputs
+
+The import page takes `.a7look`. The desktop CUBE converter requires **Sony ST / sRGB input → sRGB output**, not S-Log3 / S-Gamut3.Cine. DCP conversion needs the configured Lightroom rendering bridge, which is separate from the automatic-recognition plugin. [Formats, Log conversion and example](lut-formats.md).
+
+Verified factory recovery clears active setup / FL23 / look-resume state and returns Home to a new installation; the old sound workspace is detached from active use, while diagnostic history and source clips stay available.
+
+## macOS
+
+Build on a native Mac; use separate Apple Silicon / Intel packages. Drag the app from the DMG to Applications before opening. No Zadig or Windows driver is needed. Close Photos / Image Capture and other programs using the camera card. The tool unmounts only volumes under the identified camera USB device before libusb capture, leaving other disks alone. If macOS blocks the app, follow its Privacy & Security opening controls; there is no Developer ID signature or notarization, so acceptance on arbitrary systems is not assured.
+
+[Native build and CI assets](../../dev/desktop/README.md#macos-native-builds). This Windows host cannot produce or validate a native DMG; Mac USB has not been physically tested in this update.

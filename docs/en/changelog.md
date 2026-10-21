@@ -1,5 +1,14 @@
 # Changelog
 
+## Desktop preview.10.8 — 2026-10-21
+
+- Rename Home continuation to “继续安装” (Continue installation). The post-restart dialog and persistent status explicitly tell users to reconnect USB and click it. Standalone look instructions no longer direct users to a removed verification button.
+- Verified factory recovery clears active one-click / FL23 / look continuation pointers and the look editor, restoring a fresh Home state. Keep diagnostic evidence and pending recovery until its completion check succeeds.
+- Add visible LUT guidance in the compiler/import page plus a bilingual format guide: direct GUI CUBE input is Sony ST / sRGB and output is sRGB, not S-Log3. Explain Log bridging, 3D CUBE structure, DCP rendering and approximation limits.
+- Add separate ARM64 / Intel native Mac APP/DMG builds and CI asset import/export. Exclude Windows helpers, use fresh DMG staging and verify signatures/container structure. Targeted Mac storage unmount and interface capture draw on MDHan's adapter; preserve service-first admission.
+- 62 focused offline cases passed before the final documentation edits. Windows output path stays unchanged. Native Mac build/DMG and physical USB validation have not run on this Windows host. No camera I/O in this update; formal full regression remains deferred.
+
+
 ## Desktop preview.10.7 — 2026-10-21
 
 - Simplify workflow: no historical recovery-verification check at one-click startup. Custom looks perform checks/write/full readback through Apply, without a separate verification button or a post-write editor lock. Sound on/off and repeated completed auditions no longer require a recovery record. One-click installation retains one final combined check after all selected camera changes and restart; recovery retains its own mandatory completion check.

@@ -160,7 +160,7 @@ class Window(W.QMainWindow):
             if saved['phase'] != 'COMPLETE':
                 return dict(self.common(), workspace=root, options=saved['options'])
         root = self.work('setup')
-        tool = ROOT / 'desktop-assets/exiftool/exiftool.exe'
+        tool = ROOT / ('desktop-assets/exiftool/exiftool.exe' if sys.platform=='win32' else 'desktop-assets/exiftool/exiftool')
         looks = [dict(slot=s, path=self.text('setup_look_' + str(s))) for s in range(1, 7) if self.text('setup_look_' + str(s))]
         options = dict(fl23=self.setup_fl23.isChecked(), sound=self.setup_sound.isChecked(),
             vertical=self.setup_vertical.isChecked(), plugin=self.setup_plugin.isChecked(),
@@ -184,8 +184,11 @@ class Window(W.QMainWindow):
             for box,key in ((self.setup_fl23,'fl23'),(self.setup_sound,'sound'),(self.setup_vertical,'vertical'),(self.setup_plugin,'plugin')):
                 box.setChecked(bool(options.get(key,key!='plugin')))
             for box in (self.setup_presets,self.setup_fl23,self.setup_sound,self.setup_vertical,self.setup_plugin):box.setEnabled(False)
-            note=W.QLabel('上次安装尚未结束，将继续已保存的配置；完成后可开始新的安装。')
-            note.setWordWrap(True);layout.addWidget(note)
+
+        self.setup_note=W.QLabel('安装尚未结束，请点击“继续安装”，按弹窗完成下一步；需要断电时，接回 USB 后仍点击此按钮。')
+        self.setup_note.setWordWrap(True)
+        self.setup_note.setVisible(bool(prior) and prior.get('phase')!='COMPLETE')
+        layout.addWidget(self.setup_note)
         layout.addWidget(self.setup_presets)
         self.setup_preset_summary = W.QLabel(presets.SUMMARY)
         self.setup_preset_summary.setWordWrap(True)
@@ -197,14 +200,14 @@ class Window(W.QMainWindow):
             self.setup_presets.toggled.connect(self.setup_preset_summary.setEnabled)
         layout.addWidget(self.setup_preset_summary)
         for check in (self.setup_fl23, self.setup_sound, self.setup_vertical, self.setup_plugin):layout.addWidget(check)
-        self.setup_button=self.button(layout, '开始新的一键安装' if prior.get('phase')=='COMPLETE' else '一键安装／继续上次安装',
+        self.setup_button=self.button(layout, '开始新的一键安装' if prior.get('phase')=='COMPLETE' else '继续安装' if prior else '一键安装',
                                       'setup_all', self.setup_args, primary=True)
         self.setup_result_button=W.QPushButton('查看上次安装结果（不连接相机）')
         self.setup_result_button.clicked.connect(self.show_setup_result)
         self.setup_result_button.setVisible(prior.get('phase')=='COMPLETE')
         layout.addWidget(self.setup_result_button);self.buttons.append(self.setup_result_button)
         look_section=self.advanced(layout,'改用自己的 A7Look 文件（先取消勾选内置六款）')
-        custom_container = look_section.parentWidget()
+        custom_container = self.setup_custom_container = look_section.parentWidget()
         custom_container.setEnabled(not self.setup_presets.isChecked() and not (prior and prior.get('phase')!='COMPLETE'))
         self.setup_presets.toggled.connect(lambda enabled: custom_container.setEnabled(not enabled))
         form = self.box(look_section, '选择 A7Look 文件')
@@ -212,7 +215,7 @@ class Window(W.QMainWindow):
             self.field(form, 'setup_look_' + str(slot), '自订 ' + str(slot), kind='file', filter='Compiled looks (*.a7look)')
         compile_button = W.QPushButton('从 DCP／LUT 生成 A7Look…')
         compile_button.clicked.connect(self.compiler_dialog); look_section.addWidget(compile_button); self.buttons.append(compile_button)
-        hint = W.QLabel('恢复出厂、卸载驱动和删除外观不会混入安装流程。自定义声音请在“电子快门声音”中先试听，再确认安装。')
+        hint = W.QLabel('恢复出厂、卸载驱动和删除外观不会混入安装流程。自定义声音请在“电子快门声音”中转换后直接保存，试听可选。')
         hint.setWordWrap(True); layout.addWidget(hint); layout.addStretch()
 
     def direct_verify_args(self, group, accepted=False):
@@ -227,7 +230,7 @@ class Window(W.QMainWindow):
         if not path.is_file():return
         state=json.loads(path.read_text(encoding='utf-8'))
         if state.get('phase')!='COMPLETE':
-            W.QMessageBox.information(self,'安装尚未结束','请点首页“继续上次安装”，按提示完成后续步骤。')
+            W.QMessageBox.information(self,'安装尚未结束','请点首页“继续安装”，按提示完成后续步骤。')
             return
         if archive_error(state):write_json(path,state)
         W.QMessageBox.information(self,'安装完成',text(state))
@@ -236,10 +239,32 @@ class Window(W.QMainWindow):
         path=Path(self.settings.get('setup_work',''),'setup.private.json')
         state=json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
         pending=bool(state) and state.get('phase')!='COMPLETE'
-        self.setup_button.setText('继续上次安装' if pending else '开始新的一键安装' if state else '一键安装')
+        self.setup_button.setText('继续安装' if pending else '开始新的一键安装' if state else '一键安装')
         self.setup_result_button.setVisible(state.get('phase')=='COMPLETE')
+        self.setup_note.setVisible(pending)
+        self.setup_custom_container.setEnabled(not pending and not self.setup_presets.isChecked() and self.process is None)
+        if not state:
+            self.setup_preset_summary.setText(presets.SUMMARY)
+            self.setup_preset_summary.setEnabled(self.setup_presets.isChecked())
         for box in (self.setup_presets,self.setup_fl23,self.setup_sound,self.setup_vertical,self.setup_plugin):
             box.setEnabled(not pending and self.process is None)
+
+    def clear_installation_state(self):
+        # Clear active navigation/resume pointers, not diagnostic evidence or
+        # user source files. A verified factory reset invalidates these plans.
+        for key in ('setup_work','fl23_direct_work','look_direct_work',
+                    'look_resume_source','look_job_dir'):
+            self.settings.pop(key,None)
+        self._look_displayed_pending=None
+        self.look_editor.set_operations([])
+        for box in (self.fl23_accept,self.sound_accept):box.setChecked(False)
+        # The old sound workspace describes the pre-reset camera installation.
+        # Start fresh while retaining its files and the selected source clip.
+        sound=self.work('sound')
+        for key,value in (('sound_work',sound),('sound_backup',sound+'-backup')):
+            self.fields[key].setText(value);self.settings[key]=value
+        write_json(data_root()/'desktop.json',self.settings)
+        self.log.appendPlainText('原厂恢复已核对通过；已清除旧安装状态。历史诊断日志保留，新安装从头开始。')
 
     def reload_controls(self, layout, checks):
         guide = W.QPushButton('如何断电重开？查看详细步骤')
@@ -416,7 +441,9 @@ class Window(W.QMainWindow):
         tools=W.QHBoxLayout();layout.addLayout(tools)
         for title,callback in [('从 DCP／LUT 生成 A7Look…',self.compiler_dialog),('安装 LrC 自动识别插件…',self.plugin_dialog)]:
             button=W.QPushButton(title);button.clicked.connect(callback);tools.addWidget(button);self.buttons.append(button)
-        layout.addWidget(W.QLabel('仅更改清单内的槽位，保留 FL23、声音与竖屏设置。'))
+        formats=W.QPushButton('LUT 格式说明：ST / sRGB，不是 S-Log3…')
+        formats.clicked.connect(self.show_look_format_guide);layout.addWidget(formats);self.buttons.append(formats)
+        layout.addWidget(W.QLabel('写入页选择 .a7look；.cube / .dcp 先用上方工具转换。仅更改清单内的槽位。'))
         hint=W.QLabel('同一次操作自动检查当前状态、写入并完整读回。结束后按弹窗断电加载，无需单独点击核对。')
         hint.setWordWrap(True);layout.addWidget(hint)
         layout.addStretch()
@@ -465,7 +492,7 @@ class Window(W.QMainWindow):
                 self.look_editor.setEnabled(False);self.look_button.setEnabled(not busy)
                 if phase in ('AWAITING_RESOURCE_RELOAD','RESOURCE_RELOAD_VERIFIED') or (phase=='NEEDS_REVIEW' and state.get('forward_name_build',{}).get('stream_install') and 'readonly=-16' in state.get('error','')):
                     text='上次操作正在等待资源续接，将沿用已保存的清单。'
-                    self.look_button.setText('继续上次槽位更改')
+                    self.look_button.setText('继续槽位更改')
                 else:
                     from .lookbatch import read_only_failure
                     if read_only_failure(state):
@@ -552,14 +579,24 @@ class Window(W.QMainWindow):
         self.button(layout, '恢复原厂音效', 'sound_restore_sound', args)
         layout.addStretch()
 
+    def show_look_format_guide(self):
+        from .lookguide import TITLE,TEXT
+        dialog=W.QDialog(self);dialog.setWindowTitle(TITLE);dialog.resize(800,650)
+        layout=W.QVBoxLayout(dialog)
+        content=W.QTextBrowser();content.setPlainText(TEXT);layout.addWidget(content)
+        close=W.QPushButton('关闭');close.clicked.connect(dialog.accept);layout.addWidget(close)
+        dialog.exec()
+
     def compiler_dialog(self):
         dialog = W.QDialog(self)
         dialog.setWindowTitle('生成 A7Look')
         dialog.resize(760, 370)
         layout = W.QVBoxLayout(dialog)
-        hint = W.QLabel('DCP 使用 Lightroom 实际显影，需在显影配置中设置 Lightroom 桥接命令；CUBE 须明确为 Sony ST / sRGB 输入与 sRGB 输出。生成文件不连接相机。')
+        hint = W.QLabel('CUBE：输入必须是 Sony ST / sRGB，输出 sRGB；不能直接使用 S-Log3 / S-Gamut3.Cine 或其他 Log LUT。\nDCP：需 Lightroom Classic 和显影桥接配置。此工具只生成 .a7look，不写相机。')
         hint.setWordWrap(True)
         layout.addWidget(hint)
+        help_button=W.QPushButton('支持哪些格式和色彩空间？查看完整说明…')
+        help_button.clicked.connect(self.show_look_format_guide);layout.addWidget(help_button)
         form = self.box(layout, '源文件与输出')
         self.field(form, 'compile_source', 'DCP / CUBE', kind='file', filter='Reference (*.dcp *.cube)')
         self.field(form, 'compile_name', '外观名称')
@@ -758,19 +795,24 @@ class Window(W.QMainWindow):
         sound_notice=reloadguide.sound_notice(status.get('action'),status.get('result',{})) if success else None
         factory_wait=success and status.get('result',{}).get('mode')=='factory_reset' and status['result'].get('phase')=='AWAITING_RELOAD'
         factory_done=success and status.get('result',{}).get('mode')=='factory_reset' and status['result'].get('phase') in ('LOADED','COMPLETE')
+        if factory_done:self.clear_installation_state()
         resource_wait=status.get('result',{}).get('phase') in ('WAIT_RESOURCE_RELOAD','AWAITING_RESOURCE_RELOAD')
         resource_ready=success and status.get('result',{}).get('phase')=='RESOURCE_RELOAD_VERIFIED'
-        self.status.setText(('名称已写好，程序尚未写入。按弹窗断电重开、接回，再点同一个按钮继续。' if resource_wait else
+        setup_wait=waiting and status.get('action')=='setup_all'
+        self.status.setText(('名称已写好，程序尚未写入。按弹窗断电重开、接回 USB，再点击首页“继续安装”。' if resource_wait and setup_wait else
+                             '名称已写好，程序尚未写入。按弹窗断电重开、接回 USB，再点自定义外观页“继续槽位更改”。' if resource_wait else
                              '批量外观写入完成，已完整读回；按弹窗统一断电重开即可加载。' if status.get('action')=='direct_looks_import' else
                              'FL23 操作完成，写入与完整读回均已结束。重开相机后生效，无需再点核对。' if
                              status.get('result',{}).get('mode') in ('fl23_enable','fl23_disable') else
+                             '读写已结束。拔 USB → 等灯停 → 关机并等灯灭 → 取电池至少 1 分钟 → 开机 → 接回 USB → 点击首页“继续安装”。详见弹窗。' if setup_wait else
                              '读写已结束。拔 USB → 等灯停 → 关机并等灯灭 → 取电池至少 1 分钟 → 开机；详见弹窗。') if waiting else
-                           '名称与只读挂载已确认；程序尚未安装，请点同一个安装按钮继续。' if resource_ready else
+                           '名称与只读挂载已确认；程序尚未安装，请点首页“继续安装”。' if resource_ready and status.get('action')=='setup_all' else
+                           '名称与只读挂载已确认；程序尚未安装，请点自定义外观页“继续槽位更改”。' if resource_ready else
                            '完成。请按日志提示进行下一步。' if success else
                            '操作停止：' + status.get('error', '进程异常退出，退出码 ' + str(code)) + '。请导出诊断包。')
         if sound_notice:self.status.setText(sound_notice['status'])
         if factory_wait:self.status.setText('恢复尚未完成：写入和读回已结束，必须断电重启、接回 USB，再点“重启后核对并完成恢复”。')
-        elif factory_done:self.status.setText('原厂恢复核对通过。程序、设置及实际加载状态已核对；请继续检查机身拍摄和回放。')
+        elif factory_done:self.status.setText('原厂恢复核对通过，旧安装状态已清除。请继续检查机身拍摄和回放；重新安装请点首页“一键安装”。')
         self.progress.setRange(0, 100)
         self.progress.setValue(70 if factory_wait else 0 if sound_notice and status.get('action')=='sound_install' else
                               40 if success and (resource_wait or resource_ready) else 70 if waiting and status.get('action')=='setup_all' else 100 if success else 0)

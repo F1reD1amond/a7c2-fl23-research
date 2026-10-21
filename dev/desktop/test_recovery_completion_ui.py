@@ -71,3 +71,39 @@ def test_restart_dialog_explicitly_requires_followup_check():
     text=reloadguide.text(mode='factory_reset')
     for phrase in ('恢复尚未完成','必须重启后核对','至少等待 1 分钟','接回 USB','重启后核对并完成恢复','只有核对通过'):
         assert phrase in text
+
+
+@pytest.mark.parametrize('old_phase',['WAIT_RELOAD','COMPLETE','NEEDS_REVIEW'])
+def test_verified_factory_reset_clears_active_install_state_and_survives_reopen(pending_window,old_phase):
+    from desktopapp.paths import data_root,write_json,load_settings
+    window,work,state=pending_window
+    setup=data_root()/'work/old-setup'
+    write_json(setup/'setup.private.json',dict(phase=old_phase,options=dict(looks=[])))
+    old_sound=window.fields['sound_work'].text()
+    active=('setup_work','look_direct_work','look_resume_source','look_job_dir','fl23_direct_work')
+    window.settings.update({k:str(setup) for k in active})
+    state.update(phase='LOADED',readonly_after_reload_verified=True)
+    write_json(work/'direct.private.json',state)
+    finish(window,work,'LOADED','direct_verify')
+    assert all(k not in load_settings() for k in active)
+    assert window.fields['sound_work'].text()!=old_sound
+    assert load_settings()['sound_work']==window.fields['sound_work'].text()
+    assert window.setup_button.text()=='一键安装'
+    assert window.setup_result_button.isHidden()
+    assert window.setup_note.isHidden()
+    assert window.setup_presets.isEnabled()
+    assert (setup/'setup.private.json').exists()  # Evidence stays archived.
+    assert window.setup_args()['workspace']!=str(setup)
+    reopened=Window();reopened.timer.stop()
+    try:
+        assert reopened.setup_button.text()=='一键安装'
+        assert reopened.setup_note.isHidden()
+    finally:reopened.close()
+
+
+def test_pending_recovery_keeps_install_state_until_verified(pending_window):
+    window,work,state=pending_window
+    window.settings['setup_work']='old-setup'
+    with patch.object(window,'show_reload_guide'):
+        finish(window,work,'AWAITING_RELOAD')
+    assert window.settings['setup_work']=='old-setup'

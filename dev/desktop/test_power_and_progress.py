@@ -358,7 +358,7 @@ class PowerProgressTests(unittest.TestCase):
         self.assertIn('此前恢复原厂', text)
         self.assertIn('不会再刷一次', text)
         self.assertIn('不必再接电脑点击核对', text)
-        self.assertIn('一键安装／继续上次安装', reloadguide.text(setup=True))
+        self.assertIn('继续安装', reloadguide.text(setup=True))
 
     def test_names_only_pause_shows_exact_instructions_and_never_claims_installed(self):
         from desktopapp import reloadguide

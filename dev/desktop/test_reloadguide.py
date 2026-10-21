@@ -52,3 +52,11 @@ class ReloadGuideTests(unittest.TestCase):
         self.assertIn('无需先断电或记录恢复',notice['text'])
         for phase in ('needs_review','installed_cold_test_pending'):
             self.assertIsNone(reloadguide.sound_notice('sound_install',dict(phase=phase)))
+
+
+def test_setup_reload_names_continue_button():
+    for mode in (None,'resource_reload'):
+        message=reloadguide.text(setup=True,mode=mode)
+        assert '继续安装' in message
+        assert '继续上次安装' not in message
+        assert '接回 USB' in message

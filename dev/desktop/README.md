@@ -39,7 +39,7 @@ Windows/macOS runners without publishing a Release.
   Windows elevation only when a binding needs installation. The optional transport
   callback runs between the two authentication stages, not after firmware writing.
   No TUR/getCameraInfo gate, auth replay, or automatic driver install at startup.
-  macOS uses packaged libusb and an explicit camera-volume unmount.
+  macOS uses packaged libusb, unmounts only media under the identified camera USB device, then explicitly claims its normal/service interfaces. It does not install Windows drivers or use pre-authentication TUR/getCameraInfo gates.
 - `recovery.py`: metadata-only discovery/index, live same-body selection, then one
   reused service session for the existing rollback backend. No firmware SHA
   whitelist; preserve current state and perform full byte readback. Manual old
@@ -219,3 +219,32 @@ and the exact nested `program-install` child. It verifies rather than replaying
 completed writes; unknown nonempty children stop with their evidence intact.
 
 During development, run focused checks for the changed paths. Defer the full regression and complete package acceptance to the formal release, as requested by the owner. One-click setup checks the final combined camera state once after reload; individual look operations check/write/read back together, without a separate verify button. Factory recovery alone must remain pending until its loaded-state check passes.
+
+## macOS native builds
+
+Build **on a Mac**, with native 64-bit Python 3.11. Windows cannot cross-build an APP/DMG. Apple Silicon and Intel use separate packages; minimum advertised OS is macOS 14. These paths are implemented but this update has not produced a native DMG or tested physical Mac USB.
+
+```sh
+python3 -m venv .venv-desktop
+source .venv-desktop/bin/activate
+python -m pip install cmake==3.31.6 setuptools wheel
+python -m pip install --no-build-isolation -r desktop-requirements.txt pyinstaller==6.16.0 pytest==8.3.5
+python dev/desktop/prepare_assets.py --preset-archive /path/to/desktop-presets.zip
+python dev/desktop/build.py
+```
+
+Keystone 0.9.2 and Unicorn 2.1.3 have no Apple Silicon wheels on PyPI. On ARM64 they build from their source distributions using Xcode Command Line Tools and CMake 3.31.6 (install the command-line tools if absent). Do not insert Intel dylibs into an ARM64 app. Build on Intel for the x86_64 package; Rosetta is not required for the ARM64 package.
+
+Outputs: `dist/A7C2Tools.app` and `dist/A7C2Tools-macOS-arm64.dmg` or `dist/A7C2Tools-macOS-x86_64.dmg`. Staging is fresh per build; packaging verifies the ad-hoc app signature and DMG structure. There is no Developer ID signature/notarization. Mount the DMG and drag the app to Applications; run packaged offline self-test and GUI smoke checks before distribution. Native binaries and all helper imports must pass on each architecture; Windows mocks alone do not establish this.
+
+The six compiled looks contain distribution-only source profiles and must stay outside Git. On an existing build machine, export the exact existing pack and notices:
+
+```text
+python dev/desktop/prepare_assets.py --export-presets dist/desktop-presets.zip
+```
+
+Transfer that ZIP to the Mac. `--preset-archive` also accepts the existing Windows desktop ZIP, but extracts only the six looks and their attribution/license files, never the Windows executable or DLLs. Optional ExifTool is user-selected on Mac (for example an installed `exiftool`); it is not replaced with a Windows helper.
+
+The manual `desktop-preview.yml` workflow has Windows, `macos-15` (ARM64) and `macos-15-intel` native runners. Supply `preset_archive_url` pointing to the exported pack or an accessible desktop ZIP. The workflow must be available on the default branch to appear for manual dispatch; choose the feature ref for its code when available. The current public v2 CLI ZIP is not a desktop preset pack. CI runs focused contracts, native packaging, packaged offline/GUI checks, signature/DMG verification and uploads artifacts, without publishing a Release. Local source presets alone cannot populate a clean hosted runner.
+
+macOS host preparation is informed by [MDHan/a7c2-fl23-macos](https://github.com/MDHan/a7c2-fl23-macos) at commit `1491f734df07f02fb77da6ea7062828bce0e30e7`: identify camera descendants in IORegistry, unmount camera storage normally, then claim libusb ownership. Its MIT notice is retained at `docs/licenses/a7c2-fl23-macos-MIT.txt`. We retain this project's service-first admission; the reference's pre-authentication camera-info and backup requirements are not imported. No camera operations occur while building.

@@ -5,7 +5,7 @@
 Camera-side tools for the **Sony A7C II (ILCE-7CM2) on firmware 2.01**: FL2/FL3 Creative Looks, custom looks in slots 1–6, factory-function recovery, Vertical Display and electronic shutter sound — in one Windows desktop application, with independent command-line tools for each part.
 
 > [!IMPORTANT]
-> **New desktop release `3.0.0-desktop-preview.10.6`** — Windows 10/11 x64 only; macOS packaging is deferred. This is a preview: not every feature has passed physical acceptance yet, see [Verification status](#verification-status).
+> **Current desktop development build `3.0.0-desktop-preview.10.8`** — Windows 10/11 x64. Native macOS 14+ Apple Silicon / Intel APP/DMG packaging is now configured; no new DMG has been produced or physically validated yet. This is a preview: not every feature has passed physical acceptance yet, see [Verification status](#verification-status).
 >
 > Known published FL23 versions can upgrade directly. Factory-function recovery is optional, not a prerequisite for one-click installation.
 
@@ -50,8 +50,8 @@ Download the complete **`A7C2Tools-Windows-x64.zip`** from [Releases](https://gi
 
 1. Charge the battery and connect one camera in **Mass Storage** mode with a data cable.
 2. Open **首页 · 一键安装 (Home · One-click install)** and select the features. The default replaces custom slots 1–6 with the six looks below and enables FL2/FL3, native shutter sound and Vertical Display; the Lightroom plugin is optional.
-3. Click **一键安装／继续上次安装**. The tool prepares drivers as needed, combines the camera changes, writes them and performs complete readback. It does not require a historical recovery-verification record.
-4. Follow the dialog for a **cold reload**, reconnect, then click **继续上次安装** once. It performs the final combined loaded-state check and reports installation complete; no per-feature check buttons are needed.
+3. Click **一键安装 / 继续安装**. The tool prepares drivers as needed, combines the camera changes, writes them and performs complete readback. It does not require a historical recovery-verification record.
+4. Follow the dialog for a **cold reload**, reconnect, then click **继续安装** once. It performs the final combined loaded-state check and reports installation complete; no per-feature check buttons are needed.
 
 **Optional recovery:** use **恢复原厂功能** only when you want to remove project modifications and reset all custom slots to ST. Its own recovery remains pending until the restart/check step succeeds. Old recipes are not recovered.
 
@@ -124,7 +124,7 @@ Run the offline tests (no camera access):
 python -m pytest dev/desktop -q
 ```
 
-The packaged build also contains distribution-only assets that are not in Git (the six-look pack and bundled helpers, under the ignored `desktop-assets/`). To build a package, follow the [desktop build guide](dev/desktop/README.md) and supply those assets yourself. CI (`.github/workflows/desktop-preview.yml`) builds on native runners without publishing a Release.
+The packaged build also contains distribution-only assets that are not in Git (the six-look pack and bundled helpers, under the ignored `desktop-assets/`). To build a package, follow the [desktop build guide](dev/desktop/README.md) and supply those assets yourself (or import the exported presets ZIP). [LUT color spaces and file formats](docs/en/lut-formats.md). CI (`.github/workflows/desktop-preview.yml`) builds on native runners without publishing a Release.
 
 ## Repository layout
 
