@@ -52,6 +52,7 @@ def test_missing_pack_notice_does_not_replace_existing_assets(tmp_path):
 
 def test_windows_output_path_unchanged(tmp_path):
     exe=tmp_path/'A7C2Tools/A7C2Tools.exe';exe.parent.mkdir();exe.write_bytes(b'test')
+    (exe.parent/'a7c2-diagnostics.zip').write_bytes(b'private local diagnostic')
     result=build.make_windows_zip(tmp_path)
     assert result.name=='A7C2Tools-Windows-x64.zip'
     with zipfile.ZipFile(result) as z:assert z.read('A7C2Tools/A7C2Tools.exe')==b'test'

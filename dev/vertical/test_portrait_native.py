@@ -49,7 +49,7 @@ def execute(compiled,mode,existing='none',fault=None):
     if existing=='foreign':files[DST[0]]=bytearray(b'foreign')
     if existing=='partial_temp':files['/usr/share/app/.a7c2-portrait-00.tmp']=bytearray(targets[0][:5000])
     before={p:bytes(v) for p,v in files.items() if p in SRC or p in DST};before_links=dict(links)
-    handles={};state={'ro':True};audit=[]
+    handles={};state={'ro':True,'interrupted':False};audit=[]
     def text(addr):
         result=bytearray()
         while True:
@@ -90,12 +90,19 @@ def execute(compiled,mode,existing='none',fault=None):
                 raw=links[p].encode();cpu.mem_write(a[2],raw);r=len(raw)
             else:r=-22 if p in files else -2
         elif no==40:state['ro']=bool(a[3]&1);audit.append(('mount',state['ro']))
+        elif no==43:
+            free=1 if fault=='capacity' else 50000
+            raw=struct.pack('<qq5Q2I7q',0xef53,4096,100000,free,free,1000,999,0,0,255,4096,0,0,0,0,0)
+            cpu.mem_write(a[1],raw)
         elif no in (63,67):
             p,actual,at=handles[a[0]]
             if no==67:at=a[3]
             if actual=='/proc/self/mem':raw=struct.pack('<I',16)
             elif actual=='/proc/mounts':raw=('/dev/nflasha15 /usr ext2 '+('ro' if state['ro'] else 'rw')+',nosuid,nodev 0 0\n').encode()[at:at+a[2]]
             else:raw=bytes(files[actual][at:at+a[2]])
+            if fault=='shortread' and len(raw)>128:raw=raw[:len(raw)//2]
+            if fault=='eintr_read' and actual in SRC and a[2]>128 and not state['interrupted']:
+                state['interrupted']=True;cpu.reg_write(UC_ARM64_REG_X0,(-4)&((1<<64)-1));return
             if raw:cpu.mem_write(a[1],raw)
             r=len(raw)
             if no==63:handles[a[0]][2]+=r
@@ -105,7 +112,11 @@ def execute(compiled,mode,existing='none',fault=None):
         elif no==64:
             p=handles[a[0]][1]
             if fault=='space' and p.endswith('.tmp'):r=-28
-            else:files[p].extend(cpu.mem_read(a[1],a[2]));r=a[2]
+            elif fault=='eintr_write' and p.endswith('.tmp') and not state['interrupted']:
+                state['interrupted']=True;r=-4
+            else:
+                count=max(1,a[2]//2) if fault=='shortwrite' and p.endswith('.tmp') else a[2]
+                files[p].extend(cpu.mem_read(a[1],count));r=count
         elif no in (52,55):pass
         elif no==82:
             p=handles[a[0]][0]
@@ -115,11 +126,14 @@ def execute(compiled,mode,existing='none',fault=None):
     u.hook_add(UC_HOOK_INTR,syscall)
     u.emu_start(0x10000000+init,0x70000000,count=15000000)
     assert u.reg_read(UC_ARM64_REG_PC)==0x70000000
-    result=struct.unpack('<8sIIIIqqqIIII3II3Q',files['/tmp/jiritsu/a7c2.names.result'])
+    report=bytes(files['/tmp/jiritsu/a7c2.names.result'])
+    result=struct.unpack_from('<8sIIIIqqqIIII3II3Q',report)
+    assert result[1]==2 and len(report)==128
     assert all(bytes(files[p])==v for p,v in zip(SRC,originals))
     assert state['ro']
-    if fault or existing=='foreign':
+    if fault not in (None,'shortread','shortwrite','eintr_read','eintr_write') or existing=='foreign':
         assert result[5]!=0
+        if fault in ('space','capacity'):assert result[5]==-28
         assert {p:bytes(v) for p,v in files.items() if p in SRC or p in DST}==before
         assert links==before_links
         assert not any(p.endswith('.tmp') for p in files)
@@ -141,3 +155,10 @@ def test_native_resource_transactions(compiled,mode,existing):execute(compiled,m
 @pytest.mark.parametrize('existing',['none','legacy'])
 @pytest.mark.parametrize('fault',['space','sync','rename'])
 def test_native_failure_rolls_back_without_touching_landscape(compiled,existing,fault):execute(compiled,1,existing,fault)
+
+
+@pytest.mark.parametrize('fault',['shortread','shortwrite','eintr_read','eintr_write'])
+def test_short_or_interrupted_syscalls_complete_instead_of_becoming_eio(compiled,fault):execute(compiled,1,'legacy',fault)
+
+
+def test_capacity_error_is_reported_before_bulk_copy(compiled):execute(compiled,1,'legacy','capacity')

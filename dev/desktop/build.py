@@ -34,6 +34,10 @@ def make_windows_zip(output):
     target=output/'A7C2Tools-Windows-x64.zip'
     with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as stream:
         for source in sorted((output/'A7C2Tools').rglob('*')):
+            relative=source.relative_to(output/'A7C2Tools')
+            # Users may save diagnostic ZIPs beside the executable. Never
+            # redistribute those local files in the next development bundle.
+            if relative.parts[0] not in ('A7C2Tools.exe','_internal'):continue
             if source.is_file():stream.write(source,source.relative_to(output))
     return target
 

@@ -12,7 +12,14 @@ struct RsStat {u64 dev,ino;u32 mode,nlink,uid,gid;u64 rdev,pad1;i64 size;u32 blk
 _Static_assert(sizeof(struct RsStat)==128,"stat ABI");
 struct RsResult {u8 magic[8];u32 version,mode,phase,count;i64 status,rollback,readonly;u32 source_ok,prior,created,removed,counts[3],reserved;u64 sizes[3];};
 _Static_assert(sizeof(struct RsResult)==104,"resource alias ABI");
+#ifdef PORTRAIT_GEOMETRY
+struct PortraitDiagnostic {u64 progress,available,required;};
+static struct {struct RsResult base;struct PortraitDiagnostic detail;} portrait_report;
+_Static_assert(sizeof(portrait_report)==128,"portrait diagnostic ABI");
+#define r portrait_report.base
+#else
 static struct RsResult r;
+#endif
 static const char *src[3]={"/usr/share/app/image_00_32_IPSX.uxc","/usr/share/app/image_01_32_IPSX.uxc","/usr/share/app/image_02_32_IPSX.uxc"};
 static const char *dst[3]={"/usr/share/app/image_00_23_IPSX.uxc","/usr/share/app/image_01_23_IPSX.uxc","/usr/share/app/image_02_23_IPSX.uxc"};
 static const char *target[3]={"image_00_32_IPSX.uxc","image_01_32_IPSX.uxc","image_02_32_IPSX.uxc"};
@@ -83,6 +90,9 @@ static i64 rs_remove(u32 mask) {
 __attribute__((visibility("default"))) void _init(void) {
  probe_init();const u8 magic[8]={'A','7','V','R','S','0','0','1'};for(u32 i=0;i<8;i++)r.magic[i]=magic[i];
  r.version=1;r.count=3;r.status=report.status;r.mode=0xffffffffU;
+#ifdef PORTRAIT_GEOMETRY
+ r.version=2;
+#endif
  if(!r.status&&report.index!=16)r.status=-22;
  if(!r.status) {
   u8 request[16];i64 fd=op("/tmp/jiritsu/a7c2.names.request",0);
@@ -141,5 +151,11 @@ __attribute__((visibility("default"))) void _init(void) {
  if((!r.status||completed_busy)&&r.mode==2)for(u32 i=0;i<3;i++)if(rs_link_state(i)!=0){r.status=-17;completed_busy=0;break;}
  if(!r.status||completed_busy)r.phase=r.mode?5:1;
  i64 fd=op("/tmp/jiritsu/a7c2.names.result",0x241);
- if(fd>=0){write_all(fd,&r,sizeof(r));sc(82,fd,0,0,0,0,0);cl(fd);}
+ if(fd>=0){
+#ifdef PORTRAIT_GEOMETRY
+  write_all(fd,&portrait_report,sizeof(portrait_report));
+#else
+  write_all(fd,&r,sizeof(r));
+#endif
+  sc(82,fd,0,0,0,0,0);cl(fd);}
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## Desktop preview.10.19 — portrait resource I/O correction — 2026-10-21
+
+- Fix the portrait-copy worker treating short reads/writes and every negative syscall return as generic EIO (-5). Complete partial transfers with updated offsets, retry bounded EINTR results, and retain original negative error codes. The old user's -5 report does not establish its underlying errno.
+- Add compatible version-2 portrait reports with the resource group, operation, progress and capacity figures. Check free space before bulk copying, retaining ENOSPC (-28), and leave old active resources intact if staging fails. No firmware hashes or camera writes are needed to inspect the report.
+- Support exports now include the actual persistent vertical child transaction, which was previously missing when the request pointed to the parent folder. Preserve precise native errors and progress without including programs or calibration.
+- Fault simulations cover short/interrupted reads and writes, capacity errors, full-disk writes, atomic rename rollback, legacy aliases and corrected resources. No physical camera I/O was performed for this correction. Actual recipient re-test remains necessary.
+
 ## Desktop preview.10.18 — repeatable actions and optional USB sample — 2026-10-21
 
 - Keep the button named **Enable Vertical Display** while retaining in-place upgrades. FL23 and selected looks continue to re-plan from fresh state; identical content does not need another write.

@@ -78,18 +78,35 @@ def parse_ram(raw, target):
 
 
 def parse_aliases(raw, mode):
-    if len(raw) != 104:
+    if len(raw) not in (104,128):
         raise ValueError('Incomplete resource-alias result')
-    row = struct.unpack('<8sIIIIqqqIIII3II3Q', raw)
-    if row[:3] != (b'A7VRS001', 1, mode) or row[4] != 3 or row[15]:
+    row = struct.unpack_from('<8sIIIIqqqIIII3II3Q', raw)
+    if (row[0]!=b'A7VRS001' or row[1] not in (1,2) or row[2]!=mode or row[4]!=3
+            or (row[1]==1 and (len(raw)!=104 or row[15])) or (row[1]==2 and len(raw)!=128)):
         raise ValueError('Unexpected resource-alias ABI')
-    return dict(mode=mode, phase=row[3], status=row[5], rollback=row[6], readonly=row[7],
+    result=dict(mode=mode, phase=row[3], status=row[5], rollback=row[6], readonly=row[7],
                 source_ok=row[8], prior=row[9], created=row[10], removed=row[11],
                 source_counts=list(row[12:15]), source_sizes=list(row[16:19]))
+    if row[1]==2:
+        steps={1:'读取源记录',2:'打开临时文件',3:'检查可用空间',4:'读取源图形',5:'写入临时图形',
+               6:'设置文件所有者',7:'设置文件权限',8:'同步临时文件',9:'完整核对临时文件',10:'原子替换资源'}
+        progress,available,required=struct.unpack_from('<3Q',raw,104)
+        result.update(failure_group=(row[15]>>8)-1 if row[15] else None,
+            failure_step=steps.get(row[15]&255,'未记录' if row[15] else None),
+            progress_bytes=progress,available_bytes=available,required_bytes=required)
+    return result
 
 
 def require_ok(result):
     if result['status']:
+        if result.get('failure_step'):
+            import errno
+            code=result['status'];label=errno.errorcode.get(-code,'UNKNOWN')
+            detail='竖屏资源 %02d：%s失败，错误 %d（%s），位置 %d 字节。'%(
+                result['failure_group'],result['failure_step'],code,label,result['progress_bytes'])
+            if code==-28:
+                detail+='机内 /usr 空间／文件节点不足：检查时可用 %.2f MB，本文件至少需要 %.2f MB。'%(result['available_bytes']/1048576,result['required_bytes']/1048576)
+            raise ValueError(detail+' 原生报告：'+str(result))
         raise ValueError('Native operation stopped: ' + str(result))
     return result
 

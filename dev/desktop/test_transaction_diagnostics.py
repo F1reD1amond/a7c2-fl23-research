@@ -20,3 +20,18 @@ def test_export_includes_failed_child_stage_and_excludes_calibration(tmp_path,mo
         contents=b'\n'.join(z.read(n) for n in z.namelist() if n!='diagnostics/setupapi-tail.log')
         assert b'PRIVATE-BODY-SERIAL' not in contents and b'PRIVATE-CALIBRATION' not in contents
         assert b'PRIVATE-PROGRAM' not in contents
+
+
+def test_vertical_export_selects_the_actual_persistent_child(tmp_path,monkeypatch):
+    monkeypatch.setenv('A7C2_DESKTOP_DATA',str(tmp_path/'app'))
+    root=tmp_path/'vertical';child=root/'persistent-actual';child.mkdir(parents=True)
+    state=dict(mode='vertical_enable',phase='NEEDS_REVIEW',failed_during='WRITING',journal=[dict(
+        event='vertical_alias_result',result=dict(status=-28,failure_step='写入临时图形',progress_bytes=4096,available_bytes=1024,required_bytes=10000))])
+    (child/'direct.private.json').write_text(json.dumps(state))
+    other=root/'persistent-newer';other.mkdir();(other/'direct.private.json').write_text(json.dumps(dict(error='UNRELATED-LATER-RUN')))
+    job=jobs.new_job('vertical_enable',dict(workspace=str(root)))
+    (job/'backend-workspace.private.json').write_text(json.dumps(dict(workspace=str(child))))
+    summary=jobs.transaction_summaries(job)['direct-summary-0.json']
+    assert summary['journal'][0]['result']['status']==-28
+    assert summary['journal'][0]['result']['progress_bytes']==4096
+    assert 'UNRELATED-LATER-RUN' not in json.dumps(summary)

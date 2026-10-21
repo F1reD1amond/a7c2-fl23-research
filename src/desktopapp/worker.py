@@ -68,6 +68,7 @@ def run(action, args, job):
         return result
     if action in ('vertical_enable','vertical_disable') and not args.get('session_only'):
         work=Path(args['workspace']) / ('persistent-'+uuid.uuid4().hex[:8])
+        write_json(Path(job)/'backend-workspace.private.json',dict(action=action,workspace=str(work)))
         return run('direct_'+action, dict(args, workspace=str(work)), job)
     if action.startswith('direct_'):
         from looktool.direct import DirectJob

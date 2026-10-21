@@ -56,6 +56,13 @@ def transaction_summaries(job):
     folder=request.get('arguments',{}).get('workspace')
     if not folder:return {}
     root=Path(folder);result={};children=[root]
+    pointer=Path(job)/'backend-workspace.private.json'
+    if pointer.is_file():
+        children=[Path(json.loads(pointer.read_text(encoding='utf-8'))['workspace'])]
+    elif request.get('action') in ('vertical_enable','vertical_disable') and not (root/'direct.private.json').is_file():
+        # Persistent vertical actions use a fresh child below the page's root.
+        # Include the actual child; the old export omitted its native result.
+        children=[p.parent for p in sorted(root.glob('persistent-*/direct.private.json'),key=lambda p:p.stat().st_mtime_ns)[-3:]]
     fields=('schema','phase','mode','failed_during','error','error_type','completed_steps',
             'install_workspace','failed_install_workspaces','names_cleanup_pending',
             'readonly_after_reload_verified','physical_checks_accepted')
@@ -75,7 +82,9 @@ def transaction_summaries(job):
             row={k:event[k] for k in ('event','stage','mode') if k in event}
             if isinstance(event.get('result'),dict):
                 row['result']={k:event['result'][k] for k in ('phase','status','windows','mode',
-                    'staged','linked','committed','restored','rollback','remount','readonly','cleanup') if k in event['result']}
+                    'staged','linked','committed','restored','rollback','remount','readonly','cleanup',
+                    'failure_group','failure_step','progress_bytes','available_bytes','required_bytes',
+                    'created','removed','source_sizes') if k in event['result']}
             summary['journal'].append(row)
         result['direct-summary-%d.json'%i]=summary
     return result
@@ -92,7 +101,7 @@ def export_support(job, destination):
         for name in ['request.private.json', 'status.private.json', 'worker.log',
                      'process.log', 'result.private.json', 'driver-report.private.json',
                      'authorization.private.json','authorization.stdout.log','authorization.stderr.log',
-                     'privilege.private.json','usb-stability.private.json']:
+                     'privilege.private.json','usb-stability.private.json','backend-workspace.private.json']:
             path = job / name
             if path.is_file():
                 archive.write(path, 'diagnostics/' + name)
