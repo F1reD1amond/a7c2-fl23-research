@@ -41,7 +41,7 @@ jobs:
       - name: Dependencies
         # Keystone and Unicorn lack ARM64 Mac wheels at these versions;
         # compile them natively, instead of bundling Intel libraries into ARM64.
-        run: python -m pip install --no-build-isolation -r desktop-requirements.txt pyinstaller==6.16.0 pytest==8.3.5
+        run: python -m pip install -r desktop-requirements.txt pyinstaller==6.16.0 pytest==8.3.5
       - name: Prepare build assets
         run: python dev/desktop/prepare_assets.py
       - name: Focused desktop contracts

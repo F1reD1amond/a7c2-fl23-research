@@ -61,7 +61,7 @@ def main():
     args = parser.parse_args()
     if not args.presets_url and not args.preset_archive:
         request_file=ROOT/'dev/desktop/native-build-request.json'
-        if request_file.is_file():args.presets_url=__import__('json').loads(request_file.read_text(encoding='utf-8'))['preset_archive_url']
+        if request_file.is_file() and not all((ROOT/'desktop-assets/presets/default-six-v1'/('slot%d.a7look'%slot)).is_file() for slot in range(1,7)):args.presets_url=__import__('json').loads(request_file.read_text(encoding='utf-8'))['preset_archive_url']
     if args.export_presets:
         print(export_presets(args.export_presets));return
     if args.preset_archive:import_presets(args.preset_archive)

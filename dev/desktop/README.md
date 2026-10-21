@@ -228,7 +228,7 @@ Build **on a Mac**, with native 64-bit Python 3.11. Windows cannot cross-build a
 python3 -m venv .venv-desktop
 source .venv-desktop/bin/activate
 python -m pip install cmake==3.31.6 setuptools wheel
-python -m pip install --no-build-isolation -r desktop-requirements.txt pyinstaller==6.16.0 pytest==8.3.5
+python -m pip install -r desktop-requirements.txt pyinstaller==6.16.0 pytest==8.3.5
 python dev/desktop/prepare_assets.py --preset-archive /path/to/desktop-presets.zip
 python dev/desktop/build.py
 ```
