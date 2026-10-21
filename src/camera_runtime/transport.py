@@ -9,8 +9,55 @@ import usb.backend.libusb1
 import libusb_package
 from pmca.usb.driver.generic import GenericUsbDriver,MscBbbDriver,GenericUsbException
 from pmca.usb.driver.generic.libusb import UsbBackend
-from pmca.usb.sony import SonySenserAuthDevice,SonySenserDevice,SonySenserCamera,SonyExtCmdCamera,SonyMscExtCmdDevice
+from io import BytesIO
+from pmca.usb.sony import SonySenserAuthDevice,SonySenserCamera,SonyExtCmdCamera,SonyMscExtCmdDevice
+from pmca.usb.sony import SonySenserDevice as PmcaSenserDevice
 from pmca.usb import MscDevice
+
+class SonySenserDevice(PmcaSenserDevice):
+    """pmca's senser exchange with a bounded wait for chunk end packets.
+
+    After every chunk whose length is a multiple of 512, pmca reads one more
+    time for the zero-length end packet. Field log 31: after a final
+    20992-byte chunk that packet never arrived and the read blocked for the
+    whole 180 s budget. Wait briefly; if it stays absent, the chunk is done.
+    A late packet would reach the next header read and fail it loudly.
+    """
+    END_PACKET_MS=1000
+
+    def _end_packet(self):
+        try:self.driver.read(self.SenserMinSize,timeout=self.END_PACKET_MS)
+        except GenericUsbException as exc:
+            if not isinstance(exc.__context__,usb.core.USBTimeoutError):raise
+
+    def sendSenserPacket(self,pFunc,data,oData=None):
+        # Same as pmca, except _end_packet replaces the unbounded end read.
+        while data!=b'':
+            header=self.SenserPacketHeader.pack(size=len(data),pFunc=pFunc,sequence=self._sequence,
+                                                version=0,miconType=0,offsetType=0,response=0)
+            self.driver.write(header+data[:self.SenserMaxSize])
+            data=data[self.SenserMaxSize:]
+        outData=BytesIO() if oData is None else oData
+        minSize=0 if self.driver.getId()[1]==0x0336 else self.SenserMinSize
+        while True:
+            l=max(minSize-self.SenserPacketHeader.size,0)
+            d=self.driver.read(self.SenserPacketHeader.size+l)
+            header=self.SenserPacketHeader.unpack(d)
+            if header.sequence!=self._sequence:raise Exception('Wrong senser sequence')
+            outData.write(d[self.SenserPacketHeader.size:])
+            done=l
+            dataLen=min(header.size,self.SenserMaxSize)
+            chunkLen=self.SenserChunkSize-minSize
+            while done<dataLen:
+                l=min(dataLen-done,chunkLen)
+                outData.write(self._readAll(l))
+                done+=l
+                if not (l&(self.SenserMinSize-1)):self._end_packet()
+                chunkLen=self.SenserChunkSize
+            if header.size<=self.SenserMaxSize:break
+        self._sequence+=1
+        return header.response,outData.getvalue() if oData is None else None
+
 
 class Bounded(UsbBackend):
     def __init__(self,device,budget=180):
