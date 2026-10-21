@@ -81,12 +81,12 @@ class PortraitJob(DirectJob):
                     self.state['portrait_result']=frames.restore()
                     changed=bool(self.state['portrait_result'].get('cleanup',{}).get('cleanup_deferred'))
             self.save('AWAITING_RELOAD' if changed else 'LOADED')
-            message=('所有读写已结束。按弹窗完整断电重开后，检查横握／两侧竖握的 Fn 网格、创意外观子菜单边框。本版处理四组线框，三个刻度图仍沿用原组件。'
+            message=('所有读写已结束。按弹窗完整断电重开后，检查横握／两侧竖握的 Fn 网格、创意外观选择页和参数调整页。'
                      if changed else '当前内容已符合所选状态，没有重复写入。')
             print('竖屏开关和线框步骤已写好，继续安装其余所选功能。' if combined else message,flush=True)
             return dict(workspace=str(self.root),phase=self.state['phase'],mode=self.state['mode'],
                         reload_required=changed,
-                        frame_assets=4,shared_gauge_assets_changed=0,message=message)
+                        frame_assets=12,shared_gauge_assets_changed=7,message=message)
         except BaseException as error:
             self.save('NEEDS_REVIEW',error=str(error))
             print('请保留日志。下次点击同一操作会重新读取当前资源和机内撤销记录，不重放旧任务。',flush=True)

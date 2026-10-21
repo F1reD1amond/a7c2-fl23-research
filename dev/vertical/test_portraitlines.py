@@ -1,4 +1,4 @@
-"""Offline checks for the seven redrawn portrait line images."""
+"""Offline checks for the twelve redrawn portrait line and gauge images."""
 import io
 from pathlib import Path
 import sys
@@ -9,11 +9,12 @@ from verticaltool import portraitlines
 from fwtool.lz77 import inflateLz77
 
 
-def test_seven_native_page_rasters_roundtrip():
+def test_twelve_native_page_rasters_roundtrip():
     rows=portraitlines.specs()
-    assert len(rows)==7
+    # Seven line frames, the selection-page border and the four gauge backgrounds.
     assert [(row['group'],row['index']) for row in rows]==[
-        (0,0xf96),(0,0xf97),(1,0x397),(1,0x398),(1,0x3d2),(1,0x3ec),(1,0xcac)]
+        (0,0xf96),(0,0xf97),(1,0x397),(1,0x398),(1,0x3d2),(1,0x3ec),(1,0xcac),
+        (1,0x291),(1,0x28c),(1,0x28d),(1,0x28e),(1,0x28f)]
     for row in rows:
         pixels=portraitlines.raster(row)
         width,height=row['portrait']

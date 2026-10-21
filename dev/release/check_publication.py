@@ -12,12 +12,15 @@ def main():
     errors=[];links=0
     for p in files:
         data=p.read_bytes()
-        if p.parent==ROOT/'src/fl23/assets' and p.suffix=='.so':
+        if p.parent in (ROOT/'src/fl23/assets',ROOT/'src/camera_runtime/assets') and p.suffix=='.so':
             # Exact workers already shipped in the historical public ZIP.
             # Retain their tested bytes and manifest; their DWARF contains
-            # a project build path, not body backups or credentials.
+            # a project build path, not body backups or credentials. The
+            # desktop runtime mirror must stay byte-identical to that copy.
             manifest=json.loads((p.parent/'manifest.json').read_text(encoding='utf-8'))
-            if sha(data)!=manifest['files'].get(p.name):errors.append('Native worker fingerprint differs: '+p.name)
+            if sha(data)!=manifest['files'].get(p.name):errors.append('Native worker fingerprint differs: '+str(p.relative_to(ROOT)))
+            if p.parent!=ROOT/'src/fl23/assets' and data!=(ROOT/'src/fl23/assets'/p.name).read_bytes():
+                errors.append('Runtime worker differs from the published FL23 worker: '+p.name)
             continue
         if re.search(rb'[A-Z]:[\\/](?:Users|LeoClaw|a7c2-fl23)[\\/]',data,re.I) or re.search(rb'-----BEGIN [A-Z ]*PRIVATE KEY-----[\r\n]',data):errors.append('Private marker: '+str(p.relative_to(ROOT)))
         if p.suffix=='.md':

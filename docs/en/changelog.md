@@ -2,8 +2,12 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/changelog.md)
 
-## 3.0 (in development) — documentation consolidated — 2026-10-22
+## 3.0.0 — first desktop release — 2026-10-22
 
+- Integrated the portrait .5 work: Fn and submenu frames, the four Creative Look gauge backgrounds now drawn horizontally, and the withdrawal of the .4 shared-panel change (fresh plans keep Sony's original options; existing .4 installs restore the original 20 bytes). The owner confirmed the landscape UI is back to normal. Known: the portrait Creative Look selection border is still thick and the orange gauge pointer orientation is not yet corrected.
+- Windows driver detection reads present Sony USB devices through SetupAPI instead of PowerShell; a failed query is no longer reported as a missing camera.
+- USB stability check: the clock starts after the service connection is ready, reaching the round cap before the minimum duration is reported as incomplete rather than passed, and a slow read only fails below 2 MB/s (USB 1.1, hub or poor cable) instead of after a fixed 20 s.
+- The publication check binds the desktop runtime's native workers to their manifest and to the identical published FL23 workers.
 - This release is versioned 3.0: the first release built around a proper desktop interface.
 - Rewrote both READMEs as a step-by-step user guide: install drivers first; on driver errors uninstall and reinstall; restore factory functions first if the camera used any earlier version; recommended read-only USB stability check before writing. Documented that both packages ship the 15 paired DCP/A7Look files.
 - Restyled the desktop interface in a light blue-and-white theme: white pages, a light blue-gray sidebar, blue primary buttons and check boxes, and restyled inputs, scroll bars and a thin progress line. Colors and states only; page layout, sizes and spacing are unchanged. Styles now live in `src/desktopapp/theme.py`.

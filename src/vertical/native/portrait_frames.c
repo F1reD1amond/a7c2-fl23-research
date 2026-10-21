@@ -43,7 +43,7 @@ static i64 pf_remount(int ro){i64 n=sc(40,0,(i64)"/usr",0,0xc30UL+(ro?1:0),0,0);
 static i64 pf_window(i64 fd,const struct PfWindow*w,int target) {
  if(!w->size||w->size>sizeof(io_buf))return -22;
  i64 n=pf_read(fd,io_buf,w->size,w->at);if(n)return n;
- for(u32 j=0;j<w->size;j++)if(io_buf[j]!=w->old[j]&&io_buf[j]!=w->value[j])return -84;
+ for(u32 j=0;j<w->size;j++)if(io_buf[j]!=w->old[j]&&io_buf[j]!=w->value[j]&&(!w->previous||io_buf[j]!=w->previous[j]))return -84;
  if(!target)return 0;
  const u8*value=result.mode>=2?w->old:w->value;
  if(pf_same(io_buf,value,w->size))return 0;
@@ -73,13 +73,18 @@ static i64 pf_freeze(void) {
    if(end-at<length||!pf_same(maps+end-length,(const u8*)f->path,length))continue;
    u64 start,stop,offset;
    if(!hex(maps,end,&at,&start)||at>=end||maps[at++]!='-'||!hex(maps,end,&at,&stop)||at>=end||maps[at++]!=' '){error=-22;break;}
-   if(at+5>=end||maps[at]!='r'){error=-13;break;}
-   int private_map=maps[at+3]=='p';at+=5;
+   if(at+5>=end){error=-22;break;}
+   int readable=maps[at]=='r',private_map=maps[at+3]=='p';at+=5;
    if(!hex(maps,end,&at,&offset)||stop<=start){error=-22;break;}
    for(u32 window=0;window<f->count&&!error;window++) {
     const struct PfWindow*w=&f->windows[window];u64 a=w->at>offset?w->at:offset;
     u64 b=w->at+w->size<offset+stop-start?w->at+w->size:offset+stop-start;
-    if(a>=b)continue;if(result.mode!=3&&!private_map){error=-95;break;}
+    if(a>=b)continue;
+    result.file=file;result.window=window;
+    /* ELF guard/alignment mappings can be ---p. They are irrelevant unless
+     * they actually cover an edited byte; do not reject the whole file. */
+    if(!readable){error=-13;break;}
+    if(result.mode!=3&&!private_map){error=-95;break;}
     u64 address=start+a-offset;u32 size=(u32)(b-a);
     error=pf_read(mem,memory_buf,size,address);
     if(!error&&result.mode==3){

@@ -89,9 +89,9 @@ def run(action, args, job):
             if found:
                 if found[1]['phase'] not in FINISHED:raise ValueError('恢复尚未结束，请先点击“恢复／继续恢复”')
                 args=dict(args,workspace=str(found[0]))
-        obj = DirectJob(Path(args['workspace']))
         if not args.get('workspace'):
             raise ValueError('先完成一次本页操作，再核对重新加载状态。')
+        obj = DirectJob(Path(args['workspace']))
         reference, reference_path = None, args.get('factory') or 'builtin'
         if mode == 'factory_reset':
             from looktool.factoryrecover import pending

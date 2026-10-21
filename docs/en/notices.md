@@ -6,18 +6,19 @@ Newly authored code is [MIT licensed](../../LICENSE). This is independent resear
 
 ## DCPs and paired looks
 
-**DCP sources on Xiaohongshu (小红书):** Ricoh DCPs from **爸总林先森**; Fujifilm DCPs from **门萨特里顿** (MTriton).
+**DCP sources on Xiaohongshu (小红书):** Ricoh DCPs from **爸总林先森**; Fujifilm DCPs from **门萨特里顿**.
 
 - **Original DCPs (18):** supplied by the owner and unchanged, distributed as a separate Release attachment: [download](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.1/a7c2-dcp-profiles-2026-10-18.zip).
-  - **MTriton Fuji-style (11):** Provia, Velvia, Astia, Classic Chrome, Pro Neg Std, Pro Neg Hi, Eterna, Reala Ace, Classic Negative, Nostalgic Negative, Bleach Bypass.
+  - **Fuji-style (11):** Provia, Velvia, Astia, Classic Chrome, Pro Neg Std, Pro Neg Hi, Eterna, Reala Ace, Classic Negative, Nostalgic Negative, Bleach Bypass.
   - **Sony-adapted Ricoh GR III (7):** Standard, Vivid, Positive Film, Negative Film, Monotone, Hard Monotone, Soft Monotone.
 - **Paired library in the app packages (15):** the 11 Fujifilm and 4 Ricoh color profiles. Each DCP sits next to its fitted `.a7look` under the same name. The 3 monochrome profiles did not meet the fitting-error criteria, so they have no pair.
 - These DCPs are **RAW-development profiles for the Sony ILCE-7CM2**, not firmware. To use one manually in Lightroom on Windows, copy it into `%APPDATA%\Adobe\CameraRaw\CameraProfiles` and restart Lightroom/Camera Raw.
 
 Licenses:
-- **Fuji-style:** source [abpy/FujifilmCameraProfiles](https://github.com/abpy/FujifilmCameraProfiles); A7C II adaptation and testing by **门萨特里顿 / MTriton**, under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/) ([full text](../profiles/CC-BY-NC-SA-4.0.txt)). The original DCPs, pack README and attribution are unchanged.
-- **Ricoh-style:** the Sony-adapted Ricoh DCPs retain `Copyright 2022 Adobe Systems, Inc.`. No separate redistribution license was supplied; this project neither asserts one nor relicenses them under MIT.
-- Original metadata and provenance are recorded in the [manifest](../profiles/manifest.json). The code's MIT license covers neither these DCPs nor the look data derived from them.
+- **Fuji-style:** used with the author's permission and licensed under [MIT](../../LICENSE).
+- **Ricoh-style:** used with the author's permission and licensed under [MIT](../../LICENSE).
+- **FL2/FL3 DCPs:** the two Lightroom profiles matching the in-camera FL2 and FL3, used with the author's permission and licensed under [MIT](../../LICENSE); included with the 3.0 Release.
+- Every DCP and the look data derived from it is used with the authors' permission and licensed under MIT, like the code. Original metadata is recorded in the [manifest](../profiles/manifest.json).
 
 ## Code and research sources
 

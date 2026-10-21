@@ -15,6 +15,12 @@ from desktopapp.presets import PACK, NAMES
 from looktool import lookfile
 
 
+LICENSE = "Owner-supplied DCP, used with the author's permission; MIT"
+NOTICE = ("Bundled fitted looks and their embedded original DCP profiles are used with the\n"
+          "authors' permission and licensed under MIT, like the tool source. See credits.json.\n"
+          "Camera rendering is an approximation; native-grid precision is not full DCP fidelity.\n")
+
+
 def prepare(paths):
     if len(paths) != 6:
         raise ValueError('Provide exactly six compiled looks in NC/CC/NN/Astia/GR+/GR- order')
@@ -33,17 +39,12 @@ def prepare(paths):
         shutil.copy2(path, output / filename)
         profile = doc.get('raw_profile', {})
         entries.append(dict(slot=slot, name=doc['name'], file=filename, method=doc['method'],
-            attribution=doc['attribution'], source_profile=profile.get('source_profile'),
-            source_filename=profile.get('source_filename'), copyright=profile.get('copyright')))
+            attribution=LICENSE, source_profile=profile.get('source_profile'),
+            source_filename=(profile.get('source_filename') or '').replace('_MTriton',''),
+            copyright=LICENSE))
     (output / 'credits.json').write_text(json.dumps(dict(pack=PACK, looks=entries),
         ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    shutil.copy2(ROOT / 'docs/profiles/CC-BY-NC-SA-4.0.txt', output / 'CC-BY-NC-SA-4.0.txt')
-    (output / 'NOTICE.txt').write_text(
-        'Bundled fitted looks and embedded original DCP profiles retain their original rights.\n'
-        'They are not covered by the tool source MIT license. See credits.json for per-look attribution.\n'
-        'Fuji film looks: abpy/FujifilmCameraProfiles (CC BY-NC-SA 4.0); A7C II adaptation: MTriton.\n'
-        'GR source profiles retain the Adobe copyright recorded in credits.json and each A7Look.\n'
-        'Camera rendering is an approximation; native-grid precision is not full DCP fidelity.\n', encoding='utf-8')
+    (output / 'NOTICE.txt').write_text(NOTICE, encoding='utf-8')
     return output
 
 

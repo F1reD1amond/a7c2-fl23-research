@@ -31,19 +31,23 @@ class IntegrationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             drivers.driver_arguments('installer', '1234', self.root)
 
-    def test_windows_scan_regex_and_raw_errors(self):
-        seen = []
-        def run(command, **kwargs):
-            expression = re.search(r"-match '([^']+)'", command[-1])[1]
-            self.assertIsNotNone(re.match(expression, r'USB\VID_054C&PID_0E8A\123'))
-            self.assertIsNone(re.match(expression, r'USB\VID_1234&PID_0E8A\123'))
-            seen.append(command)
-            return SimpleNamespace(returncode=9, stdout='raw-out', stderr='raw-error')
-        with patch.object(drivers.sys, 'platform', 'win32'), patch.object(drivers.subprocess, 'run', side_effect=run), \
+    def test_windows_scan_retains_native_query_error_without_powershell(self):
+        with patch.object(drivers.sys, 'platform', 'win32'), \
+             patch('desktopapp.platforms.windows_pnp.devices',side_effect=OSError('native-query-error')), \
+             patch.object(drivers.subprocess,'run') as subprocess_run, \
              patch('usb.core.find', return_value=[]):
             result = drivers.scan()
-        self.assertEqual(result['errors'][0]['stderr'], 'raw-error')
-        self.assertEqual(result['errors'][0]['code'], 9)
+        self.assertEqual(result['errors'][0]['stage'],'windows-pnp')
+        self.assertIn('native-query-error',result['errors'][0]['error'])
+        subprocess_run.assert_not_called()
+
+    def test_driver_query_failure_is_not_reported_as_missing_camera(self):
+        report=dict(devices=[],errors=[dict(stage='windows-pnp',error='query-timeout')],
+            libusb_devices=[dict(pid='0e8a',product='ILCE-7CM2')])
+        with patch.object(drivers.sys,'platform','win32'),patch.object(drivers,'installer') as installer:
+            with self.assertRaisesRegex(RuntimeError,'Windows 驱动查询失败.*054C:0E8A.*query-timeout'):
+                drivers.install({'pid':'0e8a'},self.root,report=report)
+        installer.assert_not_called()
 
     def test_two_stage_driver_setup_has_one_session_no_auth_retry(self):
         events = []
@@ -199,12 +203,16 @@ class IntegrationTests(unittest.TestCase):
 
     def test_desktop_vertical_off_also_removes_auxiliary_resources(self):
         from unittest.mock import Mock
-        obj=Mock();obj.root=self.root/'saved-off'
-        obj.run_direct.return_value=dict(mode='vertical_disable',phase='AWAITING_RELOAD',
+        obj=Mock()
+        obj.run_frames.return_value=dict(mode='vertical_disable',phase='AWAITING_RELOAD',reload_required=True,
             vertical_result=dict(saved='OFF',running='OFF',alias_count=0,persistent=True))
-        with patch('looktool.direct.DirectJob',return_value=obj):
+        with patch('desktopapp.platforms.usb_drivers.prepare') as prepare, \
+             patch('looktool.portraitjob.PortraitJob',return_value=obj) as job:
             result = worker.run('vertical_disable', dict(workspace=str(self.root), firmware='2.01', power_confirmed=True), self.root)
-        self.assertEqual(obj.run_direct.call_args.args,('vertical_disable',))
+        prepare.assert_called_once_with(self.root)
+        self.assertTrue(Path(job.call_args.args[0]).name.startswith('frames-'))
+        self.assertEqual(obj.run_frames.call_args.args,(False,))
+        self.assertEqual(obj.run_frames.call_args.kwargs,dict(version='2.01',power_confirmed=True))
         self.assertEqual(result['vertical_result']['alias_count'],0)
         self.assertEqual(result['vertical_result']['saved'],'OFF')
 

@@ -19,10 +19,10 @@ class Stage:
         self.target_ap=portraitlayout.references(self.ap,True)[0]
         self.original_ap=portraitlayout.references(self.ap,False)[0]
         self.owner.state['portrait_plan']=dict(
-            bank_plans=self.plans,AP_windows=self.windows,assets=4,shared_gauge_assets_changed=0)
+            bank_plans=self.plans,AP_windows=self.windows,assets=len(portraitlayout.IMAGES),shared_gauge_assets_changed=7)
         self.owner.record('portrait_current_bytes_planned',
             appended_bytes=sum(len(t)-len(o) for t,o in zip(self.targets,self.originals)),
-            AP_windows=len(self.windows),assets=4)
+            AP_windows=len(self.windows),assets=len(portraitlayout.IMAGES))
 
     def reconcile(self):
         """Archive our former worker; a new plan operates on captured bytes."""

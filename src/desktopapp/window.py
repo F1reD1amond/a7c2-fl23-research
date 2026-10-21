@@ -534,11 +534,13 @@ class Window(W.QMainWindow):
         form = self.box(layout, '显示任务')
         self.field(form, 'vertical_work', '任务目录', kind='folder', value=str(data_root() / 'vertical'))
         args = lambda: dict(self.common(), workspace=self.text('vertical_work'))
-        self.button(layout, '启用竖屏显示', 'vertical_enable', args, primary=True)
+        self.button(layout, '开启竖屏显示', 'vertical_enable', args, primary=True)
         self.button(layout, '关闭竖屏显示', 'vertical_disable', args)
-        frame_hint=W.QLabel('启用会一起保存竖屏开关并应用 Fn／子菜单线框修正；关闭会先关闭竖屏，再撤销线框和辅助资源。两个操作都可重复点击。本轮修正四组线框，三个刻度图暂不改。')
+        frame_hint=W.QLabel('开启会保存竖屏开关并应用当前的 Fn／子菜单显示修正；关闭会先关闭竖屏，再撤销显示修正。两个操作都支持重复覆盖。')
         frame_hint.setWordWrap(True);layout.addWidget(frame_hint)
-        hint = W.QLabel('启用／关闭会一次完成所选写入和读回，再统一弹窗提示断电加载。相同状态可重复点击，相同内容不重复写入。')
+        known=W.QLabel('已知显示问题：竖屏创意外观选择页的外框仍偏粗；刻度已横向显示，但橙色指针朝向尚未修正。')
+        known.setWordWrap(True);layout.addWidget(known)
+        hint = W.QLabel('开启／关闭会一次完成所选写入和读回，再统一弹窗提示断电加载。相同状态可重复点击，相同内容不重复写入。')
         hint.setWordWrap(True)
         layout.addWidget(hint)
         layout.addStretch()
@@ -848,7 +850,9 @@ class Window(W.QMainWindow):
                 W.QMessageBox.information(self,'USB 只读检测通过',
                     '已完成 %d 轮、共 %.1f MB 程序文件只读传输，持续 %.0f 秒，每轮字节一致。\n\n没有写入固件、设置或运行原生写入程序。\n\n%s'%
                     (len(result['rounds']),result['total_bytes']/1024/1024,result.get('seconds',0),result['note']))
-            else:W.QMessageBox.warning(self,'USB 连接检测未通过',status.get('error','请查看日志并换线后重测。'))
+            else:
+                error=status.get('error','请查看日志并换线后重测。')
+                W.QMessageBox.warning(self,'USB 连接检测未完成' if '未完成' in error else 'USB 连接检测未通过',error)
         elif waiting:
             self.show_reload_guide(setup=status.get('action')=='setup_all', mode=('resource_reload' if resource_wait else status.get('action') if
                 status.get('action','').startswith('sound_') else status.get('result',{}).get('mode')))

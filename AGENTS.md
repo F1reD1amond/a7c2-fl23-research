@@ -98,8 +98,9 @@ No Claude or additional agents without explicit user authorization.
 
 Keep full firmware, body backups/calibration, photos, credentials, private paths
 and private derived manifests out of the repository and packages. Original DCPs
-are distributed only as a separate Release attachment with unchanged bytes and
-original attribution; the code's MIT license does not apply to them.
+are distributed only as Release attachments with unchanged bytes and original
+attribution. The owner obtained permission for every DCP (Fuji-style, Ricoh,
+FL2/FL3) and licensed them under MIT (October 22).
 
 ## Documentation
 

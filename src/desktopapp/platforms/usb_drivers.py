@@ -27,19 +27,9 @@ def scan():
     report = {'platform': sys.platform, 'architecture': platform.machine(),
               'camera_io': False, 'devices': [], 'errors': []}
     if sys.platform == 'win32':
-        script = r"$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); Get-PnpDevice -PresentOnly | Where-Object {$_.InstanceId -match '^USB\\VID_054C&PID_'} | ForEach-Object { [pscustomobject]@{id=$_.InstanceId;name=$_.FriendlyName;status=$_.Status;service=(Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName 'DEVPKEY_Device_Service' -ErrorAction SilentlyContinue).Data;description=(Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName 'DEVPKEY_Device_BusReportedDeviceDesc' -ErrorAction SilentlyContinue).Data;compatible_ids=(Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName 'DEVPKEY_Device_CompatibleIds' -ErrorAction SilentlyContinue).Data;problem=$_.Problem} } | ConvertTo-Json -Compress"
-        # System PowerShell 5.1 is sufficient; it is not a prerequisite gate.
         try:
-            done = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive',
-                                   '-Command', script], capture_output=True, text=True,
-                                  encoding='utf-8', errors='replace', timeout=45,
-                                  creationflags=0x08000000)
-            if done.returncode:
-                report['errors'].append({'stage': 'windows-pnp', 'code': done.returncode,
-                                         'stdout': done.stdout, 'stderr': done.stderr})
-            elif done.stdout.strip():
-                rows = json.loads(done.stdout)
-                report['devices'] = rows if isinstance(rows, list) else [rows]
+            from .windows_pnp import devices
+            report['devices'] = devices()
         except Exception as exc:
             report['errors'].append({'stage': 'windows-pnp', 'error': repr(exc)})
     try:
@@ -198,6 +188,12 @@ def install(arguments, job, *, report=None):
     write_json(job / ('driver-before-' + pid + '.private.json'), before)
     matching = [d for d in before['devices'] if ('PID_' + pid.upper()) in d['id'].upper()]
     if not matching:
+        query_errors=[e for e in before.get('errors',[]) if e.get('stage')=='windows-pnp']
+        if query_errors:
+            observed=', '.join('054C:'+row['pid'].upper()+' '+row.get('product','')
+                for row in before.get('libusb_devices',[])) or '无可读设备'
+            raise RuntimeError('Windows 驱动查询失败，不能据此判断相机未连接。libusb 当前检测：'+observed+
+                '。本次未安装驱动或写入相机。原始查询错误：'+json.dumps(query_errors,ensure_ascii=False))
         detected=[]
         for row in before['devices']:
             match=re.search(r'VID_054C&PID_[0-9A-F]{4}(?:&MI_[0-9A-F]{2})?',row['id'],re.I)

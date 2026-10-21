@@ -94,8 +94,11 @@ class SessionTests(unittest.TestCase):
         self.assertFalse(any(e[0] in ('stop','snapshot') for e in self.events))
     def test_missing_service_identity_has_bounded_wait(self):
         self.missing_service=True
-        with self.assertRaisesRegex(RuntimeError,'服務身份未出現'):t.Session().__enter__()
-        self.assertEqual(self.clock,15)
-        self.assertEqual([e for e in self.events if e[0]=='auth'],[('auth',0x0e8a)])
+        t._service_exit=None  # a cooldown left by an earlier test in this process
+        with self.assertRaisesRegex(RuntimeError,'服務身份未出現.*已嘗試 3 次'):t.Session().__enter__()
+        # Each attempt waits SERVICE_WAIT for 0336, then cools down before re-authenticating.
+        self.assertEqual([e for e in self.events if e[0]=='auth'],[('auth',0x0e8a)]*t.SERVICE_ATTEMPTS)
+        self.assertLessEqual(self.clock,t.SERVICE_ATTEMPTS*(t.SERVICE_WAIT+1)+(t.SERVICE_ATTEMPTS-1)*t.SERVICE_COOLDOWN)
+        self.assertFalse(any(e[0] in ('stop','snapshot') for e in self.events))
 
 if __name__=='__main__':unittest.main()

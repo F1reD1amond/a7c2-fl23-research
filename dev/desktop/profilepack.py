@@ -6,7 +6,7 @@ ROOT=Path(__file__).resolve().parents[2]
 FUJI=('Astia','Bleach_Bypass','Classic_Chrome','Classic_Negative','Eterna',
       'Nostalgic_Negative','Pro_Neg_Hi','Pro_Neg_Std','Provia','Reala_Ace','Velvia')
 RICOH=('Hard Monotone','Monotone','Negative Film','Positive Film','Soft Monotone','Standard','Vivid')
-PAIRS=tuple(('Fujifilm','Sony_ILCE-7CM2_'+name+'_MTriton') for name in FUJI)+tuple(
+PAIRS=tuple(('Fujifilm','Sony_ILCE-7CM2_'+name) for name in FUJI)+tuple(
     ('Ricoh GR III','Sony_ILCE-7CM2 RICOH GR III Camera '+name+' (GR Look, a7C2 WB)') for name in RICOH)
 MONO=('Hard Monotone','Monotone','Soft Monotone')
 OPTIONAL={('Ricoh GR III/Sony_ILCE-7CM2 RICOH GR III Camera '+name+' (GR Look, a7C2 WB).dcp',

@@ -21,6 +21,8 @@ def run(action,args):
     if command == 'on':
         argv += ['--firmware', args['firmware']]
     if command in ('on', 'install'):
+        if not args.get('power_confirmed') and args.get('battery') is None:
+            raise ValueError('Confirm power (or give the battery percentage) before a sound write')
         argv += ['--power-confirmed'] if args.get('power_confirmed') else ['--battery-percent', str(args['battery'])]
     elif command == 'confirm':
         argv += ['--result', args.get('result', 'correct')]

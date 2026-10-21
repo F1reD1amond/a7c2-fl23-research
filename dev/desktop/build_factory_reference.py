@@ -51,6 +51,9 @@ def main():
     sys.path.insert(0,str(ROOT/'src/vertical'))
     from verticaltool import portraitlayout
     regions['appFw.so'].extend((portrait+delta,4) for portrait,_,delta,_ in portraitlayout.PAIRS)
+    from verticaltool import portraitgauge
+    regions['appFw.so'].append((portraitgauge.OFFSET,len(portraitgauge.BEFORE)))
+    regions['appFw.so'].append((portraitgauge.VERTICAL_OFFSET,len(portraitgauge.VERTICAL_BEFORE)))
     if args.legacy_fixtures:
         index = json.loads(args.legacy_fixtures.read_text(encoding='utf-8'))
         for key, name in (('three_ap', 'appFw.so'), ('six_ap', 'appFw.so'),

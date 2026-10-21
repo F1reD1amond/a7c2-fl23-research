@@ -6,18 +6,19 @@
 
 ## DCP 与配对外观
 
-**DCP 来源：**理光 DCP 来自小红书 **爸总林先森**；富士 DCP 来自小红书 **门萨特里顿**（MTriton）。
+**DCP 来源：**理光 DCP 来自小红书 **爸总林先森**；富士 DCP 来自小红书 **门萨特里顿**。
 
 - **原始 DCP（18 款）**：机主提供，文件内容未修改，作为独立 Release 附件发布：[下载](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.1/a7c2-dcp-profiles-2026-10-18.zip)。
-  - **MTriton 富士风格 11 款：**Provia、Velvia、Astia、Classic Chrome、Pro Neg Std、Pro Neg Hi、Eterna、Reala Ace、Classic Negative、Nostalgic Negative、Bleach Bypass。
+  - **富士风格 11 款：**Provia、Velvia、Astia、Classic Chrome、Pro Neg Std、Pro Neg Hi、Eterna、Reala Ace、Classic Negative、Nostalgic Negative、Bleach Bypass。
   - **适配 Sony 的 Ricoh GR III 7 款：**Standard、Vivid、Positive Film、Negative Film、Monotone、Hard Monotone、Soft Monotone。
 - **安装包内的配对库（15 组）**：富士 11 款和理光彩色 4 款，每款的 DCP 与拟合生成的 `.a7look` 同名并排存放。黑白 3 款的拟合误差未达到收录标准，因此没有配对。
 - 这些 DCP 是 **Sony ILCE-7CM2 的 RAW 显影配置文件**，不是固件。想在 Lightroom 里手动使用时，Windows 可把 DCP 放到 `%APPDATA%\Adobe\CameraRaw\CameraProfiles`，然后重启 Lightroom／Camera Raw。
 
 许可：
-- **富士风格**：来源为 [abpy/FujifilmCameraProfiles](https://github.com/abpy/FujifilmCameraProfiles)，A7C II 适配与测试由 **门萨特里顿／MTriton** 完成，适用 [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/)（[全文](../profiles/CC-BY-NC-SA-4.0.txt)）。原始 DCP、包内 README 和署名保持不变。
-- **理光风格**：适配 Sony 的理光 DCP 保留 `Copyright 2022 Adobe Systems, Inc.`。原文件没有附带单独的再分发许可，本项目不声称另有许可，也不改授为 MIT。
-- 原始元数据与来源记录在[清单](../profiles/manifest.json)中。代码的 MIT 许可不涵盖这些 DCP，也不涵盖由它们生成的外观数据。
+- **富士风格**：作者授权本项目使用，适用 [MIT 许可](../../LICENSE)。
+- **理光风格**：作者授权本项目使用，适用 [MIT 许可](../../LICENSE)。
+- **FL2／FL3 DCP**：Lightroom 中与机内 FL2、FL3 对应的两个 DCP，作者授权本项目使用，适用 [MIT 许可](../../LICENSE)，随 3.0 Release 一起提供。
+- 全部 DCP 及由其生成的外观数据都已获得作者授权，与代码一样适用 MIT 许可。原始元数据记录在[清单](../profiles/manifest.json)中。
 
 ## 代码与研究来源
 

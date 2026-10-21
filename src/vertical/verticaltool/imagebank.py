@@ -45,14 +45,18 @@ def add(source,group,images):
     indices=[image['index'] for image in images]
     if len(set(indices))!=len(indices) or not set(indices)<=set(parsed['unused']):
         raise ValueError('New images must use distinct unused indices')
-    needed=20*len(images)
+    options=[bytes.fromhex(image.get('options_hex','')) for image in images]
+    if any(len(option) not in (0,20) for option in options):raise ValueError('Unsupported image option layout')
+    record_sizes=[20+len(option) for option in options]
+    starts=[];needed=0
+    for size in record_sizes:starts.append(needed);needed+=size
     metadata_end=max(row['at']+row['field']+8 for row in records.values())
     donors=[]
     ordered=sorted(records.items(),key=lambda item:item[1]['start'])
     for index,row in ordered:
         start,end=row['start'],row['start']+row['size']
         if row['size']<needed or start<metadata_end or (start-base)%4:continue
-        if (start+needed-20-base)//4>=65535:continue
+        if (start+starts[-1]-base)//4>=65535:continue
         if any(other!=index and r['start']<end and start<r['start']+r['size']
                for other,r in records.items()):continue
         donors.append((row['size'],index,row))
@@ -73,13 +77,15 @@ def add(source,group,images):
     change(donor['at']+donor['field']+4,struct.pack('<I',moved-donor['at']-4),'relocate_original_payload')
     metadata=bytearray()
     for number,image in enumerate(images):
-        at=donor['start']+20*number
+        at=donor['start']+starts[number]
         payload_at=append(image['payload'])
-        metadata.extend(struct.pack('<IIHHII',0x1a000000+group*8192+image['index'],
-            0xc0000000,image['width'],image['height'],len(image['payload']),payload_at-at-4))
+        metadata.extend(struct.pack('<IIHH',0x1a000000+group*8192+image['index'],
+            0xc8000000 if options[number] else 0xc0000000,image['width'],image['height']))
+        metadata.extend(options[number])
+        metadata.extend(struct.pack('<II',len(image['payload']),payload_at-at-4))
     change(donor['start'],bytes(metadata),'new_image_metadata')
     for number,index in enumerate(indices):
-        pointer=(donor['start']+20*number-base)//4
+        pointer=(donor['start']+starts[number]-base)//4
         change(16+2*index,struct.pack('<H',pointer),'publish_new_image_index')
     target.extend(bytes((-len(target))%4))
     # Every pre-existing record still resolves to its exact encoded image.

@@ -11,7 +11,7 @@ FORMAT='<8s6IqqQII'
 def build(banks,ap,folder,*,ap_windows):
     from looktool.nativebuild import compile_worker,ROOT
     folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
-    lines=['struct PfWindow {u64 at;u32 size;const u8 *old,*value;};',
+    lines=['struct PfWindow {u64 at;u32 size;const u8 *old,*value,*previous;};',
            'struct PfFile {const char *path;u64 before_size,after_size;const u8 *tail;u32 tail_size,count,retain_tail;const struct PfWindow *windows;};']
     plans=[*banks,dict(source_bytes=len(ap),target_bytes=len(ap),append_hex='',windows=ap_windows)]
     files=[]
@@ -22,10 +22,12 @@ def build(banks,ap,folder,*,ap_windows):
         for index,row in enumerate(plan['windows']):
             before=bytes.fromhex(row['before_hex']);after=bytes.fromhex(row['after_hex'])
             if not 0<len(before)==len(after)<=4096:raise ValueError('Portrait edit size differs')
-            for label,data in [('old',before),('value',after)]:
+            previous=bytes.fromhex(row.get('previous_hex',row['before_hex']))
+            if len(previous)!=len(before):raise ValueError('Previous portrait edit size differs')
+            for label,data in [('old',before),('value',after),('previous',previous)]:
                 lines.append(f'static const u8 {label}_{number}_{index}[]='+cbytes(data)+';')
-            windows.append(f'{{{row["offset"]}UL,{len(before)},old_{number}_{index},value_{number}_{index}}}')
-        lines.append(f'static const struct PfWindow windows_{number}[]='+'{'+(','.join(windows) or '{0,0,0,0}')+'};')
+            windows.append(f'{{{row["offset"]}UL,{len(before)},old_{number}_{index},value_{number}_{index},previous_{number}_{index}}}')
+        lines.append(f'static const struct PfWindow windows_{number}[]='+'{'+(','.join(windows) or '{0,0,0,0,0}')+'};')
         files.append('{"'+PATHS[number]+'",'+f'{plan["source_bytes"]}UL,{plan["target_bytes"]}UL,tail_{number},{len(tail)},{len(windows)},{int(number<2)},windows_{number}'+'}')
     lines.append('static const struct PfFile pf_files[]={'+','.join(files)+'};')
     lines.append('static const u32 pf_count=3;')
