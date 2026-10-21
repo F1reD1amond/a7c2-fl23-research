@@ -6,6 +6,7 @@ The Windows and macOS desktop apps use the same GUI, operation planner, recovery
 | --- | --- | --- |
 | `desktop.py` | GUI and background-worker entry | Shared |
 | `src/desktopapp/` | GUI, jobs, one-click coordination and feature dispatch | Shared |
+| `src/desktopapp/actions/` | Shared action categories and look/sound adapters | Stable backend entrypoints for frontend replacement |
 | `src/desktopapp/platforms/usb_drivers.py` | Shared USB inventory/setup entry; Windows driver bindings, UAC and uninstall | Driver changes run on Windows only |
 | `src/desktopapp/platforms/macos_authorization.py` | Terminal/sudo worker authorization | macOS |
 | `src/desktopapp/platforms/macos_media.py` | Explicit connection-page media unmount | macOS |

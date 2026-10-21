@@ -177,7 +177,7 @@ def run(action, args, job):
             response['raw_profile_sync']=sync
         return response
     if action in ('driver_scan', 'driver_install', 'driver_uninstall', 'usb_prepare', 'mac_unmount'):
-        from . import drivers
+        from .platforms import usb_drivers as drivers
         if action == 'driver_scan':
             result = drivers.scan()
             write_json(job / 'driver-report.private.json', result)
@@ -257,21 +257,8 @@ def run(action, args, job):
             register_backup(state['initial_checkpoint'])
         return {'workspace': work, 'phase': state['phase']}
     if action == 'compile_look':
-        from looktool.compilelook import main
-        argv = [args['source'], '--name', args['name'], '--output', args['output'],
-                '--calibration', args['model'], '--passes', str(args.get('passes', 3)),
-                '--extra-colors',str(args.get('extra_colors',256))]
-        if args.get('evaluations') is not None:
-            argv += ['--evaluations', str(args['evaluations'])]
-        if Path(args['source']).suffix.lower() == '.cube':
-            argv += ['--input-space', args.get('input_space', 'sony-st-srgb')]
-            if args.get('bridge'):
-                argv += ['--bridge', args['bridge']]
-
-        code = main(argv)
-        if code:
-            raise RuntimeError('A7Look conversion did not complete')
-        return {'output': args['output'], 'exit_code': code}
+        from .actions.look_compiler import run as compile_look
+        return compile_look(args)
     if action == 'plugin_install':
         from .plugins import install
         return install(args)
@@ -281,40 +268,14 @@ def run(action, args, job):
         command = 'remove' if action == 'vertical_disable' else action.removeprefix('vertical_')
         return execute(command, Path(args['workspace']))
     if action.startswith('sound_'):
-        sys.path.insert(0, str(ROOT / 'src/shutter_sound'))
-        from sound_cli import main
-        command = action.removeprefix('sound_').replace('_', '-')
-        argv = [command]
-        if command == 'import':
-            argv += [args['source'], '--start', str(args.get('start', 0)),
-                     '--duration', str(args.get('duration', .15)),
-                     '--peak', str(args.get('peak', .4))]
-        elif command == 'volume':
-            argv += ['--reset'] if args.get('reset') else ['--decibels',str(args['decibels'])]
-        elif command=='compile-install':
-            argv += ['--ap',args['ap'],'--cp',args['cp'],'--native-bin',args['native_bin']]
-        argv += ['--workspace', args['workspace']]
-        if command in ('on','install','audition') and args.get('backup'):
-            argv += ['--backup-copy',args['backup']]
-        if command == 'on':
-            argv += ['--firmware', args['firmware']]
-        if command in ('on', 'install'):
-            argv += ['--power-confirmed'] if args.get('power_confirmed') else ['--battery-percent', str(args['battery'])]
-        elif command == 'confirm':
-            argv += ['--result', args.get('result', 'correct')]
-        elif command == 'verify' and args.get('accepted'):
-            argv += ['--heard-correct']
-        outcome = {}
-        code = main(argv, report=outcome.update)
-        if code:
-            raise RuntimeError('Sound operation stopped; see the complete backend log above.')
-        return dict(outcome, workspace=args['workspace'], command=command, exit_code=code)
+        from .actions.sound import run as sound
+        return sound(action,args)
     raise ValueError('Unknown desktop action: ' + action)
 
 
 def execute_request(path):
     request = json.loads(Path(path).read_text(encoding='utf-8'))
-    from . import macadmin
+    from .platforms import macos_authorization as macadmin
     if macadmin.required(request['action']):return macadmin.execute(path)
     job = Path(request['job_dir'])
     status = job / 'status.private.json'

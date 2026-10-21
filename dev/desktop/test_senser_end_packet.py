@@ -58,3 +58,23 @@ def test_other_usb_errors_on_the_end_read_still_stop_the_session():
     driver = Driver([20992], [usb.core.USBError('Pipe error', -9, 32)])
     with pytest.raises(GenericUsbException):
         transport.SonySenserDevice(driver).sendSenserPacket(0x40, b'request')
+
+
+def test_late_empty_packet_is_not_accepted_as_the_next_response_header():
+    driver=Driver([20992],[usb.core.USBTimeoutError('late end',-7,60)])
+    channel=transport.SonySenserDevice(driver)
+    channel.sendSenserPacket(0x40,b'first')
+    driver.queue=[b'']
+    with pytest.raises(Exception):channel.sendSenserPacket(0x40,b'next')
+
+
+def test_timeout_in_payload_is_not_treated_as_a_missing_end_packet():
+    driver=Driver([20992],[])
+    original=driver.read;count=0
+    def read(length,ep=0,timeout=None):
+        nonlocal count
+        count+=1
+        if count==2:wrapped(usb.core.USBTimeoutError('payload timed out',-7,60))
+        return original(length,ep,timeout)
+    driver.read=read
+    with pytest.raises(GenericUsbException):transport.SonySenserDevice(driver).sendSenserPacket(0x40,b'request')

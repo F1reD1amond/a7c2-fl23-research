@@ -94,3 +94,31 @@ def test_service_exit_starts_the_cooldown(monkeypatch):
     session = transport.Session(); session.auth = Mock(); session.dev = Mock()
     session.__exit__(None, None, None)
     assert transport._service_exit == 50.0
+
+
+def test_seen_service_with_unopenable_interface_does_not_reauthenticate(monkeypatch):
+    camera=Camera(monkeypatch,bounces=0)
+    get=camera.get_device
+    def open_device(pid):
+        if pid==0x0336:raise RuntimeError('service driver unavailable')
+        return get(pid)
+    monkeypatch.setattr(transport,'get_device',open_device)
+    with pytest.raises(RuntimeError,match='0336 已出现'):transport.Session().__enter__()
+    assert camera.auths==1
+
+
+def test_windows_driver_preparation_runs_only_after_service_appears(monkeypatch):
+    camera=Camera(monkeypatch,bounces=1,platform='win32')
+    modes=[]
+    monkeypatch.setattr(transport,'SERVICE_DRIVER_SETUP',lambda:modes.append(camera.state()))
+    with pytest.raises(Stop):transport.Session().__enter__()
+    assert camera.auths==2 and modes==['service']
+
+
+def test_authentication_error_is_not_retried(monkeypatch):
+    camera=Camera(monkeypatch,bounces=0)
+    calls=[]
+    def fail():calls.append(1);raise RuntimeError('authentication failed')
+    monkeypatch.setattr(transport,'SonySenserAuthDevice',lambda driver:Mock(authenticate=fail))
+    with pytest.raises(RuntimeError,match='authentication failed'):transport.Session().__enter__()
+    assert calls==[1]

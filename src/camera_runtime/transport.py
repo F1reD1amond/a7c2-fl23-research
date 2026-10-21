@@ -226,12 +226,15 @@ def _sony_pids():
     return ['%04x'%d.idProduct for d in usb.core.find(find_all=True,idVendor=0x054c,backend=backend)]
 
 
-def _wait_for(pid,seconds,seen):
+def _wait_for(pid,seconds,seen,prepare=None):
     """Enumerate only; record every Sony identity seen while waiting."""
     deadline=time.monotonic()+seconds
+    prepared=False
     while True:
         for found in _sony_pids():
             if found not in seen:seen.append(found)
+        if prepare is not None and not prepared and '%04x'%pid in seen:
+            prepare();prepared=True
         try:return get_device(pid)
         except RuntimeError:
             if time.monotonic()>=deadline:return None
@@ -263,10 +266,11 @@ class Session:
                 auth.start();auth.authenticate()
                 # An authentication error is not retried or followed by stop.
             finally:usb.util.dispose_resources(dev)
-            if SERVICE_DRIVER_SETUP is not None:SERVICE_DRIVER_SETUP()
             seen=[]
-            self.dev=_wait_for(0x0336,SERVICE_WAIT,seen)
+            self.dev=_wait_for(0x0336,SERVICE_WAIT,seen,prepare=SERVICE_DRIVER_SETUP)
             if self.dev is not None:break
+            if '0336' in seen:
+                raise RuntimeError('服务身份 0336 已出现，但接口无法打开；请保留驱动与 USB 日志，不重新认证。')
             # No service identity ever appeared, so no service session exists
             # and nothing was sent to the camera after authentication.
             print('认证后相机未进入服务模式（期间出现的 Sony USB 身份：%s）。'%('、'.join(seen) or '无'),flush=True)

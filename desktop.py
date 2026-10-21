@@ -15,7 +15,7 @@ def main():
         target.write_text(json.dumps(result, indent=2), encoding='utf-8')
         return 0
     if len(sys.argv) == 5 and sys.argv[1] == '--privileged-worker':
-        from desktopapp.macadmin import privileged
+        from desktopapp.platforms.macos_authorization import privileged
         return privileged(Path(sys.argv[2]),int(sys.argv[3]),int(sys.argv[4]))
     if len(sys.argv) >= 3 and sys.argv[1] == '--worker':
         from desktopapp.worker import execute_request

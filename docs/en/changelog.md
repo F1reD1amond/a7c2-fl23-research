@@ -1,5 +1,12 @@
 # Changelog
 
+## Desktop preview.10.24 — shared service fixes and backend interfaces — 2026-10-22
+
+- Integrate Claude's preserved service cooldown/bounce retry and senser end-packet fixes from `b651a6c` and `38a9195`. Apply the same transport to Windows and macOS: 30-second re-entry cooldown, 20-second service discovery, up to three attempts when service never appeared and MSC returned, and a one-second optional chunk-end wait. Authentication, payload-read and non-timeout errors remain failures; no firmware write is replayed.
+- Prepare the Windows service driver after its USB identity is observed. If 0336 appeared but its interface cannot open, report that interface problem rather than authenticating again. Retain late-empty-packet rejection by the next response parser.
+- Extract the shared action catalog and look/sound adapters from the worker, retaining existing action names, arguments, job states and user data paths. Document the backend contract for a later frontend replacement. Frontend appearance and README rewriting are separate work.
+- Both host packages use this same source and the accepted 15-pair profile library. Packaging checks are separate from physical camera acceptance.
+
 ## Desktop preview.10.23 — paired profile library and source layout — 2026-10-22
 
 - Fit all 18 supplied profiles against owner-authorized Lightroom references using 12 starts and 200 evaluations per solve on aep72, with additional native-first/zero/robust fits for three difficult monochrome looks. Include the 11 Fujifilm and 4 Ricoh color DCP/A7Look pairs. Exclude all three monochrome pairs after they fail the independent MAE <=3/255 and P95 <=12/255 inclusion criteria. Keep matching filename stems and synchronize the six defaults with the paired library.
