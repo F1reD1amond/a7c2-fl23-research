@@ -74,7 +74,9 @@ class IntegratedSoundTests(unittest.TestCase):
 
     def scenario(self, check):
         with tempfile.TemporaryDirectory() as temp:
-            base = Path(temp)
+            # macOS /var is an alias of /private/var; attach stores resolved
+            # paths, so compare fixtures using the same canonical spelling.
+            base = Path(temp).resolve()
             native, audio = base / 'native', base / 'audio'
             native.mkdir(); audio.mkdir()
             identity = {'model': 'ILCE-7CM2', 'serial_sha256': 'synthetic'}
