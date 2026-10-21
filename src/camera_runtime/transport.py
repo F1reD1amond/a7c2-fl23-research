@@ -158,20 +158,22 @@ def service_identity(snapshot,model):
     return {'model':model,'serial_sha256':core.sha(serial.data.hex().encode('ascii'))}
 
 class Session:
-    def __init__(self,expected=None):self.expected=expected;self.healthy=True
+    def __init__(self,expected=None,media_released=False):
+        self.expected=expected;self.healthy=True;self.media_released=media_released
     def __enter__(self):
-        if sys.platform=='darwin':
+        if sys.platform=='darwin' and not self.media_released:
             from macos_host import unmount_camera
             unmount_camera()
         dev=get_device(0x0e8a)
         try:
+            if sys.platform=='darwin':
+                # MDHan's order: verify the MSC interface and claim it first.
+                from macos_host import claim_camera_interface
+                claim_camera_interface(dev,interface_class=(8,6,0x50))
             # Standard USB strings remain usable when the storage LUN and
             # DevInfoSender_GetModelInfo are busy. Neither is a service gate.
             model=usb.util.get_string(dev,dev.iProduct) if dev.iProduct else None
             if model!=core.MODEL:raise RuntimeError('只支援 '+core.MODEL+'；USB 型號不符')
-            if sys.platform=='darwin':
-                from macos_host import claim_camera_interface
-                claim_camera_interface(dev)
             auth=SonySenserAuthDevice(GenericUsbDriver(Bounded(dev,20)))
             auth.start();auth.authenticate()
             # An ambiguous authentication is not retried or followed by stop.
@@ -205,9 +207,13 @@ class Session:
             raise
         return self
     def __exit__(self,*args):
+        stopped=False
         try:
-            if self.healthy:self.auth.stop()
+            if self.healthy:self.auth.stop();stopped=True
         finally:usb.util.dispose_resources(self.dev)
+        if stopped and sys.platform=='darwin':
+            from macos_host import wait_normal_return
+            wait_normal_return(lambda:get_device(0x0e8a))
     def call(self,method,*args):
         if not self.healthy:raise RuntimeError('會話結果未知，停止後續命令')
         self.backend.reset()

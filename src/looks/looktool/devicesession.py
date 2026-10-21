@@ -40,17 +40,28 @@ class Camera:
         if detected is None and not service_present:
             # A successful auth.stop re-enumerates asynchronously. Wait for
             # the normal descriptor locally; never re-authenticate service.
-            deadline=time.monotonic()+15
+            wait=15
+            if sys.platform=='darwin':
+                # The camera may be showing its USB mode menu; MDHan waits 60 s.
+                from macos_host import MSC_PROMPT,NORMAL_RETURN_SECONDS
+                print('等待相机普通 USB 连接（最多 %d 秒）。'%NORMAL_RETURN_SECONDS+MSC_PROMPT,flush=True)
+                wait=NORMAL_RETURN_SECONDS
+            deadline=time.monotonic()+wait
             while detected is None and time.monotonic()<deadline:
                 time.sleep(.5)
                 detected=usb.core.find(idVendor=0x054c,idProduct=0x0e8a,backend=backend)
         if detected is not None:
             transport.usb.util.dispose_resources(detected)
+            released=sys.platform=='darwin'
+            if released:
+                # MDHan's order: release camera storage before the first libusb open.
+                from macos_host import unmount_camera
+                unmount_camera()
             from . import usbidentity
             usb_serial=usbidentity.capture(transport)
             usbidentity.require_match(self.expected,usb_serial)
             try:
-                self.link=transport.Session(normal);self.link.__enter__()
+                self.link=transport.Session(normal,media_released=released);self.link.__enter__()
             except (transport.ReadinessFailure,transport.SonyBusyFailure) as exc:
                 from .usbservice import allowed_initial_busy,open_service
                 if not allowed_initial_busy(transport,exc):raise
