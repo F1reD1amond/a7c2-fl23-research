@@ -39,11 +39,13 @@ jobs:
           python-version: '3.11'
       - name: macOS native compiler dependencies
         if: runner.os == 'macOS'
-        run: python -m pip install cmake==3.31.6 setuptools wheel
+        run: python -m pip install cmake==3.31.6 setuptools==80.9.0 setuptools-scm==8.3.1 wheel==0.45.1
       - name: Dependencies
         # Keystone and Unicorn lack ARM64 Mac wheels at these versions;
         # compile them natively, instead of bundling Intel libraries into ARM64.
-        run: python -m pip install -r desktop-requirements.txt pyinstaller==6.16.0 pytest==8.3.5
+        run: python -m pip install --no-build-isolation -r desktop-requirements.txt pyinstaller==6.16.0 pytest==8.3.5
+      - name: Native dependency load check
+        run: python -c "import platform, keystone, unicorn; k=keystone.Ks(keystone.KS_ARCH_ARM64, keystone.KS_MODE_LITTLE_ENDIAN); print(platform.machine(), k.asm('mov x0, 1'), unicorn.Uc(unicorn.UC_ARCH_ARM64, unicorn.UC_MODE_ARM))"
       - name: Prepare build assets
         run: python dev/desktop/prepare_assets.py
       - name: Focused desktop contracts
