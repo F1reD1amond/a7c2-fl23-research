@@ -48,8 +48,8 @@ Windows/macOS runners without publishing a Release.
   independent per-slot restoration. Record the new restoration job for subsequent
   reload verification. The compiler uses `--calibration`, not the retired `--model`.
 - Frozen LrC installs use `--raw-profile-worker`; its settings registry is shared
-  with verified look activations. ExifTool is user-selected unless bundled at build
-  time. DCP compilation additionally needs Lightroom and its configured renderer;
+  with verified look activations. ExifTool 13.59 and its complete official runtime are bundled; missing/stale
+  paths automatically fall back to bundled/PATH/download preparation. DCP compilation additionally needs Lightroom and its configured renderer;
   direct ST/sRGB CUBE compilation does not.
 - Vertical Display saves its native shooting-information/layout switch, with
   reversible resource aliases. Do not reuse the failed image-bank/ELF display patch.
@@ -243,7 +243,7 @@ The six compiled looks contain distribution-only source profiles and must stay o
 python dev/desktop/prepare_assets.py --export-presets dist/desktop-presets.zip
 ```
 
-Transfer that ZIP to the Mac. `--preset-archive` also accepts the existing Windows desktop ZIP, but extracts only the six looks and their attribution/license files, never the Windows executable or DLLs. Optional ExifTool is user-selected on Mac (for example an installed `exiftool`); it is not replaced with a Windows helper.
+Transfer that ZIP to the Mac. `--preset-archive` also accepts the existing Windows desktop ZIP, but extracts only the six looks and their attribution/license files, never the Windows executable or DLLs. macOS bundles the official portable Perl ExifTool distribution and its modules/license, never a Windows helper. `prepare_assets.py` prepares it automatically or accepts `--exiftool-archive`. The runtime can also fall back to an installed helper or official download.
 
 The manual `desktop-preview.yml` workflow has Windows, `macos-15` (ARM64) and `macos-15-intel` native runners. Supply `preset_archive_url` pointing to the exported pack or an accessible desktop ZIP. The workflow must be available on the default branch to appear for manual dispatch; choose the feature ref for its code when available. The current public v2 CLI ZIP is not a desktop preset pack. CI runs focused contracts, native packaging, packaged offline/GUI checks, signature/DMG verification and uploads artifacts, without publishing a Release. Local source presets alone cannot populate a clean hosted runner.
 

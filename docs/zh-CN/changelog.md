@@ -4,7 +4,7 @@
 
 - 修复勾选 Lightroom 插件后，一键安装因缺少 ExifTool 路径直接停止。自动使用内置或已有 ExifTool；都没有时在相机操作前下载官方版本，保留完整网络错误。
 - 打包 ExifTool 13.59，包含 Windows 完整伴随文件／macOS Perl 模块及原许可。单独安装插件也自动准备，不再要求用户先找到隐藏的文件入口；旧电脑的无效路径会回退到本机工具。
-- ExifTool 解析／解包、一键安装及插件集成的 50 项针对性离线测试通过。Mac 已使用真正 Intel／Apple Silicon 构建机；Mac 实机 USB 仍是单独的待测项。
+- ExifTool 解析／解包、一键安装及插件集成的 50 项针对性离线测试通过。实际 Windows EXE 不传 ExifTool 路径，在隔离 Adobe 目录成功安装插件，运行真实内置 ExifTool 并读取 JPEG 元数据，本轮无相机操作。Mac 已使用真正 Intel／Apple Silicon 构建机；Mac 实机 USB 仍是单独的待测项。
 
 
 ## 桌面 preview.10.8 — 2026-10-21

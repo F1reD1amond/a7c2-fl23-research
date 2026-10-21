@@ -4,7 +4,7 @@
 
 - Fix one-click installation stopping when the optional Lightroom plugin is selected but the caller has no valid ExifTool path. Use bundled or installed ExifTool automatically; otherwise download the official distribution before camera work, retaining complete connection errors.
 - Bundle ExifTool 13.59 and its complete Windows companion files / macOS Perl modules and original licenses. The separate plugin button uses the same automatic preparation, with no hidden file-selection prerequisite. Missing paths saved on another computer fall back to the local helper.
-- 50 focused offline tests passed for helper resolution/extraction, one-click setup and plugin integration. Native Mac packaging now runs on real Intel and Apple Silicon runners; physical Mac camera USB is a separate untested boundary.
+- 50 focused offline tests passed for helper resolution/extraction, one-click setup and plugin integration. The Windows EXE installed the plugin into an isolated Adobe directory without an ExifTool argument, ran its real bundled helper and read JPEG metadata successfully, without camera I/O. Native Mac packaging now runs on real Intel and Apple Silicon runners; physical Mac camera USB is a separate untested boundary.
 
 
 ## Desktop preview.10.8 — 2026-10-21
