@@ -1,4 +1,4 @@
-"""All automated development tests are offline, including Windows USB hosts."""
+"""Automated tests must never access a physical camera."""
 import pytest
 
 
