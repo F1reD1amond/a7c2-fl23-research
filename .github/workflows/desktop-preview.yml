@@ -1,7 +1,15 @@
 name: Desktop preview packages
 on:
+  push:
+    branches: [feature/desktop-overview]
+    paths: ['dev/desktop/native-build-request.json']
   workflow_dispatch:
     inputs:
+      platform:
+        description: 'Native platforms to build'
+        type: choice
+        options: [macos, all, windows]
+        default: macos
       preset_archive_url:
         description: 'URL of exported desktop-presets.zip or existing desktop Windows ZIP (six looks + notices)'
         required: true
@@ -15,12 +23,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-15, macos-15-intel]
+        os: ${{ fromJSON(inputs.platform == 'all' && '["windows-latest","macos-15","macos-15-intel"]' || inputs.platform == 'windows' && '["windows-latest"]' || '["macos-15","macos-15-intel"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
       MACOSX_DEPLOYMENT_TARGET: '14.0'
       A7C2_PRESET_ARCHIVE_URL: ${{ inputs.preset_archive_url }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

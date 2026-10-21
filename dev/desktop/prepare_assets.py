@@ -4,6 +4,7 @@ from pathlib import Path
 import urllib.request
 import zipfile
 import io
+import re
 import os
 import sys
 
@@ -13,6 +14,10 @@ DRIVER = 'https://github.com/Timocop/libwdi-wdi-releases/releases/download/v1.0/
 
 def fetch(url):
     request = urllib.request.Request(url, headers={'User-Agent': 'A7C2Tools-Build'})
+    if re.fullmatch(r'https://api\.github\.com/repos/QAQLeonard/a7c2-fl23-research/releases/assets/[0-9]+', url):
+        request.add_header('Accept','application/octet-stream')
+        token=os.environ.get('GH_TOKEN')
+        if token:request.add_unredirected_header('Authorization','Bearer '+token)
     with urllib.request.urlopen(request, timeout=90) as response:
         return response.read()
 
@@ -54,6 +59,9 @@ def main():
                         help='Download the same six-look pack for native CI builds')
     parser.add_argument('--export-presets',type=Path,help='Export only six-look distribution data for CI')
     args = parser.parse_args()
+    if not args.presets_url and not args.preset_archive:
+        request_file=ROOT/'dev/desktop/native-build-request.json'
+        if request_file.is_file():args.presets_url=__import__('json').loads(request_file.read_text(encoding='utf-8'))['preset_archive_url']
     if args.export_presets:
         print(export_presets(args.export_presets));return
     if args.preset_archive:import_presets(args.preset_archive)
