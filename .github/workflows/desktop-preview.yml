@@ -76,6 +76,10 @@ jobs:
           QT_QPA_PLATFORM=offscreen A7C2_DESKTOP_DATA="$PWD/dist/ui-smoke" dist/A7C2Tools.app/Contents/MacOS/A7C2Tools --smoke-test
           codesign --verify --deep --strict dist/A7C2Tools.app
           hdiutil verify dist/*.dmg
+      - name: macOS packaged startup with existing task records (no USB)
+        # A previous unfinished recovery made the packaged GUI exit at launch.
+        if: runner.os == 'macOS'
+        run: python dev/desktop/startup_state_smoke.py --app dist/A7C2Tools.app/Contents/MacOS/A7C2Tools --report dist/startup-state-self-test.json
       - name: macOS packaged administrator worker check (no USB)
         if: runner.os == 'macOS'
         run: python dev/desktop/mac_authorization_smoke.py

@@ -118,3 +118,11 @@ def test_connection_failure_does_not_claim_an_unfinished_restore(pending_window,
     window.refresh_factory_controls()
     assert '尚未开始' in window.factory_status.text()
     assert '继续恢复' not in window.factory_button.text()
+
+
+def test_existing_recovery_startup_uses_real_app_entry_without_pytest_module_path():
+    from dev.desktop.startup_state_smoke import run
+    import sys
+    from desktopapp.paths import ROOT
+    result=run([sys.executable,str(ROOT/'desktop.py')],cases=('factory_connection_failed',))
+    assert result['cases']['factory_connection_failed']['pages']==7

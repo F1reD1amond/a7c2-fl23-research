@@ -24,6 +24,8 @@ def main():
         sys.path.insert(0, str(ROOT / 'src/looks'))
         from looktool.rawauto import main as raw_worker
         return raw_worker(['worker', *sys.argv[2:]])
+    from desktopapp.worker import setup_runtime
+    setup_runtime()  # The GUI may inspect an existing look/recovery job at startup.
     from desktopapp.window import main as gui
     return gui()
 
