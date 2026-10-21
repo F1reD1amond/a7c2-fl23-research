@@ -18,8 +18,8 @@ TEXT = """相机写入页只选 .a7look，不直接写入 .cube 或 .dcp。生�
 不支持 1D LUT、1D shaper＋3D 混合文件、.3dl、.look、.xmp 或图片。超出 0–1 的输出会在拟合前裁切；导出时建议已在 0–1。
 
 4. DCP 是什么？
-.dcp 是 Adobe 相机配置文件，不是 S-Log3 视频 LUT。当前桌面生成器需要本机 Lightroom Classic 及已配置的显影桥接命令；“LrC 自动识别插件”不等于转换所需的显影桥接。
-DCP 会经过参考显影及拟合，不会将其他机型的传感器校准原样写入相机。单独 CUBE 不会自动变成 Lightroom RAW 的 DCP 配置。
+.dcp 是 Adobe 相机配置文件，不是 S-Log3 视频 LUT。生成器直接离线解析 DCP 的 LookTable／色调曲线并拟合，无需 Lightroom、显影插件、renderer 配置或联网。
+DCP 通过内置共享 ST 映射进行近似拟合，不复制来源机型的传感器矩阵或 HueSat 校准，也不声称完整复现 Adobe 显影。单独 CUBE 不会自动变成 Lightroom RAW 的 DCP 配置。
 
 5. 最后怎么写？
 生成新的 .a7look → 添加操作项 → 选择槽位和“写入 A7Look” → 选择文件并填写机内名称 → 查看并应用。多个槽位可一起写，没列出的槽位保持原样。

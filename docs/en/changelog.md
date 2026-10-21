@@ -1,5 +1,13 @@
 # Changelog
 
+## Desktop preview.10.12 — standalone DCP conversion — 2026-10-21
+
+- DCP conversion evaluates LookTable / tone locally and fits the supported native stages. No Lightroom, rendering plugin, Node runtime, renderer configuration or network is required. The separate LrC profile-plugin installer remains optional.
+- Keep original source-profile bytes, attribution and approximate-mapping scope in A7Look. Do not copy donor sensor matrices or HueSat calibration. Unsupported inputs fail explicitly; native output still uses the existing writer.
+- All 18 public source DCPs passed local parsing/target-color evaluation. Real Astia completed the full fitting/output flow in source and in the actual Windows EXE, using a reduced verification budget; the output passed writer-format validation. This verifies local conversion, not camera preview/photo color accuracy. DCP/CUBE and integration cases passed; GUI smoke produced all seven pages.
+- Implemented on feature/dcp-renderer-setup, separate from ongoing Mac USB fixes. Test ZIP: A7C2Tools-Windows-x64-Offline-DCP.zip. No camera I/O.
+
+
 ## Desktop preview.10.10 — 2026-10-21
 
 - Fix macOS USB capture failing at `detach_kernel_driver(0)` with access denied. Explicit camera actions request macOS administrator authorization before backend execution; the normal-user GUI remains unprivileged. Passwords are handled only by the system dialog.
