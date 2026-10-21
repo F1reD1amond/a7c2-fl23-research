@@ -35,6 +35,27 @@ def cube_targets(source,path,input_space,bridge=None):
         Lightroom_reference_used=False,automatic_Adobe_profile_generated=False)
 
 
+def dcp_targets(source,path,bridge=None):
+    """Evaluate supported DCP look/tone stages locally against the ST bridge."""
+    import numpy as np
+    from .references import DcpLook
+    from .calibration import inverse_st,validate
+    from .rawprofiles import dcp_info
+    root=Path(__file__).resolve().parents[3]
+    bridge_path=Path(bridge) if bridge else root/'src/looks/assets/rendering-model-v1.json'
+    mapping=validate(json.loads(bridge_path.read_text(encoding='utf-8')),True)
+    info=dcp_info(path)
+    if info['model']!='Sony ILCE-7CM2':raise ValueError('Select a Sony ILCE-7CM2 DCP; foreign sensor calibration is not copied')
+    look=DcpLook(path)
+    target=look.render(inverse_st(source,mapping),float(mapping.get('reference_exposure_stops',0)))
+    report=look.inventory()
+    report.update(renderer='builtin-DCP-look-tone',Lightroom_reference_used=False,
+        bridge_evidence=mapping['evidence'],bridge_is_shared_approximation=bridge is None,
+        calibration_scope='LookTable and ProfileToneCurve only; camera matrices and HueSat maps are not copied',
+        camera_io=False)
+    return np.clip(target,0,1),report,info
+
+
 def split_colors(source, valid):
     import numpy as np
     bins=np.floor(np.clip(source,0,.9999)*4).astype(int)
@@ -116,7 +137,7 @@ def main(argv=None):
     parser.add_argument('--passes',type=int,default=3,help='Number of multi-start candidates; increase for more compute')
     parser.add_argument('--evaluations',type=int,default=100,help='Maximum evaluations for each solve')
     parser.add_argument('--extra-colors',type=int,default=256)
-    parser.add_argument('--renderer-command',help='JSON array, e.g. ["node","/path/to/lightroom-mcp/dist/index.js"]')
+    parser.add_argument('--dcp-bridge',type=Path,help='Optional measured ST-to-DCP working-space mapping JSON; default is the bundled approximation')
     parser.add_argument('--input-space',help='CUBE input: sony-st-srgb, or a named space with --bridge')
     parser.add_argument('--bridge',type=Path,help='CUBE mapping Sony ST sRGB into the input space')
     parser.add_argument('--raw-dcp',type=Path,help='Optional matching A7C II DCP for CUBE-source Lightroom imports')
@@ -135,17 +156,11 @@ def main(argv=None):
     config=json.loads(config_path.read_text(encoding='utf-8')) if config_path.exists() else {}
     calibration=args.calibration or Path(config.get('calibration',root/'calibration/a7c2-2.01.virtual.npz'))
     if not args.calibration and not calibration.is_absolute():calibration=config_path.parent/calibration
-    command=json.loads(args.renderer_command) if args.renderer_command else config.get('renderer_command')
-    if not command and not cube_input:parser.error('Configure the Lightroom MCP renderer command; no AI is required')
-    if command and not args.renderer_command:
-        command=[str((config_path.parent/arg).resolve()) if index>0 and arg.endswith('.js') and not Path(arg).is_absolute()
-                 else arg for index,arg in enumerate(command)]
     if not calibration.is_file():parser.error('The measured A7C2 response snapshot is missing')
     if len(args.name.encode('utf-8'))>63 or not args.name or any(ord(c)<32 for c in args.name):parser.error('Name must use 1..63 UTF-8 bytes')
     os.environ.setdefault('OPENBLAS_NUM_THREADS','2');os.environ.setdefault('OMP_NUM_THREADS','2')
     import numpy as np
-    from . import measuredmodel,virtualraw,lookfile,photobasis,photoformat,photomeasure,native,rawidentity
-    from .renderbridge import Lightroom
+    from . import measuredmodel,lookfile,photobasis,photoformat,photomeasure,native,rawidentity
     model=measuredmodel.Response(calibration)
     profile={}
     work=args.work or args.output.with_suffix('.work');work.mkdir(parents=True,exist_ok=True)
@@ -154,7 +169,8 @@ def main(argv=None):
     if not source_copy.exists():shutil.copyfile(args.source,source_copy)
     raw_profile=None
     if not cube_input:
-        profile_order,profile=virtualraw.profile_records(source_copy)
+        from .references import tiff_tags
+        profile_order,profile=tiff_tags(source_copy.read_bytes())
         raw_profile=rawidentity.descriptor(source_copy,args.name)
         raw_profile['source_filename']=args.source.name
     elif args.raw_dcp:
@@ -163,11 +179,13 @@ def main(argv=None):
         if not paired.exists():shutil.copyfile(args.raw_dcp,paired)
         raw_profile=rawidentity.descriptor(paired,args.name)
         raw_profile['source_filename']=args.raw_dcp.name
-    settings=color_reference_settings(model.metadata,config) if not cube_input else {}
+    settings={}
     gains=config.get('sensor_RGB_gains',model.metadata.get('sensor_RGB_gains',[1.,1.,1.]))
     identity=dict(name=args.name,extra_colors=args.extra_colors,evaluations=args.evaluations,
                   calibration=str(calibration.resolve()),reference_settings=settings,sensor_RGB_gains=gains)
     identity.update(source_type='cube' if cube_input else 'dcp',input_space=args.input_space,
+                    renderer='explicit-CUBE-input' if cube_input else 'builtin-DCP-look-tone',
+                    dcp_bridge=str(args.dcp_bridge.resolve()) if args.dcp_bridge else None,
                     bridge=str(args.bridge.resolve()) if args.bridge else None)
     manifest=work/'input.json'
     if manifest.exists():
@@ -190,28 +208,10 @@ def main(argv=None):
         actual_settings={};chart={'profile':None}
         print('Fitting CUBE against the measured camera response; Lightroom is not required.',flush=True)
     else:
-        dng=work/'virtual-reference.dng';chart_file=work/'chart.json'
-        if not dng.exists():
-            print('Creating numerical RAW colors...',flush=True)
-            chart=virtualraw.write(dng,source_copy,np.clip(raw*np.asarray(gains),0,1),wb=model.metadata['WB'],
-                                  black=model.metadata['black'],white=model.metadata['white'])
-            save(chart_file,chart)
-        chart=json.loads(chart_file.read_text(encoding='utf-8'))
-        jpeg=work/'reference/virtual-reference.jpg'
-        if not jpeg.exists():
-            print('Rendering the supplied DCP in Lightroom...',flush=True)
-            with Lightroom(command,work/'renderer.log') as renderer:
-                jpeg=renderer.render(dng,work/'reference',settings=settings)
-        target=virtualraw.sample(jpeg,chart)
-        actual_settings=virtualraw.export_settings(jpeg)
-        if actual_settings.get('CameraProfile')!=chart['profile']:
-            raise ValueError('Adobe rendered a different DCP profile: '+str(actual_settings.get('CameraProfile')))
-        if 'Exposure2012' not in actual_settings or abs(float(actual_settings['Exposure2012'])-float(settings.get('Exposure2012',0)))>1e-5:
-            raise ValueError('Adobe reference exposure differs from configured normalization')
-        for wanted,actual in (('Temperature','ColorTemperature'),('Tint','Tint'),('LensProfileEnable','LensProfileEnable')):
-            if wanted in settings and (actual not in actual_settings or
-                    abs(float(actual_settings[actual])-float(settings[wanted]))>1e-5):
-                raise ValueError('Adobe reference '+wanted+' differs from configured normalization')
+        target,dcp_report,profile_info=dcp_targets(source,source_copy,args.dcp_bridge)
+        chart={'profile':profile_info['profile']};actual_settings={}
+        print('Evaluating DCP LookTable and tone curve locally; no Lightroom, plugins, network or USB.',flush=True)
+        print('The bundled ST mapping is a shared approximation; sensor matrices and HueSat calibration are not copied.',flush=True)
     table,report=fit(model,source,target,work,passes=args.passes,evaluations=args.evaluations)
     bank=photoformat.PhotoBank.unpack(model.arrays['baseline_bank'].tobytes())
     _,delta=photobasis.pack(bank,**photomeasure.knobs(report['native_controls']))
@@ -219,15 +219,15 @@ def main(argv=None):
     copyright_text=profile.get(50942,(0,0,b''))[2].rstrip(b'\0').decode('utf-8','replace')
     report.update(profile=chart['profile'],source_DCP=None if cube_input else args.source.name,
         source_CUBE=args.source.name if cube_input else None,cube_contract=contract if cube_input else None,reference_settings=settings,
-        virtual_sensor_normalization=gains,
-        actual_Adobe_reference_settings={key:actual_settings.get(key) for key in
-            ('CameraProfile','WhiteBalance','ColorTemperature','Tint','Exposure2012','LensProfileEnable')},
+        actual_Adobe_reference_settings={},
         calibration_scope=model.metadata['physical_scope'],model_error_included_in_metrics=False,
         native_stages_present=True,table_bytes=1215,
-        reference_pipeline='explicit-CUBE-input' if cube_input else 'numerical-DCP-without-spatial-lens-profile-v1',
+        reference_pipeline='explicit-CUBE-input' if cube_input else 'builtin-DCP-look-tone-v1',
+        DCP_reference=None if cube_input else dcp_report,
+        Lightroom_reference_used=False,
         spatial_lens_correction_fitted=False)
     args.output.parent.mkdir(parents=True,exist_ok=True)
-    lookfile.write(args.output,args.name,native.encode(table),method='CUBE-measured-native-four-stage-v1' if cube_input else 'virtual-Adobe-DCP-measured-native-four-stage-v1',
+    lookfile.write(args.output,args.name,native.encode(table),method='CUBE-measured-native-four-stage-v1' if cube_input else 'builtin-DCP-look-tone-measured-native-four-stage-v1',
         attribution=copyright_text or 'Owner-provided DCP; original rights apply',metrics=report,native_photo=delta,
         raw_profile=raw_profile,
         source_reference=source_reference)

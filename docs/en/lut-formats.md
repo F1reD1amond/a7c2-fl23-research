@@ -12,7 +12,7 @@
 | S-Log3 / S-Gamut3.Cine → Rec.709 | Wrong input; output transfer function may also differ |
 | S-Log2, HLG, Rec.2020, ACES, DaVinci Wide Gamut | Requires the appropriate color transforms first |
 | A CUBE labelled only “Sony”, “cinematic” or “Rec.709” | Ask its author for input/output primaries and transfer functions |
-| Standalone Adobe `.dcp` camera profile | DCP conversion requires Lightroom Classic and the configured rendering bridge |
+| Standalone Adobe `.dcp` camera profile | Built-in offline DCP evaluation; no Lightroom required |
 | `.3dl`, `.look`, `.xmp` presets, images, 1D LUTs | Not direct inputs |
 | A supported compiled `.a7look` | Select it directly on the import page |
 
@@ -53,7 +53,7 @@ DOMAIN_MAX 1 1 1
 
 ## DCP, A7Look and RAW
 
-DCP is an Adobe camera profile, not a video Log LUT or XMP preset. The desktop converter uses a configured Lightroom rendering bridge to obtain reference colors and fit the camera tables. Installing the **LrC automatic-recognition plugin does not configure that rendering bridge**. CUBE conversion does not require Lightroom.
+DCP is an Adobe camera profile. The converter evaluates its LookTable / tone curve locally, then fits the camera tables. Both DCP and CUBE conversion work without Lightroom. The optional LrC automatic-recognition plugin is independent of conversion.
 
 A7Look is this tool's compiled camera-look document, including supported tables, names and provenance. A DCP source may also carry its Lightroom profile for automatic matching. A standalone CUBE does not automatically create a Lightroom DCP. Other cameras' sensor calibration is not copied into your body, and DCP processing is not baked into RAW sensor samples.
 

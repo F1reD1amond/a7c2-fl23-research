@@ -1,5 +1,13 @@
 # 更新日志
 
+## 桌面 preview.10.12 — 独立离线 DCP 转换 — 2026-10-21
+
+- DCP 直接在本机解析 LookTable／色调曲线，再拟合支持的机内色彩阶段。不依赖 Lightroom、显影插件、Node、renderer 配置或网络。独立的 LrC 配置插件安装入口仍可选。
+- A7Look 保留来源 DCP 原始数据、版权和近似映射说明；不移植来源机型的感光元件矩阵或 HueSat 校准。不支持的输入明确报错，输出沿用原写入格式。
+- 公开包 18 款 DCP 均通过离线解析／目标色计算。真实 Astia 已在源码及实际 Windows EXE 完成全流程拟合和输出，使用降低的验证预算，结果通过写入格式检查；这不等于相机预览／照片颜色已验收。DCP／CUBE、后端集成检查通过，GUI 启动生成七页。
+- 位于独立 feature/dcp-renderer-setup 分支，未混入当前 Mac USB 修复。测试包为 A7C2Tools-Windows-x64-Offline-DCP.zip。本轮无相机操作。
+
+
 ## 桌面 preview.10.10 — 2026-10-21
 
 - 修复 Mac 在 `detach_kernel_driver(0)` 阶段权限不足：相机操作在执行后端前请求 macOS 原生管理员授权，GUI 保持普通用户；密码仅由系统窗口处理，不读取或保存。

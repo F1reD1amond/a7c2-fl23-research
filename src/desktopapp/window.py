@@ -597,7 +597,7 @@ class Window(W.QMainWindow):
         dialog.setWindowTitle('生成 A7Look')
         dialog.resize(760, 370)
         layout = W.QVBoxLayout(dialog)
-        hint = W.QLabel('CUBE：输入必须是 Sony ST / sRGB，输出 sRGB；不能直接使用 S-Log3 / S-Gamut3.Cine 或其他 Log LUT。\nDCP：需 Lightroom Classic 和显影桥接配置。此工具只生成 .a7look，不写相机。')
+        hint = W.QLabel('CUBE：输入必须是 Sony ST / sRGB，输出 sRGB；不能直接使用 S-Log3 / S-Gamut3.Cine 或其他 Log LUT。\nDCP：内置离线解析与拟合，不需要 Lightroom、插件或联网。转换 LookTable／色调曲线，机内效果为拟合近似。此工具只生成 .a7look，不写相机。')
         hint.setWordWrap(True)
         layout.addWidget(hint)
         help_button=W.QPushButton('支持哪些格式和色彩空间？查看完整说明…')
@@ -608,13 +608,11 @@ class Window(W.QMainWindow):
         self.field(form, 'compile_output', '输出 A7Look', kind='save', filter='A7Look (*.a7look)')
         self.field(form, 'compile_model', '响应文件', kind='file', filter='Response (*.npz)',
                    value=str(ROOT / 'calibration/a7c2-2.01.virtual.npz'))
-        self.field(form, 'renderer_config', '显影配置（DCP 使用）', kind='file', filter='JSON (*.json)',
-                   value=str(data_root() / 'a7look-compiler.local.json'))
         run = W.QPushButton('开始生成')
         run.clicked.connect(lambda: (dialog.accept(), self.launch('compile_look', {
             'source': self.text('compile_source'), 'name': self.text('compile_name'),
             'output': self.text('compile_output'), 'model': self.text('compile_model'),
-            'renderer_config': self.text('renderer_config'), 'input_space': 'sony-st-srgb', 'passes': 3})))
+            'input_space': 'sony-st-srgb', 'passes': 3})))
         layout.addWidget(run)
         dialog.exec()
 

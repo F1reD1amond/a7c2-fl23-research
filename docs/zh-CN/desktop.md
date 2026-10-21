@@ -29,7 +29,7 @@
 
 ## LUT 文件怎么准备
 
-写入页选择 `.a7look`。桌面生成器的 CUBE 必须是 **Sony ST / sRGB 输入 → sRGB 输出**，不能直接用 S-Log3／S-Gamut3.Cine。DCP 需要 Lightroom 显影桥接，自动识别插件不是该桥接。[完整格式、Log LUT 处理与示例](lut-formats.md)。
+写入页选择 `.a7look`。桌面生成器的 CUBE 必须是 **Sony ST / sRGB 输入 → sRGB 输出**，不能直接用 S-Log3／S-Gamut3.Cine。DCP 使用内置离线解析与拟合，不需要 Lightroom 或显影插件。[完整格式、Log LUT 处理与示例](lut-formats.md)。
 
 ## 单独开启、关闭与单槽操作
 

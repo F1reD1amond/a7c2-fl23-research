@@ -78,7 +78,7 @@ One-click installation does not inspect historical factory-verification records 
 
 ## LUT inputs
 
-The import page takes `.a7look`. The desktop CUBE converter requires **Sony ST / sRGB input → sRGB output**, not S-Log3 / S-Gamut3.Cine. DCP conversion needs the configured Lightroom rendering bridge, which is separate from the automatic-recognition plugin. [Formats, Log conversion and example](lut-formats.md).
+The import page takes `.a7look`. The desktop CUBE converter requires **Sony ST / sRGB input → sRGB output**, not S-Log3 / S-Gamut3.Cine. DCP conversion uses the built-in offline evaluator and does not need Lightroom or a rendering bridge. [Formats, Log conversion and example](lut-formats.md).
 
 Verified factory recovery clears active setup / FL23 / look-resume state and returns Home to a new installation; the old sound workspace is detached from active use, while diagnostic history and source clips stay available.
 

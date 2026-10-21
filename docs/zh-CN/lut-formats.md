@@ -12,7 +12,7 @@
 | S-Log3 / S-Gamut3.Cine → Rec.709 | 不能直接使用，输入不匹配，输出传递曲线也可能不匹配 |
 | S-Log2、HLG、Rec.2020、ACES、DaVinci Wide Gamut | 不能直接使用，需正确的色彩变换 |
 | 只写“Sony LUT”“电影 LUT”“Rec.709”的 `.cube` | 信息不足，先向作者确认输入色域、传递曲线及输出色域、传递曲线 |
-| 独立 Adobe `.dcp` 相机配置文件 | 走 DCP 转换；当前桌面生成器需要 Lightroom Classic 与已配置的显影桥接 |
+| 独立 Adobe `.dcp` 相机配置文件 | 内置离线解析与拟合，不需要 Lightroom 或显影桥接 |
 | `.3dl`、`.look`、`.xmp` 预设、图片，或 1D LUT | 当前生成器不支持直接输入 |
 | 本工具生成且受支持的 `.a7look` | 直接在写入页选择，不必再转换 |
 
@@ -53,7 +53,7 @@ DOMAIN_MAX 1 1 1
 
 ## DCP、A7Look 和 RAW 的区别
 
-DCP 是 Adobe 相机配置文件，不是 S-Log3 视频 LUT，也不是 `.xmp` 预设。桌面生成器通过已配置的 Lightroom 显影桥接获取参考效果，再拟合到机内色表。**“安装 LrC 自动识别插件”不等于安装／配置显影桥接**；转换 DCP 前仍需配置参考显影，CUBE 转换不需要 Lightroom。
+DCP 是 Adobe 相机配置文件。生成器直接离线解析 LookTable／色调曲线，再拟合机内色表；DCP 和 CUBE 转换均不需要 Lightroom。可选的 LrC 自动识别插件与转换独立。
 
 `.a7look` 是本工具的转换结果，包含支持的机内色表、名称和来源信息。DCP 来源还可携带用于 Lightroom 自动匹配的配置；单独 CUBE 不会自动变成 Lightroom 可用的 DCP。不把其他机型的传感器校准照搬到相机，也不把 DCP 烧进 RAW 原始像素。
 
