@@ -248,3 +248,21 @@ Transfer that ZIP to the Mac. `--preset-archive` also accepts the existing Windo
 The manual `desktop-preview.yml` workflow has Windows and `macos-15` (ARM64) native runners. Supply `preset_archive_url` pointing to the exported pack or an accessible desktop ZIP. The workflow must be available on the default branch to appear for manual dispatch; choose the feature ref for its code when available. On the feature branch, updating `dev/desktop/native-build-request.json` also triggers an Apple Silicon build without modifying main; manual dispatch selects macos / windows / all. The current public v2 CLI ZIP is not a desktop preset pack. CI runs focused contracts, native packaging, packaged offline/GUI checks, signature/DMG verification and uploads artifacts, without publishing a Release. Local source presets alone cannot populate a clean hosted runner.
 
 macOS host preparation is informed by [MDHan/a7c2-fl23-macos](https://github.com/MDHan/a7c2-fl23-macos) at commit `1491f734df07f02fb77da6ea7062828bce0e30e7`: identify camera descendants in IORegistry, unmount camera storage normally, then claim libusb ownership. Its MIT notice is retained at `docs/licenses/a7c2-fl23-macos-MIT.txt`. We retain this project's service-first admission; the reference's pre-authentication camera-info and backup requirements are not imported. No camera operations occur while building.
+
+## macOS administrator authorization (preview.10.10)
+
+GUI and recovery/installation engines are the same as Windows. `macadmin.py`
+wraps explicit camera worker jobs in a macOS `do shell script … with administrator
+privileges` system dialog. Offline conversions and plugin installation do not
+request root. It preserves the login user's HOME/app-data/cache paths and returns
+root-created files in app workspaces to the login user; passwords never enter the
+process arguments or job logs. The reference adapter's sudo requirement informs
+this host-only layer; its firmware/workflow rules are not imported.
+
+`mac_authorization_smoke.py` compiles the real AppleScript with `osacompile`, then
+runs the exact packaged privileged-worker command using CI's passwordless sudo.
+Its no-USB action checks euid 0, user HOME/data paths and file ownership after exit.
+These checks passed on the actual Apple Silicon runner for preview.10.10, together
+with packaged offline/GUI/signature/DMG checks. A human must still verify the
+recipient Mac's system password dialog and physical camera USB capture. Do not
+represent CI root execution as a completed camera recovery.
