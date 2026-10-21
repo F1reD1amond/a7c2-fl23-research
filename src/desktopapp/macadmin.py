@@ -1,14 +1,20 @@
-"""macOS system authorization for explicit camera workers.
+"""macOS administrator rights for explicit camera workers, via Terminal sudo.
 
 Like MDHan's sudo adapter, only camera commands receive root privileges.
-The GUI remains the login user. Passwords belong to the macOS dialog only.
+The GUI remains the login user. The password goes to sudo in Terminal only.
+A root process started through the password dialog (osascript) is refused
+USB interface access by macOS: IOCreatePlugInInterfaceForService returns
+"out of resources" even after launchctl asuser, while the same code under
+sudo in the user's Terminal claims the camera (probe rounds 2 and 3).
 """
 import json
 import os
 from pathlib import Path
 import shlex
+import signal
 import subprocess
 import sys
+import time
 import traceback
 from .paths import data_root,write_json
 
@@ -17,11 +23,6 @@ def required(action):
     if sys.platform!='darwin' or os.geteuid()==0:return False
     from .jobs import CAMERA_ACTIONS
     return action in CAMERA_ACTIONS
-
-
-def applescript_string(value):
-    # AppleScript quoting and POSIX shell quoting are separate layers.
-    return '"'+str(value).replace('\\','\\\\').replace('"','\\"').replace('\r','\\r').replace('\n','\\n')+'"'
 
 
 def shell_command(request,uid,gid,environment):
@@ -40,11 +41,51 @@ def shell_command(request,uid,gid,environment):
     return shell
 
 
-def command(request,uid,gid,environment):
+def launcher(request,uid,gid,environment):
+    """Text of the one-job Terminal script; its exit record goes beside the request."""
     shell=shell_command(request,uid,gid,environment)
-    script='do shell script '+applescript_string(shell)+' with prompt '+applescript_string(
-        'A7C II Tools 需要接管相机 USB 进行本次操作。请输入 Mac 管理员密码；程序不会保存密码。')+' with administrator privileges'
-    return ['/usr/bin/osascript','-e',script]
+    exit_file=shlex.quote(str(Path(request).parent/'authorization.exit'))
+    return '\n'.join([
+        '#!/bin/bash',
+        '# A7C II Tools: one camera operation with administrator rights. Generated per job.',
+        'trap '+shlex.quote('echo closed > '+exit_file+'; exit 129')+' HUP',
+        "trap '' INT QUIT",
+        "printf '%s\\n' 'A7C II Tools：本次相机操作需要以管理员权限接管 USB。' "
+        "'请在下方输入 Mac 登录密码（输入时不显示）。密码只交给系统 sudo，程序不读取或保存。'",
+        '/usr/bin/sudo /bin/sh -c '+shlex.quote(shell),
+        'code=$?',
+        'echo "$code" > '+exit_file,
+        'echo "相机操作已结束（退出码 $code），结果以 A7C II Tools 窗口为准。现在可以关闭此终端窗口。"',
+        ''])
+
+
+def command(request,uid,gid,environment):
+    path=Path(request).parent/'authorize-in-terminal.command'
+    path.write_text(launcher(request,uid,gid,environment),encoding='utf-8',newline='\n')
+    path.chmod(0o700)
+    return ['/usr/bin/open','-a','Terminal',str(path)]
+
+
+def alive(pid):
+    try:os.kill(int(pid),0)
+    except ProcessLookupError:return False
+    except PermissionError:return True
+    except (TypeError,ValueError):return False
+    return True
+
+
+def wait_for_worker(status,exit_file):
+    """Wait for the root worker's outcome, never for a fixed time.
+
+    Closing Terminal after the worker started does not end it (it ignores
+    SIGHUP/SIGINT), so keep following its status while its process lives.
+    """
+    while True:
+        current=json.loads(status.read_text(encoding='utf-8'))
+        if current.get('phase') in ('SUCCEEDED','FAILED'):return current
+        if exit_file.exists() and not (current.get('phase')=='RUNNING' and alive(current.get('pid'))):
+            return current
+        time.sleep(.5)
 
 
 def execute(path):
@@ -53,25 +94,37 @@ def execute(path):
     status=job/'status.private.json'
     write_json(status,dict(phase='WAITING_AUTHORIZATION',action=request['action'],camera_io=False))
     with (job/'worker.log').open('a',encoding='utf-8') as log:
-        log.write('等待 macOS 系统管理员授权；尚未接管 USB 或开始相机操作。取消不会刷写相机。\n')
-    print('等待 macOS 管理员授权，请在系统弹窗中确认。',flush=True)
+        log.write('等待在「终端」窗口输入 Mac 登录密码；尚未接管 USB 或开始相机操作。输入密码前关闭终端窗口不会刷写相机。\n')
+    print('请在打开的「终端」窗口中输入 Mac 登录密码（输入时不显示）。',flush=True)
+    exit_file=job/'authorization.exit'
+    exit_file.unlink(missing_ok=True)
+    code=None
     try:
-        result=subprocess.run(command(path,os.getuid(),os.getgid(),os.environ),
+        opened=subprocess.run(command(path,os.getuid(),os.getgid(),os.environ),
                               capture_output=True,text=True,encoding='utf-8',errors='replace')
     except Exception as exc:
-        result=None;detail=repr(exc)
-    else:detail=(result.stdout+'\n'+result.stderr).strip()
-    current=json.loads(status.read_text(encoding='utf-8'))
-    write_json(job/'authorization.private.json',dict(system_dialog=True,
-        exit_code=result.returncode if result else None,detail=detail,password_stored=False))
+        opened=None;detail=repr(exc)
+    else:detail=(opened.stdout+'\n'+opened.stderr).strip()
+    if opened is not None and opened.returncode==0:
+        current=wait_for_worker(status,exit_file)
+        code=exit_file.read_text(encoding='utf-8').strip() if exit_file.exists() else None
+    else:current=json.loads(status.read_text(encoding='utf-8'))
+    write_json(job/'authorization.private.json',dict(terminal_sudo=True,
+        exit_code=code,detail=detail,password_stored=False))
     if current.get('phase') in ('SUCCEEDED','FAILED'):
         # The privileged worker owns the actual outcome; never replay it.
         return 0 if current['phase']=='SUCCEEDED' else 2
     extra=job/'authorization.stderr.log'
     if extra.is_file():detail+='\n'+extra.read_text(encoding='utf-8',errors='replace')
-    cancelled='-128' in detail or 'canceled' in detail.lower() or 'cancelled' in detail.lower()
-    error=('已取消 macOS 管理员授权；本次相机操作尚未开始，可重新点击原按钮。' if cancelled else
-           'macOS 授权进程未完成，相机操作未报告开始。请保留日志；系统详情：'+detail)
+    if current.get('phase')=='RUNNING':
+        error='管理员进程意外结束，相机操作结果未知。请导出诊断包，不要重复刚才的操作。'
+        with (job/'worker.log').open('a',encoding='utf-8') as log:log.write(error+'\n'+detail+'\n')
+        write_json(status,dict(phase='FAILED',action=request['action'],error=error,
+            error_type='MacWorkerEnded',authorization_denied=False))
+        return 2
+    cancelled=code=='closed' or 'incorrect password' in detail
+    error=('终端授权未完成（窗口已关闭或密码不正确）；本次相机操作尚未开始，可重新点击原按钮。' if cancelled else
+           '终端授权未完成，相机操作未报告开始。请保留日志；系统详情：'+detail)
     with (job/'worker.log').open('a',encoding='utf-8') as log:log.write(error+'\n'+detail+'\n')
     write_json(status,dict(phase='FAILED',action=request['action'],error=error,
         error_type='MacAuthorizationCancelled' if cancelled else 'MacAuthorizationError',
@@ -104,7 +157,10 @@ def return_ownership(request,uid,gid):
 
 def privileged(path,uid,gid):
     if sys.platform!='darwin' or os.geteuid()!=0 or uid<=0 or gid<0:
-        raise RuntimeError('相机授权 worker 必须由 macOS 系统授权启动。')
+        raise RuntimeError('相机授权 worker 必须由终端 sudo 启动。')
+    # Closing the Terminal window or Ctrl-C must not cut a camera write short.
+    signal.signal(signal.SIGHUP,signal.SIG_IGN)
+    signal.signal(signal.SIGINT,signal.SIG_IGN)
     import pwd
     owner=pwd.getpwuid(uid)
     if gid!=owner.pw_gid:raise ValueError('Authorization owner group differs from login user')

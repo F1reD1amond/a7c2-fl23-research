@@ -259,8 +259,10 @@ root-created files in app workspaces to the login user; passwords never enter th
 process arguments or job logs. The reference adapter's sudo requirement informs
 this host-only layer; its firmware/workflow rules are not imported.
 
-`mac_authorization_smoke.py` compiles the real AppleScript with `osacompile`, then
+`mac_authorization_smoke.py` syntax-checks the real Terminal sudo launcher, then
 runs the exact packaged privileged-worker command using CI's passwordless sudo.
+The worker runs under sudo in the user's Terminal: a root process started from
+the macOS password dialog was refused USB interface access (`out of resources`).
 Its no-USB action checks euid 0, user HOME/data paths and file ownership after exit.
 These checks passed on the actual Apple Silicon runner for preview.10.10, together
 with packaged offline/GUI/signature/DMG checks. A human must still verify the

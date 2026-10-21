@@ -29,11 +29,11 @@ def run(app):
         jobs.worker_command=lambda path:[str(app),'--worker',str(path)]
         try:
             command=macadmin.command(request,uid,gid,os.environ)
-            script=root/'authorize.applescript';script.write_text(command[-1],encoding='utf-8')
-            subprocess.run(['/usr/bin/osacompile','-o',str(root/'authorize.scpt'),str(script)],check=True)
+            assert command[:3]==['/usr/bin/open','-a','Terminal']
+            subprocess.run(['/bin/bash','-n',command[3]],check=True)
             shell=macadmin.shell_command(request,uid,gid,os.environ)
-            # CI has passwordless sudo. Run exactly the command passed to the
-            # system dialog, without attempting an interactive password prompt.
+            # CI has passwordless sudo and no Terminal session. Run exactly the
+            # command the Terminal launcher passes to sudo, without a prompt.
             done=subprocess.run(['/usr/bin/sudo','-n','/bin/sh','-c',shell],timeout=90)
             if done.returncode:
                 for name in ('authorization.stderr.log','worker.log'):
@@ -48,7 +48,7 @@ def run(app):
             for path in [*job.rglob('*'),*data.rglob('*')]:
                 if path.is_file():assert path.stat().st_uid==uid,str(path)
             assert (data/'authorization-self-test.private.json').stat().st_uid==uid
-            return dict(camera_io=False,applescript_compiles=True,privileged_euid=0,
+            return dict(camera_io=False,terminal_launcher_parses=True,privileged_euid=0,
                 user_home_preserved=True,ownership_returned=True)
         finally:
             jobs.worker_command=original

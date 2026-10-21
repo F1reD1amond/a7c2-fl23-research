@@ -3,6 +3,8 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
+import subprocess
 from types import SimpleNamespace
 from unittest.mock import Mock,patch
 import pytest
@@ -24,18 +26,29 @@ def test_offline_actions_do_not_request_privileges(action):
         assert not macadmin.required(action)
 
 
-def test_shell_and_applescript_quoting_preserve_spaces_quotes_and_metacharacters(tmp_path,monkeypatch):
+def test_terminal_launcher_quoting_preserves_spaces_quotes_and_metacharacters(tmp_path,monkeypatch):
     monkeypatch.setenv('A7C2_DESKTOP_DATA',str(tmp_path/'用户 data'))
-    request=tmp_path/'quote "+$(touch should-not-run)'/'request.private.json'
+    # The job folder exists on disk now; Windows test hosts forbid '"' in names.
+    request=tmp_path/"quote '+$(touch should-not-run) & x;"/'request.private.json'
+    request.parent.mkdir()
     prefix=['/Applications/A7 C2 "+$ app/Contents/MacOS/A7C2Tools','--worker',str(request)]
-    with patch('desktopapp.jobs.worker_command',return_value=prefix):
-        cmd=macadmin.command(request,501,20,{'HOME':'/Users/user name','PATH':'/usr/bin:/bin'})
-    assert cmd[:2]==['/usr/bin/osascript','-e']
-    script=cmd[-1]
-    assert 'with administrator privileges' in script
-    assert '--privileged-worker' in script
-    assert 'A7C2_DESKTOP_DATA=' in script and 'HOME=' in script
-    assert '\\"' in script and 'password ' not in script
+    environment={'HOME':'/Users/user name','PATH':'/usr/bin:/bin'}
+    with patch('desktopapp.jobs.worker_command',return_value=list(prefix)):
+        cmd=macadmin.command(request,501,20,environment)
+    with patch('desktopapp.jobs.worker_command',return_value=list(prefix)):
+        shell=macadmin.shell_command(request,501,20,environment)
+    assert cmd[:3]==['/usr/bin/open','-a','Terminal']
+    script=Path(cmd[3]).read_text(encoding='utf-8')
+    assert Path(cmd[3]).parent==request.parent and 'password ' not in script
+    lines=script.splitlines()
+    sudo=[line for line in lines if line.startswith('/usr/bin/sudo ')]
+    assert len(sudo)==1 and shlex.split(sudo[0])==['/usr/bin/sudo','/bin/sh','-c',shell]
+    assert '--privileged-worker' in shell and 'A7C2_DESKTOP_DATA=' in shell and 'HOME=' in shell
+    trap=shlex.split([line for line in lines if line.endswith(' HUP')][0])
+    exit_file=str(request.parent/'authorization.exit')
+    assert trap==['trap','echo closed > '+shlex.quote(exit_file)+'; exit 129','HUP']
+    bash=shutil.which('bash')
+    if bash:assert subprocess.run([bash,'-n',cmd[3]]).returncode==0
 
 
 def make_request(tmp_path,monkeypatch):
@@ -45,30 +58,69 @@ def make_request(tmp_path,monkeypatch):
     return request
 
 
-def test_cancelled_authorization_never_starts_worker(tmp_path,monkeypatch):
-    request=make_request(tmp_path,monkeypatch)
+def terminal(request,exit_code,status=None,stderr=''):
+    """Fake `open -a Terminal`: the launcher finishes with ``exit_code``."""
+    def run(*args,**kwargs):
+        if status:write_json(request.parent/'status.private.json',status)
+        if stderr:(request.parent/'authorization.stderr.log').write_text(stderr,encoding='utf-8')
+        (request.parent/'authorization.exit').write_text(exit_code+'\n',encoding='utf-8')
+        return SimpleNamespace(returncode=0,stdout='',stderr='')
+    return run
+
+
+def execute(request,run):
     with patch.object(macadmin.os,'getuid',return_value=501,create=True), \
          patch.object(macadmin.os,'getgid',return_value=20,create=True), \
-         patch.object(macadmin.subprocess,'run',return_value=SimpleNamespace(returncode=1,stdout='',stderr='User canceled. (-128)')):
-        assert macadmin.execute(request)==2
-    state=json.loads((request.parent/'status.private.json').read_text(encoding='utf-8'))
+         patch.object(macadmin.subprocess,'run',side_effect=run) as opened:
+        code=macadmin.execute(request)
+    return code,opened,json.loads((request.parent/'status.private.json').read_text(encoding='utf-8'))
+
+
+@pytest.mark.parametrize('exit_code,stderr',[('closed',''),('1','sudo: 3 incorrect password attempts\n')])
+def test_closed_terminal_or_wrong_password_never_starts_worker(tmp_path,monkeypatch,exit_code,stderr):
+    request=make_request(tmp_path,monkeypatch)
+    code,_,state=execute(request,terminal(request,exit_code,stderr=stderr))
+    assert code==2
     assert state['error_type']=='MacAuthorizationCancelled'
     assert state['camera_io'] is False
     assert '尚未开始' in state['error']
 
 
+def test_terminal_that_cannot_open_reports_not_started(tmp_path,monkeypatch):
+    request=make_request(tmp_path,monkeypatch)
+    code,_,state=execute(request,lambda *a,**k:SimpleNamespace(returncode=1,stdout='',stderr='Unable to find application'))
+    assert code==2 and state['error_type']=='MacAuthorizationError' and state['camera_io'] is False
+
+
 @pytest.mark.parametrize('phase,code',[('SUCCEEDED',0),('FAILED',2)])
 def test_native_worker_outcome_is_preserved_without_replay(tmp_path,monkeypatch,phase,code):
     request=make_request(tmp_path,monkeypatch)
-    def run(*args,**kwargs):
-        write_json(request.parent/'status.private.json',dict(phase=phase,action='direct_factory_reset',error='original camera error'))
-        return SimpleNamespace(returncode=code,stdout='',stderr='')
-    with patch.object(macadmin.os,'getuid',return_value=501,create=True), \
-         patch.object(macadmin.os,'getgid',return_value=20,create=True), \
-         patch.object(macadmin.subprocess,'run',side_effect=run) as execute:
-        assert macadmin.execute(request)==code
-    execute.assert_called_once()
-    assert json.loads((request.parent/'status.private.json').read_text())['error']=='original camera error'
+    status=dict(phase=phase,action='direct_factory_reset',error='original camera error')
+    result,opened,state=execute(request,terminal(request,str(code),status=status))
+    assert result==code
+    opened.assert_called_once()
+    assert state['error']=='original camera error'
+    assert json.loads((request.parent/'authorization.private.json').read_text())['password_stored'] is False
+
+
+def test_closing_terminal_after_worker_started_waits_for_its_outcome(tmp_path,monkeypatch):
+    request=make_request(tmp_path,monkeypatch)
+    running=dict(phase='RUNNING',action='direct_factory_reset',pid=os.getpid())
+    def finish(seconds):
+        write_json(request.parent/'status.private.json',dict(phase='SUCCEEDED',action='direct_factory_reset',result={}))
+    with patch.object(macadmin.time,'sleep',side_effect=finish) as sleep:
+        code,_,state=execute(request,terminal(request,'closed',status=running))
+    assert code==0 and state['phase']=='SUCCEEDED'
+    sleep.assert_called()
+
+
+def test_worker_that_ends_without_outcome_is_unknown_not_cancelled(tmp_path,monkeypatch):
+    request=make_request(tmp_path,monkeypatch)
+    running=dict(phase='RUNNING',action='direct_factory_reset',pid=999999)
+    with patch.object(macadmin,'alive',return_value=False):
+        code,_,state=execute(request,terminal(request,'closed',status=running))
+    assert code==2 and state['error_type']=='MacWorkerEnded'
+    assert 'camera_io' not in state and '结果未知' in state['error']
 
 
 def test_dispatch_requests_authorization_before_loading_camera_backend(tmp_path,monkeypatch):
