@@ -2,10 +2,9 @@
 
 Like MDHan's sudo adapter, only camera commands receive root privileges.
 The GUI remains the login user. The password goes to sudo in Terminal only.
-A root process started through the password dialog (osascript) is refused
-USB interface access by macOS: IOCreatePlugInInterfaceForService returns
-"out of resources" even after launchctl asuser, while the same code under
-sudo in the user's Terminal claims the camera (probe rounds 2 and 3).
+The recipient's probe reported interface access under Terminal sudo while
+the system-dialog route failed. This build tests that host-side difference;
+full packaged-camera behavior remains a recipient test.
 """
 import json
 import os
@@ -33,6 +32,7 @@ def shell_command(request,uid,gid,environment):
     assignments={key:environment[key] for key in ('HOME','USER','LOGNAME','PATH','TMPDIR',
         'A7C2_ZIG_CACHE','A7LOOK_AUTO_SETTINGS') if environment.get(key)}
     assignments.update(A7C2_DESKTOP_DATA=str(data_root()),PYTHONUTF8='1',PYTHONIOENCODING='utf-8')
+    assignments['LIBUSB_DEBUG']=environment.get('LIBUSB_DEBUG','4')
     assignments.setdefault('A7C2_ZIG_CACHE',str(data_root()/'compiler-cache'))
     shell=shlex.join(['/usr/bin/env']+[key+'='+value for key,value in assignments.items()]+argv)
     parent=Path(request).parent
@@ -67,7 +67,10 @@ def command(request,uid,gid,environment):
 
 
 def alive(pid):
-    try:os.kill(int(pid),0)
+    try:
+        pid=int(pid)
+        if pid<=0:return False
+        os.kill(pid,0)
     except ProcessLookupError:return False
     except PermissionError:return True
     except (TypeError,ValueError):return False
@@ -83,6 +86,8 @@ def wait_for_worker(status,exit_file):
     while True:
         current=json.loads(status.read_text(encoding='utf-8'))
         if current.get('phase') in ('SUCCEEDED','FAILED'):return current
+        if current.get('phase')=='RUNNING' and not alive(current.get('pid')):
+            return current
         if exit_file.exists() and not (current.get('phase')=='RUNNING' and alive(current.get('pid'))):
             return current
         time.sleep(.5)
@@ -122,7 +127,7 @@ def execute(path):
         write_json(status,dict(phase='FAILED',action=request['action'],error=error,
             error_type='MacWorkerEnded',authorization_denied=False))
         return 2
-    cancelled=code=='closed' or 'incorrect password' in detail
+    cancelled=code in ('closed','1') or 'incorrect password' in detail
     error=('终端授权未完成（窗口已关闭或密码不正确）；本次相机操作尚未开始，可重新点击原按钮。' if cancelled else
            '终端授权未完成，相机操作未报告开始。请保留日志；系统详情：'+detail)
     with (job/'worker.log').open('a',encoding='utf-8') as log:log.write(error+'\n'+detail+'\n')

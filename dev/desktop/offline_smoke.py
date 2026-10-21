@@ -227,27 +227,6 @@ def run():
     assert builtin()['version'] == '2.01'
     sys.path[:0] = [str(ROOT / 'src/vertical'), str(ROOT / 'dev/shutter_sound')]
     importlib.import_module('verticaltool.device')
-    from verticaltool import portrait
-    import json,io
-    from fwtool.lz77 import inflateLz77
-    geometry=json.loads((portrait.ASSETS/'portrait-lines-v1.json').read_text())['assets']
-    assert len(geometry)==7
-    synthetic=[]
-    for group in range(3):
-        rows=[r for r in geometry if r['group']==group]
-        count=max([r['index'] for r in rows] or [0])+1
-        data=bytearray(struct.pack('<8sHHI',b'uxd\x07\0\0\0\0',8,group,count|(((count+1)&~1)<<12)))
-        data.extend(b'\xff\xff'*((count+1)&~1))
-        for i,row in enumerate(rows):
-            struct.pack_into('<H',data,16+row['index']*2,i*5)
-            data.extend(struct.pack('<IIHHII',0x1a000000+group*8192+row['index'],0xc0000000,*row['landscape'],4,20*(len(rows)-i)-4))
-            packed=portrait.compress(portrait.raster(row));stream=io.BytesIO(packed);decoded=b''
-            while stream.tell()<len(packed):decoded+=inflateLz77(stream)
-            assert decoded==portrait.raster(row)
-        data.extend(bytes(4*max(1,len(rows))));synthetic.append(bytes(data))
-    with tempfile.TemporaryDirectory() as folder:
-        corrected,portrait_worker=portrait.build(synthetic,Path(folder))
-        assert portrait_worker.read_bytes()[:4]==b'\x7fELF' and corrected[2]==synthetic[2]
     assert (ROOT / 'src/vertical/assets/aliases_recovery.so').read_bytes()[:4] == b'\x7fELF'
     importlib.import_module('sound_cli')
     audio_conversion = check_audio_conversion()
@@ -282,5 +261,4 @@ def run():
             'bundled_six_looks':list(presets.NAMES),'fl23_pr6_movie_routes':'passed',
             'completion_summary':'passed','persistent_vertical_plan':'passed',
             'audio_conversion':audio_conversion,'standalone_dcp_conversion':dcp_conversion,
-            'portrait_seven_line_assets_and_native_worker':'passed',
             'sound_install_emulator':'passed','numpy': np.__version__}

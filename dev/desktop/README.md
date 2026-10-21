@@ -249,22 +249,22 @@ The manual `desktop-preview.yml` workflow has Windows and `macos-15` (ARM64) nat
 
 macOS host preparation is informed by [MDHan/a7c2-fl23-macos](https://github.com/MDHan/a7c2-fl23-macos) at commit `1491f734df07f02fb77da6ea7062828bce0e30e7`: identify camera descendants in IORegistry, unmount camera storage normally, then claim libusb ownership. Its MIT notice is retained at `docs/licenses/a7c2-fl23-macos-MIT.txt`. We retain this project's service-first admission; the reference's pre-authentication camera-info and backup requirements are not imported. No camera operations occur while building.
 
-## macOS administrator authorization (preview.10.10)
+## macOS Terminal authorization (preview.10.20 USB test)
 
-GUI and recovery/installation engines are the same as Windows. `macadmin.py`
-wraps explicit camera worker jobs in a macOS `do shell script … with administrator
-privileges` system dialog. Offline conversions and plugin installation do not
-request root. It preserves the login user's HOME/app-data/cache paths and returns
-root-created files in app workspaces to the login user; passwords never enter the
-process arguments or job logs. The reference adapter's sudo requirement informs
-this host-only layer; its firmware/workflow rules are not imported.
+Explicit camera jobs open a per-job Terminal script and use sudo. The login-user
+GUI never reads or stores the password. The shared Windows installation/recovery
+engines are retained. Original user HOME/app-data/cache paths and file ownership
+are preserved. LIBUSB_DEBUG defaults to 4 in the privileged process; full backend
+stderr is retained in the support bundle.
 
-`mac_authorization_smoke.py` syntax-checks the real Terminal sudo launcher, then
-runs the exact packaged privileged-worker command using CI's passwordless sudo.
-The worker runs under sudo in the user's Terminal: a root process started from
-the macOS password dialog was refused USB interface access (`out of resources`).
-Its no-USB action checks euid 0, user HOME/data paths and file ownership after exit.
-These checks passed on the actual Apple Silicon runner for preview.10.10, together
-with packaged offline/GUI/signature/DMG checks. A human must still verify the
-recipient Mac's system password dialog and physical camera USB capture. Do not
-represent CI root execution as a completed camera recovery.
+The recipient's probes motivate testing this launch route. They do not establish
+that the packaged app or full service/firmware flow works on that Mac.
+
+mac_authorization_smoke.py syntax-checks the Terminal script and runs the exact
+privileged-worker command with CI sudo, without USB. It checks root execution,
+original user paths and returned ownership. Native tests do not exercise the
+recipient's interactive password prompt or physical camera.
+
+This branch deliberately uses the old portrait aliases and excludes the recent
+Fn/submenu line-bank rework. Resource compression and volume controls remain
+separate work. Main and the Windows development folder are unchanged.

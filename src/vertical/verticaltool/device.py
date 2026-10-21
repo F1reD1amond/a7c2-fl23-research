@@ -78,35 +78,18 @@ def parse_ram(raw, target):
 
 
 def parse_aliases(raw, mode):
-    if len(raw) not in (104,128):
+    if len(raw) != 104:
         raise ValueError('Incomplete resource-alias result')
-    row = struct.unpack_from('<8sIIIIqqqIIII3II3Q', raw)
-    if (row[0]!=b'A7VRS001' or row[1] not in (1,2) or row[2]!=mode or row[4]!=3
-            or (row[1]==1 and (len(raw)!=104 or row[15])) or (row[1]==2 and len(raw)!=128)):
+    row = struct.unpack('<8sIIIIqqqIIII3II3Q', raw)
+    if row[:3] != (b'A7VRS001', 1, mode) or row[4] != 3 or row[15]:
         raise ValueError('Unexpected resource-alias ABI')
-    result=dict(mode=mode, phase=row[3], status=row[5], rollback=row[6], readonly=row[7],
+    return dict(mode=mode, phase=row[3], status=row[5], rollback=row[6], readonly=row[7],
                 source_ok=row[8], prior=row[9], created=row[10], removed=row[11],
                 source_counts=list(row[12:15]), source_sizes=list(row[16:19]))
-    if row[1]==2:
-        steps={1:'读取源记录',2:'打开临时文件',3:'检查可用空间',4:'读取源图形',5:'写入临时图形',
-               6:'设置文件所有者',7:'设置文件权限',8:'同步临时文件',9:'完整核对临时文件',10:'原子替换资源'}
-        progress,available,required=struct.unpack_from('<3Q',raw,104)
-        result.update(failure_group=(row[15]>>8)-1 if row[15] else None,
-            failure_step=steps.get(row[15]&255,'未记录' if row[15] else None),
-            progress_bytes=progress,available_bytes=available,required_bytes=required)
-    return result
 
 
 def require_ok(result):
     if result['status']:
-        if result.get('failure_step'):
-            import errno
-            code=result['status'];label=errno.errorcode.get(-code,'UNKNOWN')
-            detail='竖屏资源 %02d：%s失败，错误 %d（%s），位置 %d 字节。'%(
-                result['failure_group'],result['failure_step'],code,label,result['progress_bytes'])
-            if code==-28:
-                detail+='机内 /usr 空间／文件节点不足：检查时可用 %.2f MB，本文件至少需要 %.2f MB。'%(result['available_bytes']/1048576,result['required_bytes']/1048576)
-            raise ValueError(detail+' 原生报告：'+str(result))
         raise ValueError('Native operation stopped: ' + str(result))
     return result
 
@@ -127,8 +110,7 @@ class Workers:
         from looktool.devicesession import invoke
         self.sequence += 1
         aliases = name in ('aliases.so','aliases_recovery.so')
-        blob=(self.geometry_worker.read_bytes() if aliases and hasattr(self,'geometry_worker') else (ASSETS/name).read_bytes())
-        return invoke(self.camera, blob,
+        return invoke(self.camera, (ASSETS / name).read_bytes(),
             stage='lut-names-staged.so' if aliases else 'lut-runtime-staged.so',
             request='a7c2.names.request' if aliases else None,
             result='a7c2.names.result' if aliases else 'a7c2.runtime.result',
@@ -144,11 +126,6 @@ class Workers:
         return require_ok(self.call(name, lambda raw: parse_ram(raw, target), mode=target))
 
     def aliases(self, mode):
-        if not hasattr(self,'geometry_worker'):
-            from .portrait import build
-            self.originals=[self.camera.read(path) for path in SOURCES]
-            root=(self.journal.owner.root if hasattr(self.journal,'owner') else self.journal.run)
-            self.targets,self.geometry_worker=build(self.originals,root/'portrait-geometry')
         name='aliases_recovery.so' if getattr(self,'allow_writable_recovery',False) else 'aliases.so'
         result = self.call(name, lambda raw: parse_aliases(raw, mode), mode=mode,
                            contents=struct.pack('<8sII', b'A7VRS001', mode, 0))
@@ -221,20 +198,18 @@ def execute(command, folder, *, camera_factory=None, workers_factory=Workers):
                         if inspected['prior'] not in (0, 7):
                             raise ValueError('Partial aliases exist; inspect the report and use remove before enable')
                         originals = [camera.read(path) for path in SOURCES]
-                        targets=workers.targets if hasattr(workers,'targets') else originals
                         if [len(data) for data in originals] != inspected['source_sizes']:
                             raise ValueError('Original graphics length changed during the session')
-                        upgrade=any(camera.read(path,True)!=target for path,target in zip(ALIASES,targets))
-                        if not inspected['prior'] or upgrade:
+                        if not inspected['prior']:
                             if before['value'] == 0:
                                 ram_intent = True
                                 workers.ram(1)
                             adding = True
                             installed = workers.aliases(1)
                             require_aliases(installed)
-                            if (not inspected['prior'] and installed['created']!=7) or installed['removed']:
+                            if installed['created'] != 7 or installed['removed']:
                                 raise ValueError('All three aliases were not added')
-                        for path, original in zip(ALIASES, targets):
+                        for path, original in zip(ALIASES, originals):
                             if camera.read(path) != original:
                                 raise ValueError('Complete alias readback differs: ' + path)
                         journal.record('all_alias_targets_fully_read_back')

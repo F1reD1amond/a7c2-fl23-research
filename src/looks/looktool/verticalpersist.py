@@ -29,17 +29,14 @@ class Stage:
         self.workers.allow_writable_recovery = not enabled
         self.before = self.workers.probe()
         self.aliases = self.alias_result(0)
-        self.originals = (self.workers.originals if hasattr(self.workers,'originals') else [camera.read(p) for p in device.SOURCES])
-        self.targets = self.workers.targets if hasattr(self.workers,'targets') else self.originals
+        self.originals = [camera.read(p) for p in device.SOURCES]
         if list(map(len, self.originals)) != self.aliases['source_sizes']:
             raise ValueError('Native vertical resource sizes changed')
-        self.resource_upgrade=False
         self.verify_existing()
         if enabled and self.aliases['prior'] not in (0, 7):
             raise ValueError('Partial vertical aliases need explicit removal before enabling')
         self.needs_change = (self.before['value'] != (0 if enabled else 1) or
-            self.aliases['prior'] != (7 if enabled else 0) or bool(self.aliases.get('readonly')) or
-            (enabled and self.resource_upgrade))
+            self.aliases['prior'] != (7 if enabled else 0) or bool(self.aliases.get('readonly')))
         self.record('inspected', enabled=enabled, aliases=self.aliases['prior'], running=self.before['value'])
 
     def record(self, event, **data):
@@ -52,8 +49,7 @@ class Stage:
         for index, (path, original) in enumerate(zip(self.device.ALIASES, self.originals)):
             value = self.camera.read(path, True)
             if self.aliases['prior'] & (1 << index):
-                if value not in (original,self.targets[index]):raise ValueError('Vertical resource bytes differ: ' + path)
-                if value!=self.targets[index]:self.resource_upgrade=True
+                if value != original:raise ValueError('Vertical alias bytes differ: ' + path)
             elif value is not None:
                 raise ValueError('Unaccounted vertical resource: ' + path)
 
@@ -71,16 +67,13 @@ class Stage:
 
     def prepare(self):
         # Resources must be durable and fully read back before saving ON.
-        if self.enabled and (self.aliases['prior'] != 7 or self.resource_upgrade):
-            if self.aliases['prior'] not in (0,7):
+        if self.enabled and self.aliases['prior'] != 7:
+            if self.aliases['prior'] != 0:
                 raise ValueError('Partial vertical aliases need explicit removal before enabling')
             self.device.require_aliases(self.workers.aliases(1))
             self.aliases = self.device.require_aliases(self.workers.aliases(0))
             if self.aliases['prior'] != 7:raise ValueError('Vertical aliases were not all installed')
             self.verify_existing()
-            for path,target in zip(self.device.ALIASES,self.targets):
-                if self.camera.read(path)!=target:raise ValueError('Portrait geometry complete readback differs: '+path)
-            self.resource_upgrade=False
             self.record('resources_fully_verified_before_saved_enable')
 
     def finish(self):
@@ -102,8 +95,6 @@ class Stage:
 
     def verify_loaded(self):
         self.finish_readonly()
-        if self.enabled and self.resource_upgrade:
-            raise ValueError('竖屏仍使用旧横屏线框；请重新点开启竖屏显示以更新资源')
         result = dict(saved='ON' if self.enabled else 'OFF', running='ON' if self.enabled else 'OFF',
             alias_count=self.aliases['prior'].bit_count(), persistent=True, loaded_verified=True)
         self.owner.state['vertical_result'] = result

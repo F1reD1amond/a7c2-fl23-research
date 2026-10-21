@@ -31,8 +31,6 @@ class PersistentVerticalTests(unittest.TestCase):
         self.bad_alias = False
         self.mount_busy = False
         self.originals = [bytes([i+65])*12 for i in range(3)]
-        self.targets=self.originals
-        self.camera.geometry_updated=False
         self.factory_patch = patch.object(Camera, '__call__', lambda obj, expected=None: obj)
         self.factory_patch.start(); self.addCleanup(self.factory_patch.stop)
         compile_patch = patch.object(checkpointworker, 'compile_worker', side_effect=fake_compile)
@@ -44,8 +42,7 @@ class PersistentVerticalTests(unittest.TestCase):
             if path in device.SOURCES:return self.originals[device.SOURCES.index(path)]
             if path in device.ALIASES:
                 i = device.ALIASES.index(path)
-                image=self.targets[i] if self.camera.geometry_updated else self.originals[i]
-                return (b'wrong' if self.bad_alias else image) if self.camera.alias_mask & (1<<i) else None
+                return (b'wrong' if self.bad_alias else self.originals[i]) if self.camera.alias_mask & (1<<i) else None
             return original_read(path, missing)
         self.camera.read = read
         original_save = self.camera.save_group
@@ -57,8 +54,6 @@ class PersistentVerticalTests(unittest.TestCase):
     def workers(self, camera, journal):
         fixture = self
         class Workers:
-            originals=fixture.originals
-            targets=fixture.targets
             def probe(self):return dict(value=camera.primary, status=0)
             def ram(self, value):
                 fixture.events.append(('primary', value)); camera.primary=value
@@ -69,7 +64,6 @@ class PersistentVerticalTests(unittest.TestCase):
                 if mode==1:
                     if fixture.fail_aliases:raise OSError('alias commit failed')
                     camera.alias_mask=7
-                    camera.geometry_updated=True
                 elif mode==2:camera.alias_mask=0
                 return dict(status=0,readonly=0,source_ok=7,phase=1 if mode==0 else 5,mode=mode,
                     prior=prior,source_sizes=list(map(len,fixture.originals))) if not fixture.mount_busy else dict(
@@ -98,30 +92,6 @@ class PersistentVerticalTests(unittest.TestCase):
             self.assertEqual(verified['phase'],'LOADED')
             self.assertTrue(verified['vertical_result']['loaded_verified'])
             self.assertEqual([e for e in self.events[len(events):] if e!=('aliases',0)],[])
-
-    def test_already_enabled_legacy_aliases_are_upgraded_without_changing_saved_switch(self):
-        self.targets=[b'portrait-0',b'portrait-1',self.originals[2]]
-        self.camera.primary=0;self.camera.alias_mask=7
-        for records in (self.camera.ram,self.camera.saved):records[0][verticalpersist.SETTING]=Prop(b'\0',64)
-        job=SimDirect(self.root/'upgrade',factory=self.camera)
-        with patch.object(direct,'plan',side_effect=lambda c,r,*a,**k:self.plan(c,r,True)):
-            result=job.run_direct('vertical_enable',version='2.01',power_confirmed=True)
-        self.assertEqual(result['phase'],'AWAITING_RELOAD')
-        self.assertIn(('aliases',1),self.events)
-        self.assertTrue(self.camera.geometry_updated)
-        self.assertEqual(self.camera.saved[0][verticalpersist.SETTING].data,b'\0')
-        self.assertFalse(any(kind=='program' for kind,mode in self.camera.native_calls))
-
-    def test_disable_removes_corrected_portrait_banks_as_well_as_legacy_aliases(self):
-        self.targets=[b'portrait-0',b'portrait-1',self.originals[2]]
-        self.camera.primary=0;self.camera.alias_mask=7;self.camera.geometry_updated=True
-        for records in (self.camera.ram,self.camera.saved):records[0][verticalpersist.SETTING]=Prop(b'\0',64)
-        job=SimDirect(self.root/'remove-corrected',factory=self.camera)
-        with patch.object(direct,'plan',side_effect=lambda c,r,*a,**k:self.plan(c,r,False)):
-            result=job.run_direct('vertical_disable',version='2.01',power_confirmed=True)
-        self.assertEqual(result['phase'],'AWAITING_RELOAD')
-        self.assertEqual(self.camera.alias_mask,0)
-        self.assertLess(self.events.index(('save',b'\1')),self.events.index(('aliases',2)))
 
     def test_alias_failure_prevents_saved_enable_and_program_writes(self):
         self.fail_aliases=True

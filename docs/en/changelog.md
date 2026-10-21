@@ -1,5 +1,12 @@
 # Changelog
 
+## Desktop preview.10.20 — Mac Terminal USB test build — 2026-10-21
+
+- Integrate the reviewed Terminal sudo launcher: explicit camera operations open Terminal for the user's password, while the GUI stays unprivileged. Preserve the shared installation/recovery engines and user data paths; retain the actual worker outcome.
+- Enable libusb debug logging in the administrator process and include it in existing authorization stderr/support logs. Detect a worker that exits without a terminal exit marker instead of waiting forever. Keep shell quoting and native no-USB authorization checks.
+- This test branch excludes the portrait Fn/submenu line-bank rework. Vertical Display uses the earlier resource aliases; it does not create full portrait-bank copies. Resource compression and audio-volume controls are not part of this build.
+- A successful recipient probe motivates the authorization change but does not validate the complete packaged app. Native CI and physical Mac camera results are reported separately. No camera operation is performed while building.
+
 ## Desktop preview.10.19 — portrait resource I/O correction — 2026-10-21
 
 - Fix the portrait-copy worker treating short reads/writes and every negative syscall return as generic EIO (-5). Complete partial transfers with updated offsets, retry bounded EINTR results, and retain original negative error codes. The old user's -5 report does not establish its underlying errno.

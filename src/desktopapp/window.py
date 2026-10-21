@@ -548,7 +548,7 @@ class Window(W.QMainWindow):
         self.button(layout, '读取当前显示状态', 'vertical_status', args)
         self.button(layout, '开启竖屏显示', 'vertical_enable', args, primary=True)
         self.button(layout, '关闭竖屏显示', 'vertical_disable', args)
-        hint = W.QLabel('已开启时仍可点“开启竖屏显示”覆盖更新 Fn／子菜单线框，不用先关闭或恢复；相同版本不重复写。写入后按弹窗断电重开。关闭及原厂恢复会清理竖屏辅助资源。线框修正版待实机验收。')
+        hint = W.QLabel('本 Mac USB 测试版沿用旧版竖屏资源，不含 Fn／子菜单线框修正，也不会复制整份图形库。开启／关闭后按弹窗断电重开；关闭及原厂恢复会清理本工具的辅助资源。')
         hint.setWordWrap(True)
         layout.addWidget(hint)
         layout.addStretch()

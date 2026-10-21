@@ -44,11 +44,16 @@ def test_terminal_launcher_quoting_preserves_spaces_quotes_and_metacharacters(tm
     sudo=[line for line in lines if line.startswith('/usr/bin/sudo ')]
     assert len(sudo)==1 and shlex.split(sudo[0])==['/usr/bin/sudo','/bin/sh','-c',shell]
     assert '--privileged-worker' in shell and 'A7C2_DESKTOP_DATA=' in shell and 'HOME=' in shell
+    assert 'LIBUSB_DEBUG=4' in shell
     trap=shlex.split([line for line in lines if line.endswith(' HUP')][0])
     exit_file=str(request.parent/'authorization.exit')
     assert trap==['trap','echo closed > '+shlex.quote(exit_file)+'; exit 129','HUP']
     bash=shutil.which('bash')
-    if bash:assert subprocess.run([bash,'-n',cmd[3]]).returncode==0
+    if bash:
+        # A Windows bash shim cannot open a native Windows path. Check the
+        # same script through stdin; native Mac CI also checks the real file.
+        assert subprocess.run([bash,'-n'],input=script,text=True,encoding='utf-8',
+                              capture_output=True,timeout=30).returncode==0
 
 
 def make_request(tmp_path,monkeypatch):
@@ -108,7 +113,7 @@ def test_closing_terminal_after_worker_started_waits_for_its_outcome(tmp_path,mo
     running=dict(phase='RUNNING',action='direct_factory_reset',pid=os.getpid())
     def finish(seconds):
         write_json(request.parent/'status.private.json',dict(phase='SUCCEEDED',action='direct_factory_reset',result={}))
-    with patch.object(macadmin.time,'sleep',side_effect=finish) as sleep:
+    with patch.object(macadmin.time,'sleep',side_effect=finish) as sleep,patch.object(macadmin,'alive',return_value=True):
         code,_,state=execute(request,terminal(request,'closed',status=running))
     assert code==0 and state['phase']=='SUCCEEDED'
     sleep.assert_called()
@@ -121,6 +126,23 @@ def test_worker_that_ends_without_outcome_is_unknown_not_cancelled(tmp_path,monk
         code,_,state=execute(request,terminal(request,'closed',status=running))
     assert code==2 and state['error_type']=='MacWorkerEnded'
     assert 'camera_io' not in state and '结果未知' in state['error']
+
+
+def test_dead_worker_without_terminal_exit_marker_cannot_wait_forever(tmp_path,monkeypatch):
+    request=make_request(tmp_path,monkeypatch)
+    def opened(*args,**kwargs):
+        write_json(request.parent/'status.private.json',dict(phase='RUNNING',action='direct_factory_reset',pid=999999))
+        return SimpleNamespace(returncode=0,stdout='',stderr='')
+    with patch.object(macadmin,'alive',return_value=False),patch.object(macadmin.time,'sleep',side_effect=AssertionError('Must not keep waiting')):
+        code,_,state=execute(request,opened)
+    assert code==2 and state['error_type']=='MacWorkerEnded'
+    assert not (request.parent/'authorization.exit').exists()
+
+
+def test_explicit_debug_level_is_preserved(tmp_path,monkeypatch):
+    request=make_request(tmp_path,monkeypatch)
+    shell=macadmin.shell_command(request,501,20,{'LIBUSB_DEBUG':'3'})
+    assert 'LIBUSB_DEBUG=3' in shell
 
 
 def test_dispatch_requests_authorization_before_loading_camera_backend(tmp_path,monkeypatch):
