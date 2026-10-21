@@ -53,7 +53,7 @@ jobs:
       - name: Focused desktop contracts
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest dev/desktop/test_packaging.py dev/desktop/test_macos_host.py dev/desktop/test_reloadguide.py dev/desktop/test_recovery_completion_ui.py dev/desktop/test_exiftool.py dev/desktop/test_allinone.py -q
+        run: python -m pytest dev/desktop/test_packaging.py dev/desktop/test_macos_host.py dev/desktop/test_reloadguide.py dev/desktop/test_recovery_completion_ui.py dev/desktop/test_exiftool.py dev/desktop/test_allinone.py dev/desktop/test_macadmin.py -q
       - name: Build native package
         run: python dev/desktop/build.py
       - name: Windows packaged offline checks
@@ -76,6 +76,9 @@ jobs:
           QT_QPA_PLATFORM=offscreen A7C2_DESKTOP_DATA="$PWD/dist/ui-smoke" dist/A7C2Tools.app/Contents/MacOS/A7C2Tools --smoke-test
           codesign --verify --deep --strict dist/A7C2Tools.app
           hdiutil verify dist/*.dmg
+      - name: macOS packaged administrator worker check (no USB)
+        if: runner.os == 'macOS'
+        run: python dev/desktop/mac_authorization_smoke.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

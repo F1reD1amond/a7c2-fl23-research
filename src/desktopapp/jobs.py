@@ -88,7 +88,9 @@ def export_support(job, destination):
     with zipfile.ZipFile(destination, 'x', zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('environment.json', json.dumps(summary, indent=2))
         for name in ['request.private.json', 'status.private.json', 'worker.log',
-                     'process.log', 'result.private.json', 'driver-report.private.json']:
+                     'process.log', 'result.private.json', 'driver-report.private.json',
+                     'authorization.private.json','authorization.stdout.log','authorization.stderr.log',
+                     'privilege.private.json']:
             path = job / name
             if path.is_file():
                 archive.write(path, 'diagnostics/' + name)

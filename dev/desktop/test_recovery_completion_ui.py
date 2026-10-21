@@ -107,3 +107,14 @@ def test_pending_recovery_keeps_install_state_until_verified(pending_window):
     with patch.object(window,'show_reload_guide'):
         finish(window,work,'AWAITING_RELOAD')
     assert window.settings['setup_work']=='old-setup'
+
+
+@pytest.mark.parametrize('error',['[Errno 13] Access denied (insufficient permissions)','No normal USB identity'])
+def test_connection_failure_does_not_claim_an_unfinished_restore(pending_window,error):
+    from desktopapp.paths import write_json
+    window,work,state=pending_window
+    write_json(work/'direct.private.json',dict(schema='a7c2-direct-job/1',mode='factory_reset',
+        phase='NEEDS_REVIEW',failed_during='READING',journal=[],error=error))
+    window.refresh_factory_controls()
+    assert '尚未开始' in window.factory_status.text()
+    assert '继续恢复' not in window.factory_button.text()

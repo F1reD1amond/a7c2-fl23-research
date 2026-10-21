@@ -1,5 +1,13 @@
 # Changelog
 
+## Desktop preview.10.10 — 2026-10-21
+
+- Fix macOS USB capture failing at `detach_kernel_driver(0)` with access denied. Explicit camera actions request macOS administrator authorization before backend execution; the normal-user GUI remains unprivileged. Passwords are handled only by the system dialog.
+- Retain exactly the existing Windows/desktop restoration backend and workflow. The Mac adapter changes only authorization/USB host access, preserves the login user's data paths and returns generated files to that account. It does not adopt a different reference-repository firmware/restoration implementation.
+- A connection failure with no identity/native journal now says restoration has not started, rather than presenting an unfinished write. Keep actual interrupted-write evidence and recovery verification intact.
+- 40 focused offline cases passed. Native CI additionally compiles the AppleScript and runs the packaged privileged worker through passwordless CI sudo to check root execution, user HOME/data preservation and file ownership without USB. This does not validate the recipient's interactive authorization or physical camera connection; those remain recipient tests.
+
+
 ## Desktop preview.10.9 — 2026-10-21
 
 - Cancel Intel macOS packaging at the owner’s request. Keep Windows x64 and macOS Apple Silicon ARM64 only; remove the Intel CI target and dependency override.

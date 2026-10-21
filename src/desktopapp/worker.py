@@ -46,6 +46,10 @@ def run(action, args, job):
         power = require_power(args.get('battery'), confirmed=args.get('power_confirmed', False))
         write_json(job / 'power-confirmation.private.json', power)
         print('Power:', json.dumps(power), flush=True)
+    if action=='mac_authorization_self_test':
+        if sys.platform!='darwin' or os.geteuid()!=0:raise RuntimeError('Self-test requires an authorized Mac worker')
+        write_json(data_root()/'authorization-self-test.private.json',dict(euid=os.geteuid(),camera_io=False))
+        return dict(euid=os.geteuid(),home=str(Path.home()),data_root=str(data_root()),camera_io=False)
     if action == 'factory_prepare':
         from . import official
         return official.prepare(args['source'])
@@ -290,8 +294,12 @@ def run(action, args, job):
 
 def execute_request(path):
     request = json.loads(Path(path).read_text(encoding='utf-8'))
+    from . import macadmin
+    if macadmin.required(request['action']):return macadmin.execute(path)
     job = Path(request['job_dir'])
     status = job / 'status.private.json'
+    if sys.platform=='darwin':
+        write_json(job/'privilege.private.json',dict(uid=os.getuid(),euid=os.geteuid(),camera_io=False))
     write_json(status, {'phase': 'RUNNING', 'action': request['action'], 'pid': os.getpid()})
     with (job / 'worker.log').open('a', encoding='utf-8', buffering=1) as log:
         with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):

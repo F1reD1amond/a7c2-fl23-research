@@ -391,6 +391,11 @@ class Window(W.QMainWindow):
             self.factory_button.setText('重新恢复原厂 2.01 功能（无需旧备份）')
             self.factory_status.setText('上次恢复核对已通过。程序、设置、加载状态及只读挂载已核对；当前功能和拍摄验收以机身为准。')
         elif phase=='NEEDS_REVIEW':
+            from looktool.factoryrecover import connection_failed_before_restore
+            if connection_failed_before_restore(state):
+                self.factory_button.setText('恢复原厂 2.01 功能（上次尚未开始）')
+                self.factory_status.setText('上次在 USB 连接阶段停止，尚未开始恢复写入。点击上方按钮，完成系统授权后重新连接。')
+                return
             self.factory_button.setText('继续恢复／核对未完成事务')
             self.factory_status.setText('恢复尚未完成，请继续处理未完成事务；当前不代表已恢复成功。')
 

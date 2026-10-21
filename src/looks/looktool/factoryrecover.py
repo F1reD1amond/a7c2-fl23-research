@@ -11,6 +11,12 @@ from . import checkpointworker, nameworker, nativebuild, worker
 FINISHED = {'AWAITING_RELOAD', 'LOADED', 'COMPLETE'}
 
 
+def connection_failed_before_restore(state):
+    return (state.get('mode')=='factory_reset' and state.get('phase')=='NEEDS_REVIEW'
+            and state.get('failed_during')=='READING' and state.get('journal')==[]
+            and not state.get('identity') and not state.get('resume_from'))
+
+
 def chain(folder):
     result, seen = [], set()
     while folder:

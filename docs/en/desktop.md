@@ -89,3 +89,5 @@ Build on an Apple Silicon Mac; Intel packages are not provided. Drag the app fro
 [Native build and CI assets](../../dev/desktop/README.md#macos-native-builds). Native artifacts are built on GitHub-hosted Macs and downloaded to this Windows host; Mac USB has not been physically tested in this update.
 
 The ZIP contains the six matching DCP profiles inside the `.a7look` documents. One-click plugin installation deploys their Adobe profiles and recorded slot mappings. Installing only the plugin does not infer existing camera slots. CUBE-only looks may have no matching DCP. ExifTool 13.59 is bundled with complete companion files; missing or stale saved paths fall back automatically. No manual ExifTool selection is required.
+
+Mac camera actions request authorization through the system administrator dialog before USB capture. Cancellation starts no camera work. The GUI stays unprivileged; passwords are not logged. The authorized worker uses the same restoration/installation backend as Windows and retains the login user’s data directories. An old connection-stage access-denied job with no native execution is shown as restoration not started.
