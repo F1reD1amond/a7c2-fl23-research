@@ -110,7 +110,8 @@ class Workers:
         from looktool.devicesession import invoke
         self.sequence += 1
         aliases = name in ('aliases.so','aliases_recovery.so')
-        return invoke(self.camera, (ASSETS / name).read_bytes(),
+        blob=(self.geometry_worker.read_bytes() if aliases and hasattr(self,'geometry_worker') else (ASSETS/name).read_bytes())
+        return invoke(self.camera, blob,
             stage='lut-names-staged.so' if aliases else 'lut-runtime-staged.so',
             request='a7c2.names.request' if aliases else None,
             result='a7c2.names.result' if aliases else 'a7c2.runtime.result',
@@ -126,6 +127,11 @@ class Workers:
         return require_ok(self.call(name, lambda raw: parse_ram(raw, target), mode=target))
 
     def aliases(self, mode):
+        if not hasattr(self,'geometry_worker'):
+            from .portrait import build
+            self.originals=[self.camera.read(path) for path in SOURCES]
+            root=(self.journal.owner.root if hasattr(self.journal,'owner') else self.journal.run)
+            self.targets,self.geometry_worker=build(self.originals,root/'portrait-geometry')
         name='aliases_recovery.so' if getattr(self,'allow_writable_recovery',False) else 'aliases.so'
         result = self.call(name, lambda raw: parse_aliases(raw, mode), mode=mode,
                            contents=struct.pack('<8sII', b'A7VRS001', mode, 0))
@@ -198,18 +204,20 @@ def execute(command, folder, *, camera_factory=None, workers_factory=Workers):
                         if inspected['prior'] not in (0, 7):
                             raise ValueError('Partial aliases exist; inspect the report and use remove before enable')
                         originals = [camera.read(path) for path in SOURCES]
+                        targets=workers.targets if hasattr(workers,'targets') else originals
                         if [len(data) for data in originals] != inspected['source_sizes']:
                             raise ValueError('Original graphics length changed during the session')
-                        if not inspected['prior']:
+                        upgrade=any(camera.read(path,True)!=target for path,target in zip(ALIASES,targets))
+                        if not inspected['prior'] or upgrade:
                             if before['value'] == 0:
                                 ram_intent = True
                                 workers.ram(1)
                             adding = True
                             installed = workers.aliases(1)
                             require_aliases(installed)
-                            if installed['created'] != 7 or installed['removed']:
+                            if (not inspected['prior'] and installed['created']!=7) or installed['removed']:
                                 raise ValueError('All three aliases were not added')
-                        for path, original in zip(ALIASES, originals):
+                        for path, original in zip(ALIASES, targets):
                             if camera.read(path) != original:
                                 raise ValueError('Complete alias readback differs: ' + path)
                         journal.record('all_alias_targets_fully_read_back')

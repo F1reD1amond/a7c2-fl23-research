@@ -29,10 +29,18 @@ static i64 rs_mount(int ro) {
 }
 static i64 rs_remount(int ro){i64 n=sc(40,0,(i64)"/usr",0,0xc30UL+(ro?1:0),0,0);return n?n:rs_mount(ro);}
 static i64 rs_sync(void){i64 fd=op("/usr/share/app",0x10000);if(fd<0)return fd;i64 n=sc(82,fd,0,0,0,0,0);cl(fd);return n;}
+#ifdef PORTRAIT_GEOMETRY
+#include "portrait_bank.h"
+#endif
 static i64 rs_link_state(u32 i) {
  u8 buf[64];i64 n=sc(78,-100,(i64)dst[i],(i64)buf,sizeof(buf),0,0);
  if(n==-2)return 0;
- if(n<0)return n==-22?-17:n;
+ if(n<0){
+#ifdef PORTRAIT_GEOMETRY
+  if(n==-22&&portrait_tail_sizes[i]){i64 status=portrait_compare(i,dst[i]);return status?status:2;}
+#endif
+  return n==-22?-17:n;
+ }
  return (u32)n==rs_len(target[i])&&rs_same(buf,(const u8*)target[i],(u32)n)?1:-17;
 }
 static i64 rs_source(u32 i) {
@@ -43,10 +51,18 @@ static i64 rs_source(u32 i) {
  cl(fd);if(n)return n;
  const u8 magic[8]={'u','x','d',7,0,0,0,0};u32 desc=*(u32*)(head+12),count=desc&8191;
  if(!rs_same(head,magic,8)||*(unsigned short*)(head+8)!=8||*(unsigned short*)(head+10)!=i||!count||desc!=(count|(((count+1)&~1U)<<12)))return -22;
- original[i]=st;r.counts[i]=count;r.sizes[i]=st.size;r.source_ok|=1U<<i;return 0;
+ original[i]=st;
+#ifdef PORTRAIT_GEOMETRY
+ fd=op(src[i],0x20000);if(fd<0)return fd;n=portrait_guard(i,fd);cl(fd);if(n)return n;
+#endif
+ r.counts[i]=count;r.sizes[i]=st.size;r.source_ok|=1U<<i;return 0;
 }
 static i64 rs_alias(u32 i) {
- if(rs_link_state(i)!=1)return -17;
+ i64 state=rs_link_state(i);
+#ifdef PORTRAIT_GEOMETRY
+ if(state==2)return 0;
+#endif
+ if(state!=1)return -17;
  i64 fd=op(dst[i],0);if(fd<0)return fd;struct RsStat st;i64 n=sc(80,fd,(i64)&st,0,0,0,0);cl(fd);
  if(!n&&(st.dev!=original[i].dev||st.ino!=original[i].ino||st.size!=original[i].size||st.mode!=original[i].mode))n=-116;return n;
 }
@@ -54,7 +70,11 @@ static i64 rs_remove(u32 mask) {
  i64 first=0;
  for(u32 i=0;i<3;i++)if(mask&(1U<<i)) {
   i64 n=rs_link_state(i);
-  if(n==1){n=sc(35,-100,(i64)dst[i],0,0,0,0);if(!n)r.removed|=1U<<i;}
+  if(n==1
+#ifdef PORTRAIT_GEOMETRY
+   ||n==2
+#endif
+  ){n=sc(35,-100,(i64)dst[i],0,0,0,0);if(!n)r.removed|=1U<<i;}
   else if(n==0)continue;
   if(n&&!first)first=n;
  }
@@ -79,9 +99,11 @@ __attribute__((visibility("default"))) void _init(void) {
  for(u32 i=0;i<3&&!r.status;i++) {
   r.status=rs_source(i);if(r.status)break;
   i64 state=rs_link_state(i);if(state<0){r.status=state;break;}
-  if(state==1)r.prior|=1U<<i;
+  if(state>0)r.prior|=1U<<i;
+#ifndef PORTRAIT_GEOMETRY
   if(r.mode==1&&state){r.status=-17;break;}
-  if(state==1&&r.mode==0)r.status=rs_alias(i);
+#endif
+  if(state>0&&r.mode==0)r.status=rs_alias(i);
  }
  if(!r.status)r.phase=1;
  int completed_busy=0;
@@ -89,12 +111,24 @@ __attribute__((visibility("default"))) void _init(void) {
   i64 rw=rs_remount(0);r.phase=2;
   if(rw)r.status=rw;
   if(!r.status&&r.mode==1)for(u32 i=0;i<3&&!r.status;i++) {
+#ifdef PORTRAIT_GEOMETRY
+   i64 old=rs_link_state(i);
+   if(old==2||(!portrait_tail_sizes[i]&&old==1))continue;
+   r.status=portrait_create(i);
+#else
    r.status=sc(36,(i64)target[i],-100,(i64)dst[i],0,0,0);
+#endif
    if(!r.status){r.created|=1U<<i;r.status=rs_alias(i);}
   }
   if(!r.status&&r.mode==2)r.status=rs_remove(r.prior);
   if(!r.status)r.status=rs_sync();
-  if(r.status&&r.mode==1){r.rollback=rs_remove(r.created);if(!r.rollback)r.rollback=rs_sync();}
+  if(r.status&&r.mode==1){r.rollback=rs_remove(r.created);
+#ifdef PORTRAIT_GEOMETRY
+   if(!r.rollback)for(u32 i=0;i<3;i++)if((r.created&r.prior)&(1U<<i)) {
+    i64 n=sc(36,(i64)target[i],-100,(i64)dst[i],0,0,0);if(n&&!r.rollback)r.rollback=n;
+   }
+#endif
+   if(!r.rollback)r.rollback=rs_sync();}
   r.readonly=rs_remount(1);
   completed_busy=VERTICAL_RECOVERY&&r.mode==2&&!r.status&&r.readonly==-16;
   if(!r.status)r.status=r.readonly;
