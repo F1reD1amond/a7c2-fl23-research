@@ -96,7 +96,7 @@
   "isolated_instruction_cases": 2550,
   "native_installer_fault_cases": 16,
   "wbi_cases": 11,
-  "portable_offline_guard_tests": 69,
+  "portable_offline_guard_tests": 82,
   "portable_host_simulation_cases": 8,
   "gamma_port": {
     "release": "0.5.2-preview",
@@ -303,6 +303,18 @@
       "A7C2_PYTHON": "可选环境变量，用于指定解释器排错",
       "Start.ps1": "可选替代入口，5.1 与 7.x 均可，Start.cmd 不依赖它",
       "usbdev_shell": "驱动服务名读取：先 powershell.exe，失败才试 pwsh.exe；两者都不可用时退回「能否用 libusb 打开」"
+    },
+    "usbdev_fix": {
+      "symptom": "AttributeError: 'list' object has no attribute '_ctx' at usb/util.py dispose_resources",
+      "root_cause": "usbdev.find() returned [] when the device did not appear within the timeout, while usb.util.dispose_resources() only accepts a single Device. The crash escaped from request_service_mode() because it sat in a finally block, where exceptions are not caught by the enclosing try/except.",
+      "fix": [
+        "find() now returns None (never a list); require() raises a displayable message",
+        "usbdev.dispose() ignores None, list/tuple/set and any object without _ctx",
+        "request_service_mode() returns early when the device is absent, before importing pmca",
+        "the 0336 wait loop tests \"is not None\" instead of relying on find() raising",
+        "transport._dispose() delegates to usbdev.dispose(); identity()/Session use require()"
+      ],
+      "regression_tests": "tests/test_usbdev.py (13 cases, fake usb.core/usb.util injected via sys.modules)"
     }
   }
 }

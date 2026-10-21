@@ -60,7 +60,11 @@ def backend():
 
 
 def find(pid, timeout=0.0):
-    """等待并取出唯一一台目标设备。"""
+    """等待并取出唯一一台目标设备；等不到就返回 ``None``。
+
+    返回的是单个 ``usb.core.Device``，不是列表。找到两台以上会抛错，
+    因为后面的流程无法判断该操作哪一台。
+    """
     import usb.core
     deadline = time.monotonic() + max(0.0, timeout)
     while True:
@@ -68,11 +72,36 @@ def find(pid, timeout=0.0):
         if found:
             break
         if time.monotonic() >= deadline:
-            return []
+            return None
         time.sleep(0.4)
     if len(found) != 1:
         raise RuntimeError(f'需要且只能连接一台目标相机（USB {pid:04x}），现在检测到 {len(found)} 台')
     return found[0]
+
+
+def require(pid, timeout=0.0, hint=''):
+    """与 :func:`find` 相同，但等不到时抛一条能直接显示给用户的错误。"""
+    device = find(pid, timeout)
+    if device is None:
+        raise RuntimeError(hint or f'没有找到 USB {pid:04x} 设备，请确认相机已开机并以 USB 连接')
+    return device
+
+
+def dispose(device):
+    """释放 pyusb 资源；传 ``None``、列表或不是设备的对象都安静返回。
+
+    ``usb.util.dispose_resources()`` 只接受单个 Device，传列表会得到
+    ``'list' object has no attribute '_ctx'``，所以这里统一做防御。
+    """
+    if device is None or isinstance(device, (list, tuple, set)):
+        return
+    if not hasattr(device, '_ctx'):
+        return
+    try:
+        import usb.util
+        usb.util.dispose_resources(device)
+    except Exception:
+        pass
 
 
 def _windows_services():
@@ -141,10 +170,9 @@ def driver_report():
                 item['detail'] = '未在系统里找到此身份（相机可能未以该模式连接）'
         if item['present'] and item['driver_ok']:
             try:
-                import usb.util
                 dev = find(pid)
-                item['reachable'] = bool(list(dev))
-                usb.util.dispose_resources(dev)
+                item['reachable'] = dev is not None
+                dispose(dev)
                 if not item['reachable']:
                     item['detail'] = '驱动已装但读不到 USB 配置，请重新插拔'
             except Exception as exc:
@@ -152,12 +180,13 @@ def driver_report():
         elif rows is None:
             # 读不到系统信息时，退回“能不能打开”作为唯一判据
             try:
-                import usb.util
                 dev = find(pid)
-                item['present'] = True
-                item['reachable'] = bool(list(dev))
+                item['present'] = dev is not None
+                item['reachable'] = dev is not None
                 item['driver_ok'] = item['reachable']
-                usb.util.dispose_resources(dev)
+                if dev is None:
+                    item['detail'] = '没有找到此身份（相机可能未开机，或未处于该模式）'
+                dispose(dev)
             except ModuleNotFoundError as exc:
                 if getattr(exc, 'name', '') == 'usb':
                     item['detail'] = '缺少 pyusb 依赖，请重新运行 Start.cmd 安装'
@@ -176,12 +205,18 @@ def request_service_mode():
 
     返回 ``{'switched': bool, 'waited': float, 'detail': str}``。
     """
-    import usb.util
+    # 先确认设备存在再导入 pmca：没有相机时不必依赖 vendor，也不会走到
+    # ``finally`` 里释放资源（旧版正因为在这里 finally 里 dispose 一个 list 而崩，
+    # 而 finally 抛出的异常不会被外层的 except 接住）。
+    dev = find(PID_MSC)
+    if dev is None:
+        return {'switched': False, 'waited': 0.0,
+                'detail': '没有找到 054C:0E8A 身份，请确认相机已开机并以 USB 海量存储模式连接'}
+
     from pmca.usb.driver.generic import GenericUsbDriver
     from pmca.usb.sony import SonySenserAuthDevice
     from transport import Bounded
 
-    dev = find(PID_MSC)
     auth = None
     try:
         auth = SonySenserAuthDevice(GenericUsbDriver(Bounded(dev, 20)))
@@ -193,17 +228,20 @@ def request_service_mode():
                 auth.stop()
             except Exception:
                 pass
-        usb.util.dispose_resources(dev)
+        dispose(dev)
 
     deadline = time.monotonic() + 20
     started = time.monotonic()
     while True:
+        probe = None
         try:
-            find(PID_SERVICE)
-            return {'switched': True, 'waited': round(time.monotonic() - started, 1), 'detail': ''}
+            probe = find(PID_SERVICE)
         except RuntimeError as exc:
             if '需要且只能连接一台' not in str(exc):
                 raise
+        dispose(probe)
+        if probe is not None:
+            return {'switched': True, 'waited': round(time.monotonic() - started, 1), 'detail': ''}
         if time.monotonic() >= deadline:
             return {'switched': False, 'waited': round(time.monotonic() - started, 1),
                     'detail': '20 秒内没有出现 0336 服务身份，请确认相机已开机、USB 连接正常'}
