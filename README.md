@@ -5,7 +5,7 @@
 Camera-side tools for the **Sony A7C II (ILCE-7CM2) on firmware 2.01**: FL2/FL3 Creative Looks, custom looks in slots 1–6, factory-function recovery, Vertical Display and electronic shutter sound — in one Windows desktop application, with independent command-line tools for each part.
 
 > [!IMPORTANT]
-> **Current desktop development build `3.0.0-desktop-preview.10.8`** — Windows 10/11 x64. Native macOS 14+ Apple Silicon / Intel APP/DMG packaging is now configured; no new DMG has been produced or physically validated yet. This is a preview: not every feature has passed physical acceptance yet, see [Verification status](#verification-status).
+> **Current desktop development build `3.0.0-desktop-preview.10.9`** — Windows 10/11 x64. Apple Silicon macOS 14+ DMG has passed native packaging, offline and GUI checks. Only Apple Silicon Macs are supported; physical Mac USB is untested. This is a preview: not every feature has passed physical acceptance yet, see [Verification status](#verification-status).
 >
 > Known published FL23 versions can upgrade directly. Factory-function recovery is optional, not a prerequisite for one-click installation.
 

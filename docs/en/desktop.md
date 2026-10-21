@@ -1,6 +1,6 @@
 # A7C II desktop tools
 
-For **ILCE-7CM2 firmware 2.01, 64-bit Windows 10–11**. This is a development preview. Startup does not open or flash a camera. Native Apple Silicon / Intel APP and DMG builds for macOS 14+ are wired in; no DMG has been produced or physically validated in this update.
+For **ILCE-7CM2 firmware 2.01, 64-bit Windows 10–11**. This is a development preview. Startup does not open or flash a camera. The Apple Silicon macOS 14+ DMG has passed native packaging, offline and GUI checks. Only Apple Silicon Macs are supported; physical Mac camera USB remains untested.
 
 ## Home: guided one-click installation
 
@@ -84,8 +84,8 @@ Verified factory recovery clears active setup / FL23 / look-resume state and ret
 
 ## macOS
 
-Build on a native Mac; use separate Apple Silicon / Intel packages. Drag the app from the DMG to Applications before opening. No Zadig or Windows driver is needed. Close Photos / Image Capture and other programs using the camera card. The tool unmounts only volumes under the identified camera USB device before libusb capture, leaving other disks alone. If macOS blocks the app, follow its Privacy & Security opening controls; there is no Developer ID signature or notarization, so acceptance on arbitrary systems is not assured.
+Build on an Apple Silicon Mac; Intel packages are not provided. Drag the app from the DMG to Applications before opening. No Zadig or Windows driver is needed. Close Photos / Image Capture and other programs using the camera card. The tool unmounts only volumes under the identified camera USB device before libusb capture, leaving other disks alone. If macOS blocks the app, follow its Privacy & Security opening controls; there is no Developer ID signature or notarization, so acceptance on arbitrary systems is not assured.
 
-[Native build and CI assets](../../dev/desktop/README.md#macos-native-builds). This Windows host cannot produce or validate a native DMG; Mac USB has not been physically tested in this update.
+[Native build and CI assets](../../dev/desktop/README.md#macos-native-builds). Native artifacts are built on GitHub-hosted Macs and downloaded to this Windows host; Mac USB has not been physically tested in this update.
 
 The ZIP contains the six matching DCP profiles inside the `.a7look` documents. One-click plugin installation deploys their Adobe profiles and recorded slot mappings. Installing only the plugin does not infer existing camera slots. CUBE-only looks may have no matching DCP. ExifTool 13.59 is bundled with complete companion files; missing or stale saved paths fall back automatically. No manual ExifTool selection is required.

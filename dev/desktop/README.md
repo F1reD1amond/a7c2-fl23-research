@@ -222,7 +222,7 @@ During development, run focused checks for the changed paths. Defer the full reg
 
 ## macOS native builds
 
-Build **on a Mac**, with native 64-bit Python 3.11. Windows cannot cross-build an APP/DMG. Apple Silicon and Intel use separate packages; minimum advertised OS is macOS 14. These paths are implemented but this update has not produced a native DMG or tested physical Mac USB.
+Build **on a Mac**, with native 64-bit Python 3.11. Windows cannot cross-build an APP/DMG. macOS packages support Apple Silicon only; minimum advertised OS is macOS 14. Apple Silicon has passed actual native packaging, packaged offline/GUI checks and DMG/signature verification; its DMG has been downloaded locally. Intel packaging was cancelled at the owner’s request and is not offered. Physical Mac USB is untested.
 
 ```sh
 python3 -m venv .venv-desktop
@@ -233,9 +233,9 @@ python dev/desktop/prepare_assets.py --preset-archive /path/to/desktop-presets.z
 python dev/desktop/build.py
 ```
 
-Keystone 0.9.2 and Unicorn 2.1.3 have no Apple Silicon wheels on PyPI. On ARM64 they build from their source distributions using Xcode Command Line Tools and CMake 3.31.6 (install the command-line tools if absent). Do not insert Intel dylibs into an ARM64 app. Build on Intel for the x86_64 package; Rosetta is not required for the ARM64 package.
+Keystone 0.9.2 and Unicorn 2.1.3 have no Apple Silicon wheels on PyPI. On ARM64 they build from their source distributions using Xcode Command Line Tools and CMake 3.31.6 (install the command-line tools if absent). Use Zig 0.13.0. Do not insert Intel dylibs into an ARM64 app. Rosetta is not required; Intel builds are not offered.
 
-Outputs: `dist/A7C2Tools.app` and `dist/A7C2Tools-macOS-arm64.dmg` or `dist/A7C2Tools-macOS-x86_64.dmg`. Staging is fresh per build; packaging verifies the ad-hoc app signature and DMG structure. There is no Developer ID signature/notarization. Mount the DMG and drag the app to Applications; run packaged offline self-test and GUI smoke checks before distribution. Native binaries and all helper imports must pass on each architecture; Windows mocks alone do not establish this.
+Outputs: `dist/A7C2Tools.app` and `dist/A7C2Tools-macOS-arm64.dmg`. Staging is fresh per build; packaging verifies the ad-hoc app signature and DMG structure. There is no Developer ID signature/notarization. Mount the DMG and drag the app to Applications; run packaged offline self-test and GUI smoke checks before distribution. Native binaries and all helper imports must pass on each architecture; Windows mocks alone do not establish this.
 
 The six compiled looks contain distribution-only source profiles and must stay outside Git. On an existing build machine, export the exact existing pack and notices:
 
@@ -245,6 +245,6 @@ python dev/desktop/prepare_assets.py --export-presets dist/desktop-presets.zip
 
 Transfer that ZIP to the Mac. `--preset-archive` also accepts the existing Windows desktop ZIP, but extracts only the six looks and their attribution/license files, never the Windows executable or DLLs. macOS bundles the official portable Perl ExifTool distribution and its modules/license, never a Windows helper. `prepare_assets.py` prepares it automatically or accepts `--exiftool-archive`. The runtime can also fall back to an installed helper or official download.
 
-The manual `desktop-preview.yml` workflow has Windows, `macos-15` (ARM64) and `macos-15-intel` native runners. Supply `preset_archive_url` pointing to the exported pack or an accessible desktop ZIP. The workflow must be available on the default branch to appear for manual dispatch; choose the feature ref for its code when available. The current public v2 CLI ZIP is not a desktop preset pack. CI runs focused contracts, native packaging, packaged offline/GUI checks, signature/DMG verification and uploads artifacts, without publishing a Release. Local source presets alone cannot populate a clean hosted runner.
+The manual `desktop-preview.yml` workflow has Windows and `macos-15` (ARM64) native runners. Supply `preset_archive_url` pointing to the exported pack or an accessible desktop ZIP. The workflow must be available on the default branch to appear for manual dispatch; choose the feature ref for its code when available. On the feature branch, updating `dev/desktop/native-build-request.json` also triggers an Apple Silicon build without modifying main; manual dispatch selects macos / windows / all. The current public v2 CLI ZIP is not a desktop preset pack. CI runs focused contracts, native packaging, packaged offline/GUI checks, signature/DMG verification and uploads artifacts, without publishing a Release. Local source presets alone cannot populate a clean hosted runner.
 
 macOS host preparation is informed by [MDHan/a7c2-fl23-macos](https://github.com/MDHan/a7c2-fl23-macos) at commit `1491f734df07f02fb77da6ea7062828bce0e30e7`: identify camera descendants in IORegistry, unmount camera storage normally, then claim libusb ownership. Its MIT notice is retained at `docs/licenses/a7c2-fl23-macos-MIT.txt`. We retain this project's service-first admission; the reference's pre-authentication camera-info and backup requirements are not imported. No camera operations occur while building.

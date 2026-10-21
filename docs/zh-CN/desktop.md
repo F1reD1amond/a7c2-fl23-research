@@ -1,6 +1,6 @@
 # A7C II 桌面工具
 
-适用 **ILCE-7CM2／固件 2.01／64 位 Windows 10–11**。当前为开发测试版；启动软件不会连接或刷写相机。macOS 14+ 的 Apple Silicon／Intel 原生 APP／DMG 构建已接入，尚未在本轮产出并实机验证 DMG。
+适用 **ILCE-7CM2／固件 2.01／64 位 Windows 10–11**。当前为开发测试版；启动软件不会连接或刷写相机。macOS 14+ Apple Silicon DMG 已产出，通过原生打包、离线和界面检查；仅提供 Apple Silicon 版，Mac 实机 USB 尚未测试。
 
 ## 首页：一键安装
 
@@ -84,8 +84,8 @@
 
 ## macOS 使用与打包
 
-在原生 Mac 上构建 APP／DMG；Apple Silicon 与 Intel 分开打包。将 APP 从 DMG 拖到“应用程序”再运行。无需 Zadig 或 Windows 驱动；关闭“照片／图像捕捉”和使用相机卡的程序，工具只卸载已识别相机下的存储卷再交给 libusb，不卸载其他硬盘。若系统提示不受信任，请在“系统设置 → 隐私与安全性”按实际提示允许打开；未提供开发者签名／公证，不保证任意系统均放行。
+在 Apple Silicon Mac 上构建 APP／DMG，不提供 Intel 版。将 APP 从 DMG 拖到“应用程序”再运行。无需 Zadig 或 Windows 驱动；关闭“照片／图像捕捉”和使用相机卡的程序，工具只卸载已识别相机下的存储卷再交给 libusb，不卸载其他硬盘。若系统提示不受信任，请在“系统设置 → 隐私与安全性”按实际提示允许打开；未提供开发者签名／公证，不保证任意系统均放行。
 
-[原生构建与 CI 资源准备](../../dev/desktop/README.md#macos-native-builds)。当前 Windows 电脑不能生成或验证原生 DMG，本轮未实测 Mac USB。
+[原生构建与 CI 资源准备](../../dev/desktop/README.md#macos-native-builds)。原生包在 GitHub Mac 构建机生成后下载到本机；本轮未实测 Mac USB。
 
 LrC 插件不再要求手选 ExifTool：内置 13.59 及完整伴随文件，找不到时自动使用已安装版本或下载官方版本；网络失败会保留具体错误，不会先操作相机。ZIP 的六款对应 DCP 嵌在 `.a7look` 中；一键安装勾选插件会部署 DCP 及本次槽位映射。单独安装插件不会自动推断既有六槽，CUBE 来源也不一定有 DCP。

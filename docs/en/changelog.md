@@ -2,9 +2,11 @@
 
 ## Desktop preview.10.9 — 2026-10-21
 
+- Cancel Intel macOS packaging at the owner’s request. Keep Windows x64 and macOS Apple Silicon ARM64 only; remove the Intel CI target and dependency override.
+
 - Fix one-click installation stopping when the optional Lightroom plugin is selected but the caller has no valid ExifTool path. Use bundled or installed ExifTool automatically; otherwise download the official distribution before camera work, retaining complete connection errors.
 - Bundle ExifTool 13.59 and its complete Windows companion files / macOS Perl modules and original licenses. The separate plugin button uses the same automatic preparation, with no hidden file-selection prerequisite. Missing paths saved on another computer fall back to the local helper.
-- 50 focused offline tests passed for helper resolution/extraction, one-click setup and plugin integration. The Windows EXE installed the plugin into an isolated Adobe directory without an ExifTool argument, ran its real bundled helper and read JPEG metadata successfully, without camera I/O. Native Mac packaging now runs on real Intel and Apple Silicon runners; physical Mac camera USB is a separate untested boundary.
+- 50 focused offline tests passed for helper resolution/extraction, one-click setup and plugin integration. The Windows EXE installed the plugin into an isolated Adobe directory without an ExifTool argument, ran its real bundled helper and read JPEG metadata successfully, without camera I/O. Apple Silicon DMG passed native packaged offline/GUI, ExifTool, signature and container checks and was downloaded locally; physical Mac camera USB remains untested.
 
 
 ## Desktop preview.10.8 — 2026-10-21
