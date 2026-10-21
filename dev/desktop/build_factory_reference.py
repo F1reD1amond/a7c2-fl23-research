@@ -7,7 +7,7 @@ import sys
 import zlib
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT / 'src'), str(ROOT / 'src/looks'), str(ROOT / 'dev/shutter_sound')]
+sys.path[:0] = [str(ROOT / 'src'), str(ROOT / 'src/looks'), str(ROOT / 'src/shutter_sound')]
 from desktopapp.worker import setup_runtime
 setup_runtime()
 from looktool import checkpointworker, device_layout, photoio, photobuild, six

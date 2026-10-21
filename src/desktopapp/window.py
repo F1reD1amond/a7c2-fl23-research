@@ -450,7 +450,7 @@ class Window(W.QMainWindow):
         self.look_button.setObjectName('action_direct_looks_import');self.look_button.clicked.connect(self.launch_look_changes)
         layout.addWidget(self.look_button);self.buttons.append(self.look_button)
         tools=W.QHBoxLayout();layout.addLayout(tools)
-        for title,callback in [('从 DCP／LUT 生成 A7Look…',self.compiler_dialog),('安装 LrC 自动识别插件…',self.plugin_dialog)]:
+        for title,callback in [('打开内置 DCP／A7Look 配对库',self.open_profile_library),('从 DCP／LUT 生成 A7Look…',self.compiler_dialog),('安装 LrC 自动识别插件…',self.plugin_dialog)]:
             button=W.QPushButton(title);button.clicked.connect(callback);tools.addWidget(button);self.buttons.append(button)
         formats=W.QPushButton('LUT 格式说明：ST / sRGB，不是 S-Log3…')
         formats.clicked.connect(self.show_look_format_guide);layout.addWidget(formats);self.buttons.append(formats)
@@ -461,6 +461,10 @@ class Window(W.QMainWindow):
         self._look_displayed_pending=None;self._look_refreshing=False
         self.look_editor.changed.connect(self.refresh_look_controls)
         self.refresh_look_controls()
+
+    def open_profile_library(self):
+        from .profilelibrary import location
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(str(location())))
 
     def look_pending_state(self):
         prior=self.settings.get('look_direct_work')

@@ -18,6 +18,8 @@ development-branch work pending manual physical acceptance, not a main release.
 
 - `src/fl23/`: exact-source FL2/FL3 installation, backup and verification.
 - `src/looks/`: Independent DCP/LUT CLI, exact-source device jobs and offline research tools.
+- `src/shutter_sound/`: shared sound runtime and native workers; tests/research stay in `dev/shutter_sound/`.
+- `src/desktopapp/platforms/`: host USB driver/media preparation and macOS Terminal authorization; feature planning/writing stays shared.
 - `docs/en/` and `docs/zh-CN/`: matching English/Simplified Chinese guides.
 - `docs/profiles/`: source inventory and original license text; original DCP bytes are Release assets.
 - `FL23.cmd`: Windows GUI/device CLI for prepare/install/verify only.
@@ -39,4 +41,7 @@ Never repeat a write with an unknown outcome. Offline manifests alone are not an
 device importer passed two selected-slot updates on one Windows camera;
 stock first-install, physical restoration and Mac USB remain untested.
 Keep full firmware, body backups/calibration, photos and credentials private.
+See `docs/en/code-map.md` for runtime/build/asset boundaries. Profile build inputs
+carry the accepted paired DCP/A7Look library; monochrome entries require the
+owner's independent-error inclusion criteria. End-user conversion stays offline.
 No Claude or additional agents without explicit user authorization.

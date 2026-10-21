@@ -94,7 +94,7 @@ def prepare(ap, cp, payload, output, zig=None):
         lines.append('static const u8 ' + name + '[]={' + ','.join(map(str, ap[at:at + 20])) + '};')
     header = root / 'probe.private.h'
     header.write_text('\n'.join(lines) + '\n', encoding='ascii')
-    nativebuild.compile_worker(Path(__file__).with_name('sound_probe.c'), header, root / 'probe.so', zig, fingerprints=False)
+    nativebuild.compile_worker((Path(__file__).parent / 'native/sound_probe.c'), header, root / 'probe.so', zig, fingerprints=False)
     nativebuild.compile_worker(candidate.ROOT / 'src/fl23/native/wbi.c', header, root / 'wbi.so', zig, fingerprints=False)
     program = program_worker(ap, cp, edits, root / 'program', zig)
     post = list(lines) + ['#define CHECK_EXTRA_GUARDS 1',
@@ -107,7 +107,7 @@ def prepare(ap, cp, payload, output, zig=None):
              'static const u32 extra_guard_count=' + str(len(rows)) + ';']
     post_header = root / 'post-probe.private.h'
     post_header.write_text('\n'.join(post) + '\n', encoding='ascii')
-    nativebuild.compile_worker(Path(__file__).with_name('sound_probe.c'), post_header,
+    nativebuild.compile_worker((Path(__file__).parent / 'native/sound_probe.c'), post_header,
                                root / 'post-probe.so', zig, fingerprints=False)
     files = files_worker.build(payload, csv, root / 'files', zig)
     return {'appFw.so': target, 'cpapp-b.bin': cp}, {

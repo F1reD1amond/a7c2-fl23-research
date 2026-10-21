@@ -63,6 +63,12 @@ Download the complete **`A7C2Tools-Windows-x64.zip`** from [Releases](https://gi
 
 These replace the **custom** Creative Look slots only; Sony's built-in Creative Looks are untouched. The built-in looks are fitted approximations of their source DCPs, not exact reproductions. To install your own files instead, untick the built-in pack on Home and fill the custom section; empty slots are left as they are.
 
+### Paired profile library
+
+Every desktop Windows ZIP includes `Profiles/Fujifilm` (11 looks) and `Profiles/Ricoh GR III` (4 color looks), with each original `.dcp` beside its fitted `.a7look` under the same filename stem. `Profiles/catalog.csv` lists the 15 pairs. The three Ricoh monochrome looks are excluded because their independent prediction errors remain too high. On the Custom Creative Looks page, use the button to open the bundled library.
+
+Choose the `.a7look` when writing a camera slot; these files are already fitted, so no conversion or Lightroom installation is needed. The matching `.dcp` is for RAW development on the computer. Lightroom may be used by the maintainer to prepare reference fits; it is not a dependency of the distributed converter or camera tools. Credits are consolidated below.
+
 ## Everyday tasks
 
 - **Change one or more custom slots.** On **自定义创意外观 (Custom Creative Looks)** the list starts empty. Add an item per slot; new items default to **恢复 ST 默认 (Restore ST)**, so switch to **写入 A7Look (Write A7Look)** and pick a file when importing. Resetting a slot does not bring back its former recipe.
@@ -128,17 +134,21 @@ The packaged build also contains distribution-only assets that are not in Git (t
 
 ## Repository layout
 
+See [the shared/platform code map](docs/en/code-map.md) for Windows/macOS boundaries and runtime, test, build and asset locations.
+
 ```text
 desktop.py              Desktop app entry (GUI, worker and self-test modes)
 FL23.cmd, lut.py, recovery.py, shutter.py, vertical.py, a7look_*.py, raw_*.py
                         Independent CLI entries (see above)
 src/
   desktopapp/           PySide6 GUI, job workers, drivers, presets, guided setup
+    platforms/          USB driver/media adapters and macOS authorization
   camera_runtime/       FL23 planner and native runtime used by the desktop app
   fl23/                 Standalone FL2/FL3 installer, backup and verification
   looks/                looktool: A7Look compiler/writer, direct device jobs,
                         factory reference, checkpoints, RAW profile tools
   vertical/             Vertical Display native workers
+  shutter_sound/        Shared sound runtime; native/ contains camera workers
   launcher.py           Shared Windows environment setup for the CMD entries
 plugins/A7LookAuto.lrplugin/
                         Lightroom Classic auto-profile plugin
@@ -147,6 +157,8 @@ dev/                    Desktop build and tests, release scripts, shutter-sound,
 docs/en/, docs/zh-CN/   Matching English / Simplified Chinese documentation
 docs/profiles/          DCP source inventory and original license text
 calibration/            Virtual calibration model for firmware 2.01
+desktop-assets/         Ignored six-default pack, accepted profile pairs and helpers
+build/, dist/           Ignored fitting/build evidence and final packages
 ```
 
 ## Documentation

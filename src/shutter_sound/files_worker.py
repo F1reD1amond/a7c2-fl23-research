@@ -33,7 +33,7 @@ def build(audio, csv, output, zig=None,*,audio_path=None,previous_csv=None):
     header = root / 'files.private.h'
     header.write_text('\n'.join(lines) + '\n', encoding='ascii')
     destination = root / 'files.so'
-    nativebuild.compile_worker(Path(__file__).with_name('sound_files.c'), header,
+    nativebuild.compile_worker((Path(__file__).parent / 'native/sound_files.c'), header,
                                destination, zig, fingerprints=False)
     return destination
 

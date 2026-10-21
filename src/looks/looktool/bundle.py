@@ -71,7 +71,7 @@ def plan(current, records, options, selected):
             target[key] = (resources.rename(current[key], names, labels)[0] if
                 any(parsed['entries'].get(labels[s-1], {}).get('text') != title for s, title in names.items()) else current[key])
     if options.get('sound', True):
-        spec = importlib.util.spec_from_file_location('bundle_sound_candidate', nativebuild.ROOT / 'dev/shutter_sound/candidate.py')
+        spec = importlib.util.spec_from_file_location('bundle_sound_candidate', nativebuild.ROOT / 'src/shutter_sound/candidate.py')
         sound = importlib.util.module_from_spec(spec); spec.loader.exec_module(sound)
         ap, cp = target['appFw.so'], target['cpapp-b.bin']
         installed = cp[sound.OFFSET:sound.OFFSET+2] == sound.AFTER

@@ -93,7 +93,8 @@ class Operation(W.QFrame):
         self.changed.emit()
 
     def choose_file(self):
-        path=W.QFileDialog.getOpenFileName(self,'选择 A7Look 文件',self.file_path,'A7Look (*.a7look)')[0]
+        from .profilelibrary import location
+        path=W.QFileDialog.getOpenFileName(self,'选择 A7Look 文件',self.file_path or str(location()),'A7Look (*.a7look)')[0]
         if path:self.set_file(path)
 
     def set_file(self,path):

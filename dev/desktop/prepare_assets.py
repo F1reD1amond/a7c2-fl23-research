@@ -8,6 +8,7 @@ import io
 import re
 import os
 import sys
+from profilepack import files as profile_files,archive_values
 
 ROOT = Path(__file__).resolve().parents[2]
 DRIVER = 'https://github.com/Timocop/libwdi-wdi-releases/releases/download/v1.0/x64.zip'
@@ -31,7 +32,7 @@ PRESET_NAMES = tuple('slot%d.a7look' % slot for slot in range(1,7)) + (
 
 
 def import_presets(archive, root=ROOT):
-    """Accept the exported pack or a desktop ZIP; extract only six-look data."""
+    """Import defaults and accepted profile pairs; never executable build inputs."""
     target=Path(root)/'desktop-assets/presets/default-six-v1'
     with zipfile.ZipFile(archive) as source:
         candidates=[n for n in source.namelist() if n.endswith('/default-six-v1/slot1.a7look')
@@ -40,17 +41,23 @@ def import_presets(archive, root=ROOT):
         prefix=candidates[0][:-len('slot1.a7look')]
         # Read all required files before replacing an existing local pack.
         values={name:source.read(prefix+name) for name in PRESET_NAMES}
+        library=archive_values(source)
     target.mkdir(parents=True,exist_ok=True)
     for name,value in values.items():(target/name).write_bytes(value)
+    library_root=Path(root)/'desktop-assets/profile-library-v1'
+    for name,value in library.items():
+        path=library_root/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(value)
     return target
 
 
 def export_presets(destination, root=ROOT):
     folder=Path(root)/'desktop-assets/presets/default-six-v1'
     values={name:(folder/name).read_bytes() for name in PRESET_NAMES}
+    library=profile_files(root)
     destination=Path(destination);destination.parent.mkdir(parents=True,exist_ok=True)
     with zipfile.ZipFile(destination,'w',zipfile.ZIP_DEFLATED) as output:
         for name,value in values.items():output.writestr('default-six-v1/'+name,value)
+        for name,path in library.items():output.write(path,'profile-library-v1/'+name)
     return destination
 
 
@@ -58,10 +65,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--exiftool-archive', type=Path,
                         help='Optional official Windows ExifTool ZIP to bundle')
-    parser.add_argument('--preset-archive',type=Path,help='Six-look ZIP or existing desktop ZIP')
+    parser.add_argument('--preset-archive',type=Path,help='Exported defaults/profile library or existing desktop ZIP')
     parser.add_argument('--presets-url',default=os.environ.get('A7C2_PRESET_ARCHIVE_URL'),
                         help='Download the same six-look pack for native CI builds')
-    parser.add_argument('--export-presets',type=Path,help='Export only six-look distribution data for CI')
+    parser.add_argument('--export-presets',type=Path,help='Export default six and accepted DCP/A7Look pairs for CI')
     args = parser.parse_args()
     if not args.presets_url and not args.preset_archive:
         request_file=ROOT/'dev/desktop/native-build-request.json'

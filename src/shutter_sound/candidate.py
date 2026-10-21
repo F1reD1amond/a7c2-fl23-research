@@ -68,7 +68,7 @@ def build(ap, cp, out, zig=None, *, restore=False):
         lines.append('static const u8 ' + name + '[]={' + ','.join(map(str, ap[at:at + 20])) + '};')
     header = out / 'probe.private.h'
     header.write_text('\n'.join(lines) + '\n', encoding='ascii')
-    nativebuild.compile_worker(Path(__file__).with_name('sound_probe.c'), header,
+    nativebuild.compile_worker((Path(__file__).parent / 'native/sound_probe.c'), header,
                                out / 'probe.so', zig, fingerprints=False)
     nativebuild.compile_worker(ROOT / 'src/fl23/native/wbi.c', header,
                                out / 'wbi.so', zig, fingerprints=False)

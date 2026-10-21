@@ -1,2 +1,2 @@
--r dev/shutter_sound/requirements.txt
+-r src/shutter_sound/requirements.txt
 imageio-ffmpeg>=0.5,<1

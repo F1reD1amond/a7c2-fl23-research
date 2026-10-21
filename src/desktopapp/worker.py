@@ -281,7 +281,7 @@ def run(action, args, job):
         command = 'remove' if action == 'vertical_disable' else action.removeprefix('vertical_')
         return execute(command, Path(args['workspace']))
     if action.startswith('sound_'):
-        sys.path.insert(0, str(ROOT / 'dev/shutter_sound'))
+        sys.path.insert(0, str(ROOT / 'src/shutter_sound'))
         from sound_cli import main
         command = action.removeprefix('sound_').replace('_', '-')
         argv = [command]

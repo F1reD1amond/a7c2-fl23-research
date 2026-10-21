@@ -1,5 +1,12 @@
 # Changelog
 
+## Desktop preview.10.23 — paired profile library and source layout — 2026-10-22
+
+- Fit all 18 supplied profiles against owner-authorized Lightroom references using 12 starts and 200 evaluations per solve on aep72, with additional native-first/zero/robust fits for three difficult monochrome looks. Include the 11 Fujifilm and 4 Ricoh color DCP/A7Look pairs. Exclude all three monochrome pairs after they fail the independent MAE <=3/255 and P95 <=12/255 inclusion criteria. Keep matching filename stems and synchronize the six defaults with the paired library.
+- Make Windows packaging and exported native-build inputs carry the complete paired library; reject missing or incorrectly matched pairs at build time. Keep all original DCP bytes unchanged and exclude local diagnostic files.
+- Additional owner-authorized Lightroom reference rendering and aep72 numerical fitting prepare distribution assets only. End-user conversion and camera operations remain independent of Lightroom.
+- Move shared sound runtime into `src/shutter_sound/` and its camera workers into `native/`; keep tests and trace tools in `dev/shutter_sound/`. Group desktop OS adapters under `desktopapp/platforms/`, preserving exact module-object compatibility for old imports. Document shared feature engines and host differences in `docs/en/code-map.md`.
+
 ## Desktop preview.10.22 — offline conversion iteration stop — 2026-10-22
 
 - Fix DCP/CUBE conversion aborting when the bounded linear initializer reaches 100 iterations. Retain its finite candidate for subsequent optimization, record the initializer status and iteration count, and preserve real numerical errors.

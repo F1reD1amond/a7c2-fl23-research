@@ -236,7 +236,7 @@ def run():
     from fwtool.archive import ext2, fat
     from desktopapp.official import builtin
     assert builtin()['version'] == '2.01'
-    sys.path[:0] = [str(ROOT / 'src/vertical'), str(ROOT / 'dev/shutter_sound')]
+    sys.path[:0] = [str(ROOT / 'src/vertical'), str(ROOT / 'src/shutter_sound')]
     importlib.import_module('verticaltool.device')
     assert (ROOT / 'src/vertical/assets/aliases_recovery.so').read_bytes()[:4] == b'\x7fELF'
     importlib.import_module('sound_cli')
