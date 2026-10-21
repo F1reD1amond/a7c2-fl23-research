@@ -10,7 +10,7 @@ for slot in range(1, 7):
     if not path.is_file():
         raise FileNotFoundError('Prepare the six-look distribution pack first: ' + str(path))
 datas, binaries, hidden = [], [], ['PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets',
-                                 'tarfile', 'lzma', 'bz2', 'zlib', 'urllib.request', 'wave', 'plistlib']
+                                 'tarfile', 'lzma', 'bz2', 'zlib', 'urllib.request', 'wave', 'plistlib', 'backports.tarfile']
 for package in ('numpy', 'scipy', 'PIL', 'tifffile', 'yaml', 'elftools', 'usb',
                 'libusb_package', 'Cryptodome', 'imageio_ffmpeg', 'ziglang', 'keystone', 'capstone', 'unicorn'):
     d, b, h = collect_all(package)
