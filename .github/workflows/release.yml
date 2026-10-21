@@ -13,7 +13,7 @@ permissions:
 jobs:
   package:
     strategy:
-      fail-fast: true
+      fail-fast: false
       matrix:
         os: [windows-latest, macos-15]
     runs-on: ${{ matrix.os }}
