@@ -102,10 +102,15 @@ def main():
         urls=__import__('json').loads(request_file.read_text(encoding='utf-8')).get('exiftool_archives',{}) if request_file.is_file() else {}
         if sys.platform in urls:
             import tempfile
-            with tempfile.TemporaryDirectory(prefix='a7c2-exiftool-input-') as temporary:
-                path=Path(temporary)/('helper.zip' if sys.platform=='win32' else 'helper.tar.gz')
-                path.write_bytes(fetch(urls[sys.platform]))
-                install(dest,archive=path)
+            try:
+                with tempfile.TemporaryDirectory(prefix='a7c2-exiftool-input-') as temporary:
+                    path=Path(temporary)/('helper.zip' if sys.platform=='win32' else 'helper.tar.gz')
+                    path.write_bytes(fetch(urls[sys.platform]))
+                    install(dest,archive=path)
+            except RuntimeError as exc:
+                # A pinned draft asset can disappear; the official release is the same tool.
+                print('Pinned ExifTool archive unavailable ('+str(exc)[:120]+'); using the official download.',flush=True)
+                install(dest)
         else:install(dest)
     print('Build helpers prepared. No driver installed; no camera connected.')
 
