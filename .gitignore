@@ -17,3 +17,6 @@ diagnostic-reports/
 dist/
 .a7c2-lut-work-store/
 .a7c2-lut-backup-store/
+
+# Release inputs are committed only on temporary build/release-* branches.
+release-assets/
