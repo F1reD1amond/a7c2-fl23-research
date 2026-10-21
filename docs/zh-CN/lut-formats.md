@@ -1,6 +1,6 @@
 # LUT / DCP 格式与色彩空间
 
-[桌面工具](desktop.md) · [English](../en/lut-formats.md)
+[首页](../../README.zh-CN.md) · [English](../en/lut-formats.md)
 
 **桌面生成器需要 Sony ST / sRGB 输入、sRGB 输出的独立 3D `.cube`。不能直接使用 S-Log3 LUT。** 相机写入页选择 `.a7look`；`.cube` 和 `.dcp` 要先转换。生成过程只操作电脑文件。
 

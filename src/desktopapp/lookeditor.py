@@ -1,36 +1,7 @@
 """Incremental custom-slot editor. This module never opens a camera."""
 from pathlib import Path
 from PySide6 import QtCore, QtGui, QtWidgets as W
-
-STYLE = '''
-QWidget {font-family:"Segoe UI","Microsoft YaHei";font-size:13px;color:#dce6ef;background:#101923;}
-QLabel[muted="true"] {color:#94a8ba;}
-QLabel[title="true"] {font-size:27px;font-weight:650;color:#f0f5fa;}
-QLabel[badge="true"] {background:#173c43;color:#91dfd4;border-radius:5px;padding:6px 10px;}
-QLabel[warning="true"] {color:#dfb984;}
-QFrame[card="true"] {background:#152332;border:1px solid #30495d;border-radius:9px;}
-QFrame[card="true"] QLabel {background:transparent;}
-QComboBox,QLineEdit {background:#101d2a;border:1px solid #3a5266;border-radius:5px;padding:8px;min-height:19px;}
-QComboBox {padding-right:25px;}
-QComboBox::drop-down {border:0;border-left:1px solid #30495d;width:24px;}
-QComboBox QAbstractItemView {background:#192c3d;selection-background-color:#20575e;}
-QLineEdit:disabled {color:#60778a;}
-QPushButton {background:#223a4e;border:1px solid #3b586e;border-radius:6px;padding:9px 15px;}
-QPushButton:hover {background:#2c4d62;}
-QPushButton:disabled {background:#182c38;color:#6b8495;border-color:#294252;}
-QPushButton[primary="true"] {background:#147b80;color:white;border-color:#2ca7aa;font-weight:600;}
-QPushButton[primary="true"]:disabled {background:#21444d;color:#819da5;border-color:#35515d;}
-QPushButton[quiet="true"] {background:transparent;border:0;color:#9cb0c0;padding:6px;}
-QPushButton[quiet="true"]:hover {background:#3c2931;color:#efb1b1;}
-QListWidget {background:#10202d;border:0;padding:14px 9px;}
-QListWidget::item {padding:17px 13px;margin-bottom:4px;border-radius:6px;color:#c4d2dc;}
-QListWidget::item:selected {background:#214759;color:#b1e8e7;}
-QScrollArea {border:0;}
-QScrollBar:vertical {background:#12222e;width:8px;}
-QScrollBar::handle:vertical {background:#365363;border-radius:4px;min-height:30px;}
-QScrollBar::add-line:vertical,QScrollBar::sub-line:vertical {height:0;}
-QWidget#operationDetails,QStackedWidget#operationStack {background:transparent;}
-'''
+from .theme import COLORS, EDITOR as STYLE
 
 
 def label(text, *, muted=False):
@@ -43,7 +14,7 @@ class Choice(W.QComboBox):
     def paintEvent(self,event):
         super().paintEvent(event)
         painter=QtGui.QPainter(self);painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        painter.setPen(QtCore.Qt.NoPen);painter.setBrush(QtGui.QColor('#a7bfce'))
+        painter.setPen(QtCore.Qt.NoPen);painter.setBrush(QtGui.QColor(COLORS['muted']))
         x,y=self.width()-13,self.height()//2
         painter.drawPolygon(QtGui.QPolygon([QtCore.QPoint(x-4,y-2),QtCore.QPoint(x+4,y-2),QtCore.QPoint(x,y+3)]))
 

@@ -40,9 +40,9 @@ for folder in ('src/desktopapp', 'src/camera_runtime', 'src/looks/looktool',
 for relative,source in profile_files().items():
     datas.append((str(source),str(Path('desktop-assets/profile-library-v1')/Path(relative).parent)))
 for name in ('desktop.py', 'LICENSE', 'README.md', 'README.zh-CN.md', 'desktop-requirements.txt',
-             'dev/desktop/offline_smoke.py', 'docs/en/desktop.md',
-             'docs/zh-CN/desktop.md', 'docs/en/lut-formats.md', 'docs/zh-CN/lut-formats.md', 'docs/en/desktop-validation.md',
-             'docs/zh-CN/desktop-validation.md', 'docs/licenses/a7c2-fl23-macos-MIT.txt', 'calibration/a7c2-2.01.virtual.npz'):
+             'dev/desktop/offline_smoke.py', 'docs/en/lut-formats.md', 'docs/zh-CN/lut-formats.md',
+             'docs/en/notices.md', 'docs/zh-CN/notices.md', 'docs/licenses/a7c2-fl23-macos-MIT.txt',
+             'calibration/a7c2-2.01.virtual.npz'):
     datas.append((str(root / name), str(Path(name).parent)))
 
 a = Analysis([str(root / 'dev/desktop/frozen_entry.py')], pathex=[],

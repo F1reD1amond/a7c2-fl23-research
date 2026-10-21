@@ -1,6 +1,6 @@
 # LUT / DCP formats and color spaces
 
-[Desktop guide](desktop.md) · [简体中文](../zh-CN/lut-formats.md)
+[Home](../../README.md) · [简体中文](../zh-CN/lut-formats.md)
 
 **The desktop converter accepts a standalone 3D `.cube` with Sony ST / sRGB input and sRGB output. It does not directly accept S-Log3 LUTs.** The camera import page takes `.a7look`; convert `.cube` or `.dcp` first. Conversion only processes computer files.
 

@@ -11,22 +11,7 @@ from . import presets
 from . import reloadguide
 from . import connectionguide
 from .paths import ROOT, data_root, load_settings, write_json
-
-
-STYLE = '''
-QWidget {font-family:"Segoe UI","PingFang SC","Microsoft YaHei";font-size:13px;color:#dbe3ee;background:#101823;}
-QLineEdit,QSpinBox,QDoubleSpinBox,QComboBox,QPlainTextEdit {background:#172433;border:1px solid #33475b;border-radius:6px;padding:7px;selection-background-color:#285e81;}
-QPushButton {background:#243b50;border:1px solid #3d596e;border-radius:6px;padding:8px 13px;}
-QPushButton:hover {background:#31516b;} QPushButton:disabled {color:#718094;background:#192431;}
-QPushButton[primary="true"] {background:#137d81;border:1px solid #28adb1;color:white;}
-QPushButton[primary="true"]:disabled {background:#21444d;border-color:#35515d;color:#819da5;}
-QListWidget {background:#101c2a;border:0;padding:10px;} QListWidget::item {padding:16px 12px;border-radius:7px;}
-QListWidget::item:selected {background:#224559;color:#8ce7dd;}
-QGroupBox {border:1px solid #304155;border-radius:8px;margin-top:15px;padding:16px 11px 10px;}
-QGroupBox::title {subcontrol-origin:margin;left:12px;padding:0 5px;color:#a9bdd0;}
-QLabel[hint="true"] {color:#9aaec2;} QProgressBar {border:0;background:#203043;height:5px;} QProgressBar::chunk {background:#26b8a9;}
-QCheckBox {spacing:8px;padding:5px 0;} QScrollArea {border:0;}
-'''
+from .theme import WINDOW as STYLE
 
 
 class Window(W.QMainWindow):
@@ -861,8 +846,8 @@ class Window(W.QMainWindow):
             if success:
                 result=status['result']
                 W.QMessageBox.information(self,'USB 只读检测通过',
-                    '已完成 %d 轮、共 %.1f MB 只读传输，读回字节一致。\n\n没有写入固件、设置或运行原生写入程序。\n\n%s'%
-                    (len(result['rounds']),result['total_bytes']/1024/1024,result['note']))
+                    '已完成 %d 轮、共 %.1f MB 程序文件只读传输，持续 %.0f 秒，每轮字节一致。\n\n没有写入固件、设置或运行原生写入程序。\n\n%s'%
+                    (len(result['rounds']),result['total_bytes']/1024/1024,result.get('seconds',0),result['note']))
             else:W.QMessageBox.warning(self,'USB 连接检测未通过',status.get('error','请查看日志并换线后重测。'))
         elif waiting:
             self.show_reload_guide(setup=status.get('action')=='setup_all', mode=('resource_reload' if resource_wait else status.get('action') if

@@ -1,196 +1,305 @@
-# A7C II Tools
+# A7C II Tools 3.0
 
 **English** · [简体中文](README.zh-CN.md)
 
-Camera-side tools for the **Sony A7C II (ILCE-7CM2) on firmware 2.01**: FL2/FL3 Creative Looks, custom looks in slots 1–6, factory-function recovery, Vertical Display and electronic shutter sound — in one Windows desktop application, with independent command-line tools for each part.
+A desktop tool for the **Sony A7C II (ILCE-7CM2) on firmware 2.01**. It adds FL2/FL3, custom Creative Looks, electronic shutter sound and Vertical Display, and can restore factory functions in one click.
 
-> [!IMPORTANT]
-> **Current desktop development build `3.0.0-desktop-preview.10.9`** — Windows 10/11 x64. Apple Silicon macOS 14+ DMG has passed native packaging, offline and GUI checks. Only Apple Silicon Macs are supported; physical Mac USB is untested. This is a preview: not every feature has passed physical acceptance yet, see [Verification status](#verification-status).
->
-> Known published FL23 versions can upgrade directly. Factory-function recovery is optional, not a prerequisite for one-click installation.
+**3.0 is the first release with a proper graphical interface.** Driver setup, installation, cold reload and verification all happen with buttons in one window; no command line needed.
 
 **Community:** [Telegram (recommended)](https://t.me/sonyfwlab) · [Discord](https://discord.gg/SwPdfSd9c)
 **Author:** Xiaohongshu [QAQLeonard（读研版）](https://www.xiaohongshu.com/user/profile/660501f7000000000600d03c) · Douyin **LeonardZ** (ID `90860261487`)
 
+> [!IMPORTANT]
+> This tool modifies programs and settings in the camera firmware. Read the whole [step-by-step guide](#step-by-step-guide) before you start. If the app reports an error, **export a diagnostic bundle first. Do not keep retrying the write.**
+
+The interface is in Simplified Chinese. Button names below are given in Chinese with an English translation, so you can match them on screen.
+
 ## Contents
 
-- [Features](#features)
-- [Quick start (Windows package)](#quick-start-windows-package)
-- [Everyday tasks](#everyday-tasks)
+- [What it does](#what-it-does)
+- [Download and requirements](#download-and-requirements)
+- [Before you start](#before-you-start)
+- [Step-by-step guide](#step-by-step-guide)
+  - [Step 1: Install the drivers (Windows)](#step-1-install-the-drivers-windows)
+  - [Driver errors: uninstall, then reinstall](#driver-errors-uninstall-then-reinstall)
+  - [Step 2: Installed an earlier version? Restore factory functions first](#step-2-installed-an-earlier-version-restore-factory-functions-first)
+  - [Step 3: One-click install](#step-3-one-click-install)
+  - [Step 4: Check on the camera](#step-4-check-on-the-camera)
+- [Using each feature on its own](#using-each-feature-on-its-own)
+- [Troubleshooting](#troubleshooting)
 - [Verification status](#verification-status)
-- [Safety rules](#safety-rules)
-- [Command-line tools](#command-line-tools)
-- [Run and build from source](#run-and-build-from-source)
-- [Repository layout](#repository-layout)
-- [Documentation](#documentation)
-- [Releases and downloads](#releases-and-downloads)
+- [Command line and development](#command-line-and-development)
+- [Older releases](#older-releases)
 - [Credits and licenses](#credits-and-licenses)
 - [Film look comparisons](#film-look-comparisons)
+- [Acknowledgements](#acknowledgements)
+- [Sponsor](#sponsor)
 
-## Features
+## What it does
 
-| Feature | What it does |
+| Feature | Description |
 | --- | --- |
-| **USB drivers** | Prepares the normal (`054C:0E8A`) and service (`054C:0336`) USB connections, keeps an existing compatible driver, diagnoses connection errors and can uninstall the camera driver. Administrator access is requested only when a binding must be installed. |
-| **FL2 / FL3** | Enables, re-enables or removes the two menu entries. Includes the photo/movie curve-routing fix from [PR #6](https://github.com/QAQLeonard/a7c2-fl23-research/pull/6). |
-| **Custom looks** | Writes `.a7look` files into chosen custom slots with your own names, or resets slots to ST. Several writes and resets run as one operation; slots you don't list stay unchanged. |
-| **Look conversion & Lightroom** | Converts supported DCP/CUBE files to `.a7look` and installs a Lightroom Classic plugin that applies the matching source DCP to RAW files on import. DCP and CUBE conversion are standalone offline operations; Lightroom is not required. |
-| **Factory recovery** | Removes supported project changes and restores stock 2.01 behavior **without an old backup** or firmware download. Body calibration, counters and unrelated settings are kept; custom slots return to ST. Restoring from an original backup is a separate, optional path. |
-| **Vertical Display** | Saves the native switch that rotates shooting information and layout when the camera is held vertically. The full MENU does not rotate. |
-| **Electronic shutter sound** | Turns native electronic shutter sound on or off, converts a clip from an audio/video file and saves it as the custom sound. Audition is optional. |
+| **One-click install** | Installs the six built-in looks, FL2/FL3, electronic shutter sound and Vertical Display in one pass. The Lightroom plugin is optional. |
+| **FL2 / FL3** | Adds FL2 and FL3 to the Creative Look list. You can remove them again at any time. |
+| **Custom Creative Looks** | Writes `.a7look` files into custom slots 1–6 with your own names, or resets slots to ST. Slots you don't list stay unchanged. |
+| **Look conversion** | Converts DCP or CUBE files to `.a7look` offline, without Lightroom. Ships with 15 paired DCP/A7Look profiles. |
+| **Lightroom plugin** | When you import RAW files, applies the DCP that matches the custom slot used for each shot. |
+| **Electronic shutter sound** | Turns on Sony's native electronic shutter sound, or uses a clip from any audio/video file as a custom sound. |
+| **Vertical Display** | Rotates shooting information and icons when the camera is held vertically. The full MENU does not rotate. |
+| **Restore factory functions** | Removes every change this project makes and restores stock 2.01 behavior. **No old backup needed**; body calibration is kept. |
 
-## Quick start (Windows package)
+## Download and requirements
 
-Download the complete **`A7C2Tools-Windows-x64.zip`** from [Releases](https://github.com/QAQLeonard/a7c2-fl23-research/releases). Extract the whole archive and run `A7C2Tools.exe`, keeping the `_internal` folder next to it. No separate Python install is required. Opening the app never connects to or writes the camera by itself. The interface is in Simplified Chinese; English names below are translations.
+| System | Download | Notes |
+| --- | --- | --- |
+| **Windows 10/11 x64** | `A7C2Tools-Windows-x64.zip` from [Releases](https://github.com/QAQLeonard/a7c2-fl23-research/releases) | Extract the whole archive and run `A7C2Tools.exe`. Keep the `_internal` and `Profiles` folders next to it; don't copy the EXE out on its own. No Python install needed. |
+| **macOS 14+ (Apple Silicon)** | `A7C2Tools-macOS-arm64.dmg` from [Releases](https://github.com/QAQLeonard/a7c2-fl23-research/releases) | Drag the app into Applications. It isn't signed by a developer, so allow it once under System Settings → Privacy & Security. No Intel build. **USB on a real Mac has not been verified yet.** |
+
+Both packages include **15 paired DCP and `.a7look` files** (11 Fujifilm, 4 Ricoh color). The two files for each look share the same name and sit side by side:
+- **Windows:** in the `Profiles` folder next to the EXE.
+- **macOS:** inside the app. Open them with **打开内置 DCP／A7Look 配对库 (Open paired DCP/A7Look library)** on the Custom Creative Looks page.
+
+The `.a7look` goes into the camera; the matching `.dcp` is for RAW development in Lightroom.
+
+Camera: **ILCE-7CM2 on firmware 2.01**. No other model or firmware version is supported.
+
+## Before you start
+
+- **Battery:** at least 50%. The app asks you to confirm power before every write.
+- **Cable:** use a USB cable that carries data, plugged straight into the computer (avoid docks and hubs). Connect one camera at a time.
+- **USB mode:** set the camera's USB connection to **Mass Storage**.
+- **Expected message:** while connecting or switching drivers, the camera may show **"Please check the connected device"** and the computer may not show a drive letter. Both are normal. Judge success by the app's progress and log, not by that message; don't unplug the cable or reinstall drivers because of it.
+- **During a write:** while the app shows a task running, don't unplug the cable, power off the camera or close the app. Act only after the app says reading and writing have ended.
+- **Opening the app** never connects to or writes the camera by itself.
 
 > [!NOTE]
-> **Connection message:** During connection or driver switching, the camera's **“Check the connected device” (请检查所连接的设备)** message is expected. A missing camera drive letter is also possible. Follow this tool's progress and logs; do not unplug or reinstall drivers just because of the camera message. Actual errors reported by the tool still need attention.
+> **Cold reload** is the key step of every workflow; you'll do it after every write. The app shows a dialog each time:
 >
-> **Cold reload** — used after every write: unplug USB and any external power → wait for the access light to stop → switch OFF and wait for the screen and light to go out → remove the battery for **at least one minute** → reinsert it and switch ON.
+> 1. Unplug USB and any other external power.
+> 2. Wait for the access light to stop blinking.
+> 3. Switch the camera OFF and wait for the screen and access light to go dark.
+> 4. Remove the battery and wait **at least one minute**.
+> 5. Put the battery back and switch the camera on.
+>
+> Switching off and on again is not enough. Newly written programs only load after a cold reload.
 
-1. Charge the battery and connect one camera in **Mass Storage** mode with a data cable.
-2. Open **首页 · 一键安装 (Home · One-click install)** and select the features. The default replaces custom slots 1–6 with the six looks below and enables FL2/FL3, native shutter sound and Vertical Display; the Lightroom plugin is optional.
-3. Click **一键安装 / 继续安装**. The tool prepares drivers as needed, combines the camera changes, writes them and performs complete readback. It does not require a historical recovery-verification record.
-4. Follow the dialog for a **cold reload**, reconnect, then click **继续安装** once. It performs the final combined loaded-state check and reports installation complete; no per-feature check buttons are needed.
+## Step-by-step guide
 
-**Optional recovery:** use **恢复原厂功能** only when you want to remove project modifications and reset all custom slots to ST. Its own recovery remains pending until the restart/check step succeeds. Old recipes are not recovered.
+Follow these four steps in order.
 
-### Default six looks
+```text
+Step 1  Install drivers (Windows) ──error──→ uninstall drivers → replug → install again
+   │      └─ recommended: USB stability check (read-only); change cable/port if it fails
+   │
+Step 2  Ever used any version of this project? ──yes──→ restore factory functions → cold reload → verify
+   │no
+Step 3  One-click install → cold reload → reconnect USB → continue → installation complete
+   │
+Step 4  Check looks, FL2/FL3, shutter sound and Vertical Display on the camera
+```
 
-| Slot | 1 | 2 | 3 | 4 | 5 | 6 |
+### Step 1: Install the drivers (Windows)
+
+The app talks to the camera through two USB identities: normal Mass Storage `054C:0E8A`, and the authenticated service connection `054C:0336`. Both need a WinUSB driver.
+
+1. Turn on the camera, choose Mass Storage and connect it to the computer.
+2. Open **连接与驱动 (Connection & drivers)** in the left sidebar.
+3. Click **检测相机与驱动 (Detect camera & drivers)**. The log should show `054C:0E8A`. If it doesn't, check the cable and the USB mode.
+4. Click **准备两阶段驱动并测试连接 (Prepare two-stage drivers & test connection)**:
+   - The app first installs the driver for `0E8A`, then switches the camera to its service connection and installs the driver for `0336` once it appears.
+   - Windows may ask for administrator permission **once or twice**. Click Yes.
+   - An identity that already has a usable driver (WinUSB, libusbK or libusb0) is kept as it is.
+   - The camera may show "Please check the connected device" during this step. That's expected.
+5. You're done when the log says **"服务连接成功，驱动准备结束" (service connection succeeded; driver setup finished)**. This step **does not write the camera firmware**.
+6. **Recommended:** before your first write, click **检测 USB 连接稳定性（只读）(Check USB stability, read-only)** to test the cable and port.
+   - The check runs for **at least 2 minutes**. It repeatedly reads the camera's two program files (the same files a write reads back in full) and compares every round with the first, byte for byte.
+   - Any read error, any mismatch, or any single read taking longer than 20 seconds fails the check.
+   - It only reads and never writes to the camera.
+   - If the connection drops during a write or readback, the result can become "unknown", which is hard to recover from. Confirm the connection is stable before you write.
+   - If the check fails, try another cable or a USB port on the back of the computer until it passes.
+   - Passing doesn't guarantee the connection will never drop during a write. Keep the cable and power steady while writing.
+
+> [!TIP]
+> One-click install also checks and prepares the drivers at the start. Doing this step separately first means any driver problem shows up before anything is written.
+
+**macOS:** no driver installation is needed.
+- Close Photos, Image Capture and anything else that might be using the camera's card.
+- On **连接与驱动**, click **准备 USB 服务连接 (Prepare USB service connection)**.
+- Every camera operation opens a Terminal window. Type your **Mac login password** there so the app can take over USB through sudo. The app never reads or stores the password; closing the window before typing it cancels the camera operation.
+
+### Driver errors: uninstall, then reinstall
+
+The driver state may be wrong if any of these happen:
+- Step 1 fails, or reports that `0336` appeared but its interface couldn't be opened.
+- You previously installed another driver with Zadig or a similar tool.
+- Windows keeps recognizing the camera incorrectly after you connect it.
+
+In that case, **uninstall first, then reinstall with Step 1**:
+
+1. On **连接与驱动**, click **卸载相机驱动，恢复 Windows 默认连接 (Uninstall camera driver, restore Windows default)**. Confirm, and allow administrator permission in the Windows prompt.
+   - Only third-party drivers for Sony `054C:0E8A` and `054C:0336` are removed. Other devices are untouched, and the camera firmware is not modified.
+   - The driver packages are backed up to the job folder before removal.
+2. Follow the log:
+   - Usually: **unplug USB and plug it back in using Mass Storage mode**, so Windows rebinds its default driver.
+   - If the log says Windows needs a restart, restart the computer (the app never restarts it for you).
+3. Go back to [Step 1](#step-1-install-the-drivers-windows) and click **准备两阶段驱动并测试连接** again.
+
+If it still fails, try another cable and a USB port on the back of the computer, and run **检测 USB 连接稳定性（只读）** to narrow it down. If that doesn't help, click **导出诊断包 (Export diagnostics)** at the bottom of the window and share the bundle in the community group.
+
+### Step 2: Installed an earlier version? Restore factory functions first
+
+**If this camera has ever used any version of this project, restore factory functions before installing 3.0.** That includes FL23 v1.0/v2.x, looks imported with `lut.py`, `shutter.py` or `vertical.py`, and earlier desktop previews. This clears leftovers from older versions so 3.0 starts from a clean stock 2.01 state.
+
+A camera that was never modified can skip this step.
+
+1. On the camera, switch Creative Look to **ST**.
+2. Open **恢复原厂功能 (Restore factory functions)** and click **恢复／继续恢复原厂 2.01 功能（无需旧备份）(Restore / continue restoring factory 2.01 functions, no old backup needed)**. Confirm power to start.
+   - The app has built-in stock 2.01 data for the regions it changes, so no old backup or firmware download is needed.
+   - Body calibration, counters and unrelated settings are kept.
+3. After the write and full readback, a dialog says **the restore is not finished yet**. Do a [cold reload](#before-you-start) and check that the camera shows a live view.
+4. Reconnect USB (Mass Storage) and click **重启后核对并完成恢复 (Verify after restart and finish restore)**. The restore is complete only when this check passes; the app then clears the old installation state.
+
+> [!WARNING]
+> Restoring sets all six custom slots to ST. Recipes you had in them **cannot be recovered**. Write down any settings you want to keep first.
+
+If the restore is interrupted, click the same button again: the app reads the camera's current state and finishes only what's left. If the button changes to **断电后重试恢复（本次尚未写入）(Retry after power cycle; nothing written yet)**, nothing was written this time. Do a cold reload as the dialog says, then click it.
+
+### Step 3: One-click install
+
+1. Open **首页 · 一键安装 (Home · One-click install)**. These are selected by default:
+   - **Install the six built-in looks** (replaces custom slots 1–6; Sony's own Creative Looks are kept)
+   - **Enable FL2/FL3**
+   - **Enable Sony's native electronic shutter sound**
+   - **Save Vertical Display as on**
+   - **Install the Lightroom auto-profile plugin**: optional, needs Lightroom Classic on this computer
+2. Click **一键安装 (One-click install)** and confirm power. The app checks the drivers, merges every selected option into a single write and reads everything back.
+3. When the dialog says reading and writing have ended, do a [cold reload](#before-you-start).
+4. Switch the camera on, reconnect USB (Mass Storage) and click **继续安装 (Continue installation)** on Home. It's the same button. The app checks that the camera has restarted and loaded the changes, then sets up sound and the plugin. **Nothing is written again.**
+5. An **Installation complete** dialog lists the looks and features that were installed. You can reopen it later with **查看上次安装结果（不连接相机）(View last installation result, no camera access)**.
+
+If the app says that names are written but programs are not yet, the camera is still holding its old resources. Do a cold reload as the dialog says, reconnect and click **继续安装** again. Names are not written twice.
+
+**Default six looks:**
+
+| Custom slot | 1 | 2 | 3 | 4 | 5 | 6 |
 | --- | --- | --- | --- | --- | --- | --- |
 | Look | Classic Neg. (NC) | Classic Chrome (CC) | Nostalgic Neg. (NN) | Astia | GR Positive Film | GR Negative Film |
 
-These replace the **custom** Creative Look slots only; Sony's built-in Creative Looks are untouched. The built-in looks are fitted approximations of their source DCPs, not exact reproductions. To install your own files instead, untick the built-in pack on Home and fill the custom section; empty slots are left as they are.
+To install your own looks instead, untick the built-in six, expand **改用自己的 A7Look 文件 (Use your own A7Look files)** and pick an `.a7look` file for each slot. Slots left empty stay as they are.
 
-### Paired profile library
+### Step 4: Check on the camera
 
-Every desktop Windows ZIP includes `Profiles/Fujifilm` (11 looks) and `Profiles/Ricoh GR III` (4 color looks), with each original `.dcp` beside its fitted `.a7look` under the same filename stem. `Profiles/catalog.csv` lists the 15 pairs. The three Ricoh monochrome looks are excluded because their independent prediction errors remain too high. On the Custom Creative Looks page, use the button to open the bundled library.
+- Switch between ST and each custom slot. The live view should change immediately. Take a photo and play it back.
+- In the Creative Look list, check that FL2 and FL3 can be selected, shot and played back.
+- Take a shot with the electronic shutter and listen for the sound. If you hear nothing, check the camera's Audio Signals setting.
+- Hold the camera vertically and check that the shooting information rotates.
 
-Choose the `.a7look` when writing a camera slot; these files are already fitted, so no conversion or Lightroom installation is needed. The matching `.dcp` is for RAW development on the computer. Lightroom may be used by the maintainer to prepare reference fits; it is not a dependency of the distributed converter or camera tools. Credits are consolidated below.
+The built-in looks are fitted approximations of their source DCPs; colors may not match the DCP exactly.
 
-## Everyday tasks
+## Using each feature on its own
 
-- **Change one or more custom slots.** On **自定义创意外观 (Custom Creative Looks)** the list starts empty. Add an item per slot; new items default to **恢复 ST 默认 (Restore ST)**, so switch to **写入 A7Look (Write A7Look)** and pick a file when importing. Resetting a slot does not bring back its former recipe.
-- **Save a custom shutter sound.** On **电子快门声音 (Electronic shutter sound)**, with native shutter sound enabled, choose an audio/video file, set the start and duration, then click **转换所选片段 (Convert selected clip) → 保存当前自定义声音 (Save current custom sound)**. Audition and listening records are optional. After the write and readback, do a cold reload to load the sound. (An optional audition instead asks you to unplug USB *with the camera still on*, so you can listen before saving.) If you hear nothing, check the camera's Audio Signals setting.
-- **Go back to stock behavior.** Use **恢复原厂功能** as in Step 1. If it is interrupted, click the same button again: it reads current state and finishes only what remains.
-- **Lightroom.** After installing the plugin, enable it once in Lightroom's Plug-in Manager. It chooses the DCP during RAW development; it does not alter RAW sensor data.
+Every write follows the same pattern: write → full readback → dialog asking for a cold reload. Once Step 1 is done, each page can be used on its own.
 
-Full walkthrough of every page: [Windows desktop guide](docs/en/desktop.md).
+### FL2 / FL3
+
+- **启用／重新启用 FL2 / FL3 (Enable / re-enable)**: cold-reload after the write. If you can select them on the camera, you're done; no need to reconnect and verify.
+- **从列表移除 FL2 / FL3，保留自定义外观 (Remove from list, keep custom looks)**: hides the menu entries only. Shared code used by custom looks stays, so you can enable them again later.
+- Switch the camera to ST before removing them.
+
+### Custom Creative Looks
+
+1. Click **+ 添加操作项 (Add operation)** once for each slot you want to change:
+   - **写入 A7Look (Write A7Look)**: choose a `.a7look` file and, optionally, the name shown on the camera (empty uses the name stored in the file).
+   - **恢复 ST 默认 (Restore ST)**: resets the slot to ST. New items default to this.
+2. Click **查看并应用这 N 项更改 (Review and apply N changes)**, check the list and confirm. All listed slots are written in one go; other slots are left alone.
+3. Cold-reload and it's ready to use. No separate verification needed.
+
+Tools on the same page:
+- **打开内置 DCP／A7Look 配对库 (Open paired DCP/A7Look library)**: 15 pairs (11 Fujifilm, 4 Ricoh); each DCP sits next to its `.a7look` with the same name.
+- **从 DCP／LUT 生成 A7Look… (Generate A7Look from DCP/LUT)**: offline conversion; doesn't connect to the camera.
+  - A **CUBE** must take **Sony ST / sRGB** input and output sRGB. **Log LUTs such as S-Log3 can't be used directly**; see [LUT formats and color spaces](docs/en/lut-formats.md).
+  - A **DCP** is parsed and fitted by the app itself; Lightroom isn't needed.
+- **安装 LrC 自动识别插件… (Install Lightroom plugin)**: after installing, enable it once in Lightroom's Plug-in Manager. From then on, when you import RAW files it applies the DCP for the slot each shot used. It never alters the RAW data itself.
+
+### Electronic shutter sound
+
+1. **开启电子快门声 (Turn on shutter sound)**: turns on Sony's native electronic shutter sound. Cold-reload after the write.
+2. Choose an audio or video file, set the **start** and **length** (0.01–2 s), then click **转换所选片段 (Convert selected clip)**. This runs on the computer only.
+3. Optionally adjust the volume with **−3 dB / +3 dB / 还原转换时音量 (reset to converted volume)**.
+4. Click **保存当前自定义声音 (Save current custom sound)** and cold-reload after the write.
+5. **相机内临时试听 (Temporary in-camera audition)** is optional. While auditioning, **keep the camera on**, unplug USB and take a test shot; reconnect and save if you like it.
+6. To go back to the original sound, click **恢复原厂音效 (Restore factory sound)**.
+
+### Vertical Display
+
+> [!NOTE]
+> The vertical menu frames are being rewritten. This section will be updated when that work is finished.
+
+- **启用竖屏显示 (Enable Vertical Display)**: saves the switch. After a cold reload, shooting information and icons rotate when you hold the camera vertically.
+- **关闭竖屏显示 (Disable Vertical Display)**: turns it off first, then reverts the related changes.
+- Both buttons are safe to click again; nothing is rewritten when the state already matches.
+
+### Restore factory functions
+
+See [Step 2](#step-2-installed-an-earlier-version-restore-factory-functions-first). The advanced section also offers two other ways to restore:
+- Import a complete stock `BODYDATA.DAT` and restore from it.
+- Return to an earlier state from an old body backup (one made by older FL23 or `lut.py` versions).
+
+## Troubleshooting
+
+| Symptom | What to do |
+| --- | --- |
+| Camera shows "Please check the connected device" | Normal. Follow the app's log. |
+| `054C:0E8A` not found | The camera isn't in Mass Storage mode, or the cable can't carry data. Fix it and replug. |
+| `0336` never appears | The app cools down and retries automatically, up to 3 times. If it still fails, see [Driver errors](#driver-errors-uninstall-then-reinstall). |
+| `0336` appears but its interface can't be opened | A driver problem. Uninstall and reinstall the driver; don't keep clicking install. |
+| Install or restore was interrupted | Click **the same button** again. The app reads the current state and picks up where it stopped; finished parts aren't rewritten. |
+| App reports an unknown result or asks for review | **Don't retry the write.** Click **导出诊断包 (Export diagnostics)** and share it in the community group. |
+| No shutter sound | Check that Audio Signals is on in the camera menu. |
+| Look colors differ slightly from the DCP | Expected: the in-camera table is a fitted approximation. |
+| Terminal asks for a password on a Mac | Enter your Mac login password; it's used by sudo to take over USB. |
+
+A diagnostic bundle contains device information and local paths, so review it before sharing it publicly. It never includes firmware, body calibration or photos.
 
 ## Verification status
 
 | Area | Status |
 | --- | --- |
-| FL2/FL3, six-look installation, factory recovery | Camera-side evidence on the owner's Windows A7C II |
-| Selected look preview/photo checks, temporary custom-audio playback | Tested on the same camera |
-| Persistent custom shutter sound | 156 related offline tests, packaged self-test and offline save preparation passed; **physical write, cold boot and playback acceptance pending** |
-| Persistent Vertical Display, broader shooting/Fn/video behavior | Separate checks, pending |
-| macOS USB and packaging | Not validated for this build |
+| FL2/FL3, six-look install, factory restore | Written, read back and verified after restart on the author's Windows + A7C II |
+| Custom look preview/photos, temporary audition | Tested on the same camera |
+| Persistent custom shutter sound | Offline tests and packaged self-test pass; long-term camera testing in progress |
+| Vertical Display (including menu frames) | Being rewritten; camera acceptance pending |
+| macOS USB | Package builds; USB on a real Mac not yet verified |
 
-Offline tests and byte readback do not prove that the camera boots correctly or that colors and sound behave as intended. Details: [desktop validation](docs/en/desktop-validation.md) · [changelog](docs/en/changelog.md).
+Offline tests and byte readback can't prove the camera works correctly in every situation, and everything so far has been verified on a single camera. Test records for each version are in the [changelog](docs/en/changelog.md).
 
-## Safety rules
+## Command line and development
 
-- **Never repeat a write whose outcome is unknown.** The tool stops and keeps the evidence; inspect it before doing anything else. A failure that provably happened before any camera write can be retried with a fresh job.
-- Keep the full logs. Support exports contain device information and local paths — review them before sharing.
-- Full firmware, body backups/calibration, private photos and credentials are never part of this repository or its builds. Keep yours private.
-- Use a charged battery; the tool asks you to confirm power before every write.
+The interface covers everyday use. The original command-line tools remain for advanced users and development:
 
-## Command-line tools
+| Entry | Purpose |
+| --- | --- |
+| `python desktop.py` | Run the desktop app from source (64-bit Python 3.11; `pip install -r desktop-requirements.txt` first) |
+| `FL23.cmd` | Legacy FL2/FL3 command-line installer |
+| `python lut.py` | Legacy look import and single-slot restore |
+| `python recovery.py` | Full rollback from an original backup |
+| `python a7look_compile.py` | Offline DCP/CUBE → `.a7look` compiler |
 
-All tools are run from the repository root. Each one is independent; the desktop app calls the same back ends.
+Offline tests (no camera access): `python -m pytest dev/desktop -q`. Architecture, build and packaging: [development guide](docs/en/development.md). Read [AGENTS.md](AGENTS.md) before letting an AI change the code.
 
-| Entry | Purpose | Guide |
-| --- | --- | --- |
-| `python desktop.py` | Desktop application from source | [Desktop guide](docs/en/desktop.md) |
-| `FL23.cmd` | Windows FL2/FL3 prepare / install / verify (`FL23.cmd --help`); double-click for its original GUI | [FL23](docs/en/fl23.md) |
-| `python lut.py` | DCP/LUT inspection and conversion, selected-slot import, single-slot restore, job diagnosis | [Custom LUT/DCP](docs/en/custom-lut.md) |
-| `python recovery.py` | Full rollback from an original FL23 backup2 or a complete checkpoint | [Recovery](docs/en/recovery.md) |
-| `python a7look_compile.py` | Offline DCP/CUBE → `.a7look` compiler | [A7Look compiler](docs/en/a7look-compiler.md) |
-| `python a7look_write.py` | Write a compiled `.a7look` (shares the `lut.py` transaction CLI) | [A7Look writer](docs/en/a7look-writer.md) |
-| `python raw_auto.py` / `raw_import.py` | Lightroom auto-profile plugin install; slot→DCP bindings for RAW import | [RAW workflow](docs/en/raw-import.md) |
-| `python shutter.py` | Electronic shutter sound CLI (experimental) | [Shutter sound](docs/en/technical/shutter-sound.md) |
-| `python vertical.py` | Older session-only Vertical Display CLI | [Vertical Display](docs/en/vertical-display.md) |
+## Older releases
 
-Every CLI prints its commands with `--help`; `lut.py doctor --device` and `shutter.py doctor` check dependencies without connecting.
+- [v2.2-preview.1](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.2-preview.1): command-line FL23, `lut.py`, `recovery.py`
+- [v2.1](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.1) · [v1.0](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v1.0)
+- [All 18 original DCP files](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.1/a7c2-dcp-profiles-2026-10-18.zip) ([sources](docs/en/notices.md))
 
-## Run and build from source
-
-The desktop app uses 64-bit **Python 3.11**; the standalone CLIs need 64-bit Python 3.10+ ([setup guide](docs/en/manual.md)).
-
-```sh
-python -m pip install -r desktop-requirements.txt
-python desktop.py
-```
-
-Run the offline tests (no camera access):
-
-```sh
-python -m pytest dev/desktop -q
-```
-
-The packaged build also contains distribution-only assets that are not in Git (the six-look pack and bundled helpers, under the ignored `desktop-assets/`). To build a package, follow the [desktop build guide](dev/desktop/README.md) and supply those assets yourself (or import the exported presets ZIP). [LUT color spaces and file formats](docs/en/lut-formats.md). CI (`.github/workflows/desktop-preview.yml`) builds on native runners without publishing a Release.
-
-## Repository layout
-
-See [the shared/platform code map](docs/en/code-map.md) for Windows/macOS boundaries and runtime, test, build and asset locations.
-
-```text
-desktop.py              Desktop app entry (GUI, worker and self-test modes)
-FL23.cmd, lut.py, recovery.py, shutter.py, vertical.py, a7look_*.py, raw_*.py
-                        Independent CLI entries (see above)
-src/
-  desktopapp/           PySide6 GUI, job workers, drivers, presets, guided setup
-    platforms/          USB driver/media adapters and macOS authorization
-  camera_runtime/       FL23 planner and native runtime used by the desktop app
-  fl23/                 Standalone FL2/FL3 installer, backup and verification
-  looks/                looktool: A7Look compiler/writer, direct device jobs,
-                        factory reference, checkpoints, RAW profile tools
-  vertical/             Vertical Display native workers
-  shutter_sound/        Shared sound runtime; native/ contains camera workers
-  launcher.py           Shared Windows environment setup for the CMD entries
-plugins/A7LookAuto.lrplugin/
-                        Lightroom Classic auto-profile plugin
-dev/                    Desktop build and tests, release scripts, shutter-sound,
-                        USB and vertical research tooling
-docs/en/, docs/zh-CN/   Matching English / Simplified Chinese documentation
-docs/profiles/          DCP source inventory and original license text
-calibration/            Virtual calibration model for firmware 2.01
-desktop-assets/         Ignored six-default pack, accepted profile pairs and helpers
-build/, dist/           Ignored fitting/build evidence and final packages
-```
-
-## Documentation
-
-| Topic | English | 简体中文 |
-| --- | --- | --- |
-| Desktop app | [Desktop guide](docs/en/desktop.md) · [Validation](docs/en/desktop-validation.md) | [桌面工具](docs/zh-CN/desktop.md) · [验证](docs/zh-CN/desktop-validation.md) |
-| FL2/FL3 CLI | [FL23](docs/en/fl23.md) | [FL23](docs/zh-CN/fl23.md) |
-| Custom looks | [Custom LUT/DCP](docs/en/custom-lut.md) · [A7Look overview](docs/en/a7look-suite.md) | [自定义 LUT/DCP](docs/zh-CN/custom-lut.md) · [A7Look 总览](docs/zh-CN/a7look-suite.md) |
-| Backup rollback | [Recovery](docs/en/recovery.md) | [Recovery](docs/zh-CN/recovery.md) |
-| RAW / Lightroom | [RAW workflow](docs/en/raw-import.md) | [RAW 流程](docs/zh-CN/raw-import.md) |
-| Python setup | [Windows/macOS setup](docs/en/manual.md) | [安装准备](docs/zh-CN/manual.md) |
-| Internals | [Integration](docs/en/technical/integration.md) · [Formats](docs/en/technical/formats.md) · [Failures](docs/en/technical/failures.md) · [Validation](docs/en/technical/validation.md) | [集成](docs/zh-CN/technical/integration.md) · [格式](docs/zh-CN/technical/formats.md) · [历史错误](docs/zh-CN/technical/failures.md) · [验证](docs/zh-CN/technical/validation.md) |
-| Development | [Repository & maintenance](docs/en/development.md) · [Desktop build](dev/desktop/README.md) · [AI reproduction](docs/en/ai.md) | [开发维护](docs/zh-CN/development.md) · [AI 复现](docs/zh-CN/ai.md) |
-| History | [Changelog](docs/en/changelog.md) | [更新日志](docs/zh-CN/changelog.md) |
-
-Contributors and AI agents should read [AGENTS.md](AGENTS.md) and [docs/en/ai.md](docs/en/ai.md) before changing code.
-
-## Releases and downloads
-
-The desktop app (`A7C2Tools-Windows-x64.zip`) is on the [Releases](https://github.com/QAQLeonard/a7c2-fl23-research/releases) page. Earlier standalone tools remain available:
-
-- [v2.2-preview.1](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.2-preview.1)** — FL23 CLI, standalone `lut.py` and `recovery.py`, full toolkit
-- [v2.1](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v2.1) — previous non-preview release
-- [v1.0](https://github.com/QAQLeonard/a7c2-fl23-research/releases/tag/v1.0) — original FL23 installer
-- [Original DCP files](https://github.com/QAQLeonard/a7c2-fl23-research/releases/download/v2.1/a7c2-dcp-profiles-2026-10-18.zip) — separate download ([sources](docs/en/profiles.md))
+If your camera used an older version, do [Step 2](#step-2-installed-an-earlier-version-restore-factory-functions-first) before upgrading.
 
 ## Credits and licenses
 
-Code is licensed under [MIT](LICENSE). DCPs, reference looks and bundled dependencies keep their original licenses and attribution — see [notices](docs/en/notices.md) and [profile sources](docs/en/profiles.md). Fujifilm DCP references are credited to **门萨特里顿** and Ricoh references to **爸总林先森** on Xiaohongshu.
+Code is licensed under [MIT](LICENSE). DCPs, reference looks and bundled third-party components keep their own licenses and attribution; see [notices](docs/en/notices.md). Fujifilm DCP references are credited to **门萨特里顿** and Ricoh references to **爸总林先森** on Xiaohongshu.
 
-This is independent research, not affiliated with Sony, Fujifilm, Ricoh or Adobe. Look names imply neither endorsement nor exact color equivalence, and this is not a Sony-signed update.
+This is independent research, not affiliated with Sony, Fujifilm, Ricoh or Adobe. Look names imply neither endorsement nor exact color equivalence, and this tool is not a Sony-signed update.
 
 ## Film look comparisons
 
@@ -252,3 +361,39 @@ Each scene shows three separate comparison images in order: **ST / FL / FL2 / FL
 ![06 · Posters — ST / Eterna / GR Positive / GR Negative](docs/images/film-comparison/06_海报/06-3_ST_E_GR正片_GR负片.jpg)
 
 </details>
+
+## Acknowledgements
+
+This is my first open-source project, and I never expected this much attention and support. Thank you, everyone.
+
+- **Collaborators:** thanks to [@UzLung1435](https://github.com/UzLung1435) for the FL23 refactor, the USB compatibility fixes and the photo/movie curve routing ([#5](https://github.com/QAQLeonard/a7c2-fl23-research/pull/5), [#6](https://github.com/QAQLeonard/a7c2-fl23-research/pull/6)), and to everyone who opened issues, sent pull requests or shared ideas.
+- **Color:** thanks to **门萨特里顿** and **爸总林先森** on Xiaohongshu for the DCPs, and to the community members who helped fit and compare the color standards. The built-in looks wouldn't exist without you.
+- **Projects this work builds on and cites:**
+  - [lzh2016zzz/a7cr-fl23-research](https://github.com/lzh2016zzz/a7cr-fl23-research): FL2/FL3 porting research on the A7CR, the starting point for this project's parameter, label and WBI methods.
+  - [Hearts-Ace/sony-a7r5-custom-firmware](https://github.com/Hearts-Ace/sony-a7r5-custom-firmware): FL2/FL3 firmware adaptation and RAW color research for the A7R V, a key reference for porting the FL2/FL3 color data.
+  - [MDHan/a7c2-fl23-macos](https://github.com/MDHan/a7c2-fl23-macos): the macOS take on the A7C II, the reference for identifying camera storage and claiming USB on a Mac.
+  - [ma1co/Sony-PMCA-RE](https://github.com/ma1co/Sony-PMCA-RE), [ma1co/fwtool.py](https://github.com/ma1co/fwtool.py) and [YuuLuo/a7c2-service-preload](https://github.com/YuuLuo/a7c2-service-preload): service-mode communication, firmware parsing and A7C II service-mode research.
+  - And thanks to every developer who cites, shares or builds on this project.
+- **Testers:** thanks to everyone who tested on their own cameras and patiently sent back logs. Every report made the tool safer.
+- **Everyone:** thanks to all who starred, shared and joined the community chats. You brought this project to 3.0.
+
+## Sponsor
+
+If this project helped you, you're welcome to buy me a coffee ☕. Sponsoring is entirely optional, unlocks nothing, and the project will stay free and open source.
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/images/sponsor/wechat.png" alt="WeChat Pay QR code" width="200"><br>WeChat Pay</td>
+    <td align="center"><img src="docs/images/sponsor/alipay.png" alt="Alipay QR code" width="200"><br>Alipay</td>
+    <td align="center"><img src="docs/images/sponsor/usdt-bep20.png" alt="USDT (BEP20) QR code" width="200"><br>USDT (BEP20)</td>
+  </tr>
+</table>
+
+**USDT address** (USDT on **BNB Smart Chain / BEP20** only):
+
+```text
+0xbf0b2900f7a45a029a42013b90911f796735a753
+```
+
+> [!WARNING]
+> Send USDT over BEP20 only. Other networks or tokens may be lost, and please don't send NFTs to this address.

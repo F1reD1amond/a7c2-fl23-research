@@ -165,8 +165,8 @@ def colour_record(row):
     576B 矩陣記錄 = B／A1／A2 三個 192B 端點，每端點 16 槽 × 12B 六係數。
     0.4.x 之前每個端點的 16 槽被填成同一組係數；實機原生外觀的 16 槽彼此
     不同（同一 bank、同一端點內有 15～16 個不同值），0x780F 也是按這 16 槽
-    逐槽打包，因此 0.5.0 改為逐槽複製供體值（說明見
-    docs/fl23-v050-gamma-and-perslot-matrix.md）。
+    逐槽打包，因此 0.5.0 改為逐槽複製供體值（說明見 git 歷史
+    提交 05f3cd2 的 src/fl23/docs/fl23-v050-gamma-and-perslot-matrix.md）。
 
     這裡不再要求端點內部統一，改為：每個槽展開後行和必須是 1024（結構
     檢查），且整份記錄必須逐位元組等於 assets/fx2_fl23_donor.json 的目標

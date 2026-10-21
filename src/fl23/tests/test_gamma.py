@@ -1,6 +1,6 @@
 """FL2／FL3 Gamma 記錄的離線測試：四條記錄必須是 FX2 的照片曲線。
 
-背景（詳見 docs/fl23-v050-gamma-and-perslot-matrix.md）：
+背景（詳見 git 歷史提交 05f3cd2 的 src/fl23/docs/fl23-v050-gamma-and-perslot-matrix.md）：
 
 * A7C II 2.01 原廠 cpapp-b.bin 的 +0xcfa588 已有 20 組「(照片 Gamma ID,
   影片 Gamma ID)」路由，最後兩組是 FL2=(0x30,0x30)、FL3=(0x31,0x31)，
