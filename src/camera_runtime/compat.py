@@ -37,11 +37,21 @@ def plan(ap,cp,version=core.VERSION,*,transitions=True):
         source=before[name];result=bytearray(source);spans=[]
         for w in manifest[chip]['writes']:
             at=int(w['file_offset'],16);old,new=bytes.fromhex(w['before_hex']),bytes.fromhex(w['after_hex'])
-            if lut and (chip==1 or at==0x3528804):continue
+            if lut and at==0x3528804:continue
+            if lut and chip==1:
+                native=next((entry for entry in layout.fl23_native_windows() if entry[0]==at),None)
+                if native is None:continue
+                current=source[at:at+len(new)]
+                if current==new:continue
+                if current not in (old,native[3],*layout.fl23_previous_values(at)):raise ValueError(f'CP FL23 原生曲線／模式位置衝突：{at:#x}')
+                result[at:at+len(new)]=new;changed=True
+                for offset in range(0,len(new),4096):spans.append((at+offset,min(4096,len(new)-offset)))
+                continue
             if len(old)!=len(new) or at+len(old)>len(source):raise ValueError(f'補丁位置越界：{name} {at:#x}')
             current=source[at:at+len(old)]
             if current==new:continue
-            if current!=old:raise ValueError(f'補丁位置衝突：{name} {at:#x}；沒有寫入')
+            if current!=old and not (chip==1 and current in layout.fl23_previous_values(at)):
+                raise ValueError(f'補丁位置衝突：{name} {at:#x}；沒有寫入')
             result[at:at+len(new)]=new;changed=True
             for offset in range(0,len(new),4096):spans.append((at+offset,min(4096,len(new)-offset)))
         after[name]=bytes(result);regions[name]=spans

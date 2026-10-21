@@ -86,10 +86,15 @@ pause
 exit /b 1
 
 :launch_gui
+if not "%~1"=="" goto :launch_cli
 call "%PY%" "%~dp0gui.py"
 if not errorlevel 1 exit /b 0
 pause
 exit /b 1
+
+:launch_cli
+call "%PY%" "%~dp0app.py" %*
+exit /b %errorlevel%
 
 :find_launcher
 set "LAUNCHER="

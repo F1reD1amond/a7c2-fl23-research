@@ -1,6 +1,6 @@
 """Developer install/restore controller for the original native boot sound path.
 
-Install requires an owner-confirmed format0 RAM trial for the identical payload.
+Install uses the current converted format0 bytes; RAM audition is optional.
 Files are installed and read back before the AP hook. Restore removes the AP
 hook and reads it back before deleting the private files. No automatic retries
 or restoration after unknown outcomes. Not a released/public camera feature.
@@ -18,6 +18,13 @@ import trial
 
 PATHS = ('/usr/share/avsystemsound/custom-shutter.bin',
          '/usr/share/avsystemsound/custom.txt')
+
+
+def require_dependencies():
+    # Resolve dynamically imported compiler/emulator dependencies before USB
+    # or a durable write intent is created.
+    from keystone import Ks
+    from unicorn import Uc
 
 
 def prepare(ap, cp, payload, output, zig=None):
@@ -116,17 +123,20 @@ def install(root, backup_copy, native_job, audio_job, payload, battery, zig=None
     from looktool.power import require_power
     power = require_power(battery, confirmed=power_confirmed)
     original = json.loads((Path(native_job) / 'job.private.json').read_text(encoding='utf-8'))
-    evidence = json.loads((Path(audio_job) / 'job.private.json').read_text(encoding='utf-8'))
-    if not evidence.get('owner_audio_correct') or evidence.get('wire_format') != 0:
-        raise ValueError('First confirm correct format0 RAM playback, pitch and speed on the body')
-    if evidence.get('identity') != original['identity'] or (Path(audio_job) / 'payload.private.bin').read_bytes() != payload:
-        raise ValueError('The confirmed audio trial belongs to another body or payload')
+    if not payload or len(payload)%64 or any(payload[n]>8 for n in range(0,len(payload),32)):
+        raise ValueError('Convert a complete native-codec audio clip before saving')
+    evidence=(json.loads((Path(audio_job)/'job.private.json').read_text(encoding='utf-8')) if audio_job else {})
+    if audio_job and (evidence.get('identity')!=original['identity'] or
+            (Path(audio_job)/'payload.private.bin').read_bytes()!=payload):
+        raise ValueError('Audio provenance belongs to another body or payload')
+    require_dependencies()
     root = Path(root)
     root.mkdir(parents=True, exist_ok=False)
     state = {'schema': 'a7c2-native-boot-sound-job/1', 'phase': 'preparing',
              'identity': original['identity'], 'camera_firmware_written': False,
              'battery_percent_reported': power['battery_percent'], 'power_confirmation': power, 'journal': [],
-             'owner_audio_job': str(Path(audio_job).resolve()),
+             'owner_audio_job': str(Path(audio_job).resolve()) if audio_job else None,
+             'owner_listening_confirmed':bool(evidence.get('owner_audio_correct')),
              'original_file_absence_required': list(PATHS)}
     trial.save(root, state)
     try:
@@ -163,7 +173,9 @@ def install(root, backup_copy, native_job, audio_job, payload, battery, zig=None
                 trial.run_native(camera, root, state, components['wbi'], 'wbi', 1)
             state['phase'] = 'installed_cold_test_pending'
             trial.save(root, state)
-    except BaseException:
+    except BaseException as exc:
+        state['failed_during']=state['phase']
+        state['error_type']=type(exc).__name__;state['error']=str(exc)
         state['phase'] = 'needs_review'
         trial.save(root, state)
         raise

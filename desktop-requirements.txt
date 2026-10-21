@@ -10,3 +10,6 @@ PyYAML==6.0.3
 pyelftools==0.32
 ziglang==0.13.0
 imageio-ffmpeg==0.6.0
+keystone-engine==0.9.2
+capstone==5.0.6
+unicorn==2.1.3

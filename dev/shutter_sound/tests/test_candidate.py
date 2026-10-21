@@ -74,10 +74,11 @@ class CandidateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'failed'):
             candidate.parse_probe(bytes(raw))
 
-    def _workflow(self, test):
+    def _workflow(self, test, *, enabled=False):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / 'job'
-            state = {'files': {'/usr/lib/appFw.so': self.ap, '/cp/cpapp-b.bin': self.cp},
+            cp=candidate.patch(self.ap,self.cp)['cpapp-b.bin'] if enabled else self.cp
+            state = {'files': {'/usr/lib/appFw.so': self.ap, '/cp/cpapp-b.bin': cp},
                      'mode': '2', 'calls': [], 'audio': 0}
             class Camera:
                 identity = {'model': 'ILCE-7CM2', 'serial_sha256': 'synthetic-body'}
@@ -117,6 +118,34 @@ class CandidateTests(unittest.TestCase):
             self.assertEqual(state['mode'], '2')
             self.assertEqual(state['files']['/cp/cpapp-b.bin'], self.cp)
             self.assertEqual(json.loads((root / 'job.private.json').read_text())['phase'], 'ready')
+        self._workflow(check)
+
+    def test_existing_enabled_sound_is_adopted_without_program_or_wbi_write(self):
+        def check(root,state,camera):
+            import zipfile
+            saved=json.loads((root/'job.private.json').read_text())
+            self.assertTrue(saved['adopted_existing_enabled'])
+            self.assertEqual(saved['phase'],'written')
+            self.assertFalse(saved['camera_firmware_written'])
+            self.assertNotIn(('program',1),state['calls'])
+            self.assertNotIn(('wbi',1),state['calls'])
+            with zipfile.ZipFile(root/'before.private.zip') as z:
+                self.assertEqual(set(z.namelist()),{'native-sound-branch.bin','ap-sound-getters.bin'})
+                self.assertLess(sum(i.file_size for i in z.infolist()),100)
+            trial.change(root,restore=True,camera_factory=camera)
+            self.assertEqual(state['files']['/cp/cpapp-b.bin'],self.cp)
+        self._workflow(check,enabled=True)
+
+    def test_audition_adoption_never_enables_a_disabled_branch(self):
+        def check(root,state,camera):
+            calls=list(state['calls'])
+            path=root.parent/'audition-adopt'
+            with self.assertRaisesRegex(ValueError,'尚未开启'):
+                trial.preflight(path,root.parent/'adopt-backup',camera_factory=camera,
+                                expected=camera().identity,adopt_only=True)
+            self.assertEqual(state['calls'],calls)
+            self.assertEqual(state['files']['/cp/cpapp-b.bin'],self.cp)
+            self.assertTrue(trial.completed_readonly_failure(json.loads((path/'job.private.json').read_text())))
         self._workflow(check)
 
     def test_apply_restore_preserve_new_unrelated_changes(self):

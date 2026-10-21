@@ -19,10 +19,13 @@ CAMERA_ACTIONS = {'connect', 'usb_prepare', 'driver_uninstall', 'fl23_prepare', 
 POWER_ACTIONS = {'restore', 'restore_auto', 'fl23_install', 'look_install', 'look_restore',
                  'vertical_enable', 'vertical_disable', 'vertical_remove',
                  'sound_on', 'sound_off', 'sound_audition', 'sound_install', 'sound_restore_sound'}
-DIRECT_ACTIONS = {'direct_fl23_enable', 'direct_fl23_disable', 'direct_slot_default',
-                  'direct_look_import', 'direct_factory_reset'}
+DIRECT_ACTIONS = {'direct_fl23_enable', 'direct_fl23_disable', 'direct_vertical_enable', 'direct_vertical_disable', 'direct_slot_default',
+                  'direct_look_import', 'direct_looks_import', 'direct_resume_looks', 'direct_factory_reset', 'direct_resume_factory', 'direct_install_all'}
 POWER_ACTIONS |= DIRECT_ACTIONS
 CAMERA_ACTIONS |= DIRECT_ACTIONS | {'direct_verify'}
+POWER_ACTIONS.add('setup_all')
+CAMERA_ACTIONS.add('setup_all')
+CAMERA_ACTIONS.add('review_failed_names')
 
 
 def new_job(action, arguments):

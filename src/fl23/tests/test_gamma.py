@@ -42,25 +42,29 @@ NOP_SLIDE = b'\x00\xbf' * 7
 BASE_LOAD = bytes.fromhex('49f6f811c0f22011')   # movw r1,#0x99f8 ; movt r1,#0x120
 EPILOGUE = bytes.fromhex('704700bf')            # bx lr ; nop
 ROUTE_TABLE = 0xe78
+POINTER_TABLE = 0x900
+RECORD_RAM = 0x1208b80
 ROUTE_ENTRIES = 21
 
 # 0.5.0 交付指紋
-BLOCK_SHA256 = 'f40759fc338a04d07439eac12d1c6669b8819b57cbd2521bacd7fb040a88a467'
+BLOCK_SHA256 = 'c275bf96572cdb243aaabed03e5817e6e41040db07fd96e69b22225cb1bcb81c'
 # 3872 位元組窗口中，前 2304 位元組是四條記錄，其餘是指標表與路由表，本版未動
-TAIL_SHA256 = '35fedf78e080c9d0d6144cbf5abfd72f16492701640353278bf55d3c02bfc67a'
+TAIL_SHA256 = '19f9d1d10a8a77b41586ce57668308a470550966d8b508d25eaefcb665f1ba96'
 # 每條記錄：標籤（高字节＝Gamma ID）、generation、max、前四個取樣點
-# 0.5.1：gen 5 與 gen 6 都寫 FX2 的照片內部槽 6 曲線（實拍對照確認機身讀的是 gen 5）
+# 0.5.3 起復刻原廠／FX2 的形狀：照片與影片各一列。
+#   rec0 / rec2 = FX2 照片內部槽 6 曲線（gen 5），照片列用
+#   rec1 / rec3 = FX2 影片內部槽 6 曲線（gen 6），影片列用
 EXPECTED = [
     {'look': 'FL2', 'tag': 0x30010010, 'gen': 5, 'max': 130944,
      'first4': (0, 1158, 2316, 3474)},
-    {'look': 'FL2', 'tag': 0x30010010, 'gen': 6, 'max': 130944,
-     'first4': (0, 1158, 2316, 3474)},
+    {'look': 'FL2', 'tag': 0x30010010, 'gen': 6, 'max': 122844,
+     'first4': (0, 1085, 2171, 3256)},
     {'look': 'FL3', 'tag': 0x31010010, 'gen': 5, 'max': 130945,
      'first4': (0, 1282, 2564, 3845)},
-    {'look': 'FL3', 'tag': 0x31010010, 'gen': 6, 'max': 130945,
-     'first4': (0, 1282, 2564, 3845)},
+    {'look': 'FL3', 'tag': 0x31010010, 'gen': 6, 'max': 122753,
+     'first4': (0, 1202, 2403, 3605)},
 ]
-# FX2 影片槽 6 的取樣點；generation 6 的記錄不得再是這兩條
+# FX2 影片槽 6 的取樣點：rec1 / rec3 必須正好是這兩條
 MOVIE_FIRST4 = {(0, 1085, 2171, 3256), (0, 1202, 2403, 3605)}
 INSTALLER_BYTES = 56864
 
@@ -98,23 +102,44 @@ class GammaTests(unittest.TestCase):
                              (want['tag'], want['gen'], want['max'], want['first4']),
                              f"記錄 {index} ({want['look']})")
 
-    def test_slot6_records_are_not_the_movie_curves(self):
-        """0.4.0 在這裡放的是影片槽 6 曲線；0.5.0 必須是照片槽 6。"""
+    def test_records_1_and_3_are_the_fx2_movie_curves(self):
+        """0.5.3：影片列用 FX2 的影片內部槽 6 曲線（輸出上限 15/16 的合法電平）。"""
         block, _ = gamma_block()
         for index in (1, 3):
             record = block[index * RECORD_BYTES:(index + 1) * RECORD_BYTES]
             first4 = struct.unpack_from('<4I', record, 0)[:4]
-            self.assertNotIn(first4, MOVIE_FIRST4, f'記錄 {index} 仍是影片曲線')
-            self.assertGreater(struct.unpack_from('<I', record, 0x220)[0], 130000)
+            self.assertIn(first4, MOVIE_FIRST4, f'記錄 {index} 不是影片曲線')
+            self.assertEqual(struct.unpack_from('<I', record, 0x21C)[0], 6)
+            self.assertLess(struct.unpack_from('<I', record, 0x220)[0], 130000)
 
-    def test_routing_table_maps_fl2_fl3_to_one_id_each(self):
-        """路由表最後兩組必須仍是 (0x30,0x30)、(0x31,0x31)。"""
+    def test_movie_rows_46_and_47_fill_only_slot_6(self):
+        """原廠 PPLUT 的影片列（41-44）也只有槽 6，我們照這個形狀建 46/47。"""
+        block, _ = gamma_block()
+        for row, index in ((46, 1), (47, 3)):
+            pointers = struct.unpack_from(
+                '<7I', block, POINTER_TABLE + row * 28)
+            self.assertEqual(pointers[:6], (0, 0, 0, 0, 0, 0), f'列 {row} 槽 0-5')
+            self.assertEqual(pointers[6], RECORD_RAM + index * RECORD_BYTES,
+                             f'列 {row} 槽 6')
+
+    def test_photo_rows_stay_on_the_photo_curve(self):
+        """照片列 48/49 全部指向照片記錄，槽 6 不再碰到影片曲線。"""
+        block, _ = gamma_block()
+        for row, index in ((48, 0), (49, 2)):
+            pointers = struct.unpack_from(
+                '<7I', block, POINTER_TABLE + row * 28)
+            self.assertEqual(pointers, (RECORD_RAM + index * RECORD_BYTES,) * 7,
+                             f'列 {row}')
+
+    def test_routing_table_keeps_the_stock_entries(self):
+        """前 19 組是原廠副本，最後兩組改成「照片列, 影片列」各自不同。"""
         block, _ = gamma_block()
         pairs = [struct.unpack_from('<II', block, offset)
                  for offset in range(0xe80, 0xf20, 8)]
         self.assertEqual(len(pairs), 20)
-        self.assertEqual(pairs[-2], (0x30, 0x30))
-        self.assertEqual(pairs[-1], (0x31, 0x31))
+        self.assertEqual(pairs[-3], (40, 44), 'PPLUT4 必須仍是原廠值')
+        self.assertEqual(pairs[-2], (48, 46))
+        self.assertEqual(pairs[-1], (49, 47))
 
     def test_tail_tables_are_unchanged(self):
         block, _ = gamma_block()
@@ -131,17 +156,22 @@ class GammaTests(unittest.TestCase):
             self.assertIn(bytes.fromhex(digest), so, digest[:16])
         self.assertIn(bytes.fromhex(core.FINAL[1]), so)
 
-    def test_generation5_and_6_carry_the_same_photo_curve(self):
-        """0.5.1：機身讀哪一條都應得到照片槽 6 曲線。"""
+    def test_generation5_is_the_photo_curve_and_generation6_the_movie_one(self):
+        """0.5.3：照片列用 gen 5 的照片曲線，影片列用 gen 6 的影片曲線。"""
         block, _ = gamma_block()
         for index in (0, 2):
-            a = block[index * RECORD_BYTES:(index + 1) * RECORD_BYTES]
-            b = block[(index + 1) * RECORD_BYTES:(index + 2) * RECORD_BYTES]
-            self.assertEqual(a[:0x218], b[:0x218])       # 曲線取樣點與 max 相同
-            self.assertEqual(struct.unpack_from('<I', a, 0x220)[0],
-                             struct.unpack_from('<I', b, 0x220)[0])
-            self.assertNotEqual(struct.unpack_from('<I', a, 0x21c)[0],
-                                struct.unpack_from('<I', b, 0x21c)[0])   # gen 仍要分別是 5 / 6
+            photo = block[index * RECORD_BYTES:(index + 1) * RECORD_BYTES]
+            movie = block[(index + 1) * RECORD_BYTES:(index + 2) * RECORD_BYTES]
+            self.assertEqual(struct.unpack_from('<I', photo, 0x21C)[0], 5)
+            self.assertEqual(struct.unpack_from('<I', movie, 0x21C)[0], 6)
+            self.assertGreater(struct.unpack_from('<I', photo, 0x220)[0], 130000)
+            self.assertLess(struct.unpack_from('<I', movie, 0x220)[0], 130000)
+            # 影片曲線是同一條曲線把上限壓到 15/16（約 0.9375）
+            ratio = (struct.unpack_from('<I', movie, 0x220)[0] /
+                     struct.unpack_from('<I', photo, 0x220)[0])
+            self.assertAlmostEqual(ratio, 0.9375, delta=0.005)
+            self.assertNotIn(struct.unpack_from('<4I', photo, 0)[:4], MOVIE_FIRST4)
+            self.assertIn(struct.unpack_from('<4I', movie, 0)[:4], MOVIE_FIRST4)
 
     def test_route_helper_keeps_its_length(self):
         """原地改寫：窗口長度必須與原版一致，否則重定位會跑掉。"""
@@ -171,17 +201,18 @@ class GammaTests(unittest.TestCase):
         block, _ = gamma_block()
         entries = [struct.unpack_from('<II', block, ROUTE_TABLE + i * 8)
                    for i in range(ROUTE_ENTRIES)]
-        self.assertEqual(entries[19], (48, 48))
-        self.assertEqual(entries[20], (49, 49))
+        self.assertEqual(entries[19], (48, 46))
+        self.assertEqual(entries[20], (49, 47))
         self.assertEqual(entries[0], (0, 10), '第 0 項必須仍是原廠預設，不能被移動')
 
     def test_final_cp_hash_is_not_the_040_value(self):
         for stale in ('60a9de1a0636c7f6b5b98607a4d25eeb48634e25294f632743a6d256e583b370',
                       '9bbaa6c5bce64c76c51ca377ccced09ea39a55e813f334d4269779f3f6e7d05f',
-                      'a969a783491b8ff9131d9fedcbd31df3553f0f80aa479b9d2994a5c290d45b1a'):
+                      'a969a783491b8ff9131d9fedcbd31df3553f0f80aa479b9d2994a5c290d45b1a',
+                      '30a595529fe842244da735c0602ca8a379a911e1d79340c624ae1f04d550f342'):
             self.assertNotEqual(core.FINAL[1], stale)
         self.assertEqual(core.FINAL[1],
-                         '30a595529fe842244da735c0602ca8a379a911e1d79340c624ae1f04d550f342')
+                         '442c9261d7c76c30f65e5b66ae133fea40fc31ee6c0046ff78b6b45df8ab455c')
 
 
 if __name__ == '__main__':

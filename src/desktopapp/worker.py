@@ -49,28 +49,98 @@ def run(action, args, job):
     if action == 'factory_prepare':
         from . import official
         return official.prepare(args['source'])
+    if action == 'setup_all':
+        from . import allinone
+        return allinone.run(args, dispatch=run)
+    if action == 'review_failed_names':
+        from . import reviewnames
+        return reviewnames.run(args['workspace'],job)
+    if action in ('vertical_enable','vertical_disable') and not args.get('session_only'):
+        work=Path(args['workspace']) / ('persistent-'+uuid.uuid4().hex[:8])
+        return run('direct_'+action, dict(args, workspace=str(work)), job)
     if action.startswith('direct_'):
         from looktool.direct import DirectJob
         mode = action.removeprefix('direct_')
+        if mode == 'looks_import':
+            from . import lookbatch
+            args = dict(args, options=lookbatch.options(args.get('operations',args.get('looks', []))))
+            mode = 'install_all'
+        if mode=='verify' and args.get('factory_verify'):
+            from looktool.factoryrecover import pending, FINISHED
+            found=pending(data_root()/'work',args.get('factory_preferred'))
+            if found:
+                if found[1]['phase'] not in FINISHED:raise ValueError('恢复尚未结束，请先点击“恢复／继续恢复”')
+                args=dict(args,workspace=str(found[0]))
         obj = DirectJob(Path(args['workspace']))
         if not args.get('workspace'):
             raise ValueError('先完成一次本页操作，再核对重新加载状态。')
         reference, reference_path = None, args.get('factory') or 'builtin'
-        if mode == 'verify':
+        if mode == 'factory_reset':
+            from looktool.factoryrecover import pending
+            found = pending(data_root() / 'work', args.get('failed_workspace'))
+            if found:
+                args = dict(args, failed_workspace=str(found[0]))
+                mode = 'resume_factory'
+        if mode=='resume_looks':
+            prior_root=Path(args['failed_workspace'])
+            prior=DirectJob(prior_root)
+            saved=json.loads(prior.state_path.read_text(encoding='utf-8'))
+            if saved['phase']=='NEEDS_REVIEW':
+                result=obj.prepare_names_reload(prior_root,power_confirmed=args.get('power_confirmed',False))
+                if result['phase']=='RESOURCE_RELOAD_VERIFIED':
+                    prior_root=obj.root
+                    obj=DirectJob(prior_root/'program-install')
+            else:
+                result=prior.verify_names_reload()
+                if result['phase']!='RESOURCE_RELOAD_VERIFIED':
+                    obj=prior
+            if result['phase']=='RESOURCE_RELOAD_VERIFIED':
+                result=obj.run_direct(result['mode'],version=args['firmware'],power_confirmed=args.get('power_confirmed',False),
+                    bundle_options=result.get('bundle_options'),slot=result.get('slot'),name=result.get('name'),
+                    look_path=str(prior_root/'reference.a7look') if result['mode']=='look_import' else None)
+        elif mode == 'verify':
             prior = json.loads(obj.state_path.read_text(encoding='utf-8'))
             if prior['mode'] == 'factory_reset':
                 from .official import load
                 reference = load(prior['factory_path'])
-            result = obj.verify_direct(factory_values=reference, accepted=bool(args.get('accepted')))
+            if prior.get('phase') in ('AWAITING_RESOURCE_RELOAD','RESOURCE_RELOAD_VERIFIED'):
+                result=obj.verify_names_reload()
+            else:
+                result = obj.verify_direct(factory_values=reference, accepted=bool(args.get('accepted')))
+        elif mode == 'resume_factory':
+            from looktool.factoryrecover import chain, FINISHED
+            from .official import load
+            prior_root, prior = chain(args['failed_workspace'])[-1]
+            reference = load(prior['factory_path'])
+            if prior['phase'] in FINISHED:
+                print('恢复写入已结束；仅核对加载状态，不重复写入。', flush=True)
+                obj = DirectJob(prior_root)
+                result = obj.verify_direct(factory_values=reference, accepted=bool(args.get('accepted')))
+            else:
+                print('发现未完成恢复，读取当前字节后继续：' + str(prior_root), flush=True)
+                result = obj.continue_factory(prior_root,
+                    power_confirmed=args.get('power_confirmed', False), factory_values=reference)
         else:
             if mode == 'factory_reset':
                 from .official import load
                 reference = load(reference_path)
             result = obj.run_direct(mode, version=args['firmware'], power_confirmed=args.get('power_confirmed', False),
                 factory_values=reference, factory_path=reference_path if reference else None,
-                slot=args.get('slot'), look_path=args.get('look'), name=args.get('name') or None)
-        return {'workspace': str(obj.root), 'phase': result['phase'], 'mode': result['mode'],
-                'backup_created': False}
+                slot=args.get('slot'), look_path=args.get('look'), name=args.get('name') or None,
+                bundle_options=args.get('options'))
+        response = {'workspace': str(obj.root), 'phase': result['phase'], 'mode': result['mode'],
+                    'backup_created': False}
+        if result.get('vertical_result'):response['vertical_result']=result['vertical_result']
+        if mode in ('fl23_enable', 'fl23_disable') and result['phase'] == 'AWAITING_RELOAD':
+            # The device write is finished. Keep reload evidence internally,
+            # without presenting standalone FL23 as a paused installation.
+            response.update(phase='COMPLETED', reload_required=True, verification_optional=True)
+        if action == 'direct_looks_import':
+            response['slots'] = [r['slot'] for r in args['options']['slot_operations']]
+            response['operations']=args['options']['slot_operations']
+            if result['phase'] == 'AWAITING_RELOAD':
+                response.update(phase='COMPLETED', reload_required=True)
+        return response
     if action in ('driver_scan', 'driver_install', 'driver_uninstall', 'usb_prepare', 'mac_unmount'):
         from . import drivers
         if action == 'driver_scan':
@@ -168,7 +238,8 @@ def run(action, args, job):
     if action.startswith('vertical_'):
         sys.path.insert(0, str(ROOT / 'src/vertical'))
         from verticaltool.device import execute
-        return execute(action.removeprefix('vertical_'), Path(args['workspace']))
+        command = 'remove' if action == 'vertical_disable' else action.removeprefix('vertical_')
+        return execute(command, Path(args['workspace']))
     if action.startswith('sound_'):
         sys.path.insert(0, str(ROOT / 'dev/shutter_sound'))
         from sound_cli import main
@@ -178,6 +249,8 @@ def run(action, args, job):
             argv += [args['source'], '--start', str(args.get('start', 0)),
                      '--duration', str(args.get('duration', .15)),
                      '--peak', str(args.get('peak', .4))]
+        elif command=='compile-install':
+            argv += ['--ap',args['ap'],'--cp',args['cp'],'--native-bin',args['native_bin']]
         argv += ['--workspace', args['workspace']]
         if command == 'on':
             argv += ['--backup-copy', args['backup'], '--firmware', args['firmware']]
@@ -187,10 +260,11 @@ def run(action, args, job):
             argv += ['--result', args.get('result', 'correct')]
         elif command == 'verify' and args.get('accepted'):
             argv += ['--heard-correct']
-        code = main(argv)
+        outcome = {}
+        code = main(argv, report=outcome.update)
         if code:
             raise RuntimeError('Sound operation stopped; see the complete backend log above.')
-        return {'workspace': args['workspace'], 'command': command, 'exit_code': code}
+        return dict(outcome, workspace=args['workspace'], command=command, exit_code=code)
     raise ValueError('Unknown desktop action: ' + action)
 
 
@@ -205,7 +279,11 @@ def execute_request(path):
             try:
                 result = run(request['action'], request['arguments'], job)
                 write_json(job / 'result.private.json', result)
-                print(json.dumps(result, ensure_ascii=False, indent=2, default=str), flush=True)
+                display=result
+                if request['action']=='setup_all':
+                    from .completion import console_summary
+                    display=console_summary(result)
+                print(json.dumps(display, ensure_ascii=False, indent=2, default=str), flush=True)
                 write_json(status, {'phase': 'SUCCEEDED', 'action': request['action'], 'result': result})
                 return 0
             except BaseException as exc:

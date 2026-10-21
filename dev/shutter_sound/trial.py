@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import shutil
 import struct
+import time
 import zipfile
 
 import candidate
@@ -46,9 +47,32 @@ def factory(expected=None):
     class SoundCamera(devicesession.Camera):
         def _connect(self):
             transport, self.core = devicesession.modules()
-            self.link = transport.Session(self.expected)
+            import usb.core
+            import usb.backend.libusb1
+            expected=({key:self.expected[key] for key in ('model','serial_sha256')}
+                      if self.expected else None)
+            # Sound jobs have always used Sony's service body identity. Do not
+            # pass them through LUT USB-descriptor binding: that is a different
+            # namespace and legacy sound jobs never stored that optional field.
+            backend=usb.backend.libusb1.get_backend(find_library=transport.libusb_package.find_library)
+            deadline=time.monotonic()+15
+            while True:
+                normal=usb.core.find(idVendor=0x054c,idProduct=0x0e8a,backend=backend)
+                if normal is not None:
+                    transport.usb.util.dispose_resources(normal)
+                    self.link=transport.Session(expected)
+                    break
+                service=(usb.core.find(idVendor=0x054c,idProduct=0x0336,backend=backend)
+                         if expected else None)
+                if service is not None:
+                    transport.usb.util.dispose_resources(service)
+                    self.link=transport.RecoverySession(expected)
+                    break
+                if time.monotonic()>=deadline:
+                    raise ValueError('未找到相机 USB 连接。请拔插 USB 并选择海量存储后重试；尚未进行服务认证或声音写入。')
+                time.sleep(.5)
             self.link.__enter__()
-            self.identity = self.link.identity
+            self.identity = dict(self.link.identity)
             self.service_only = False
             return self
         def temp_read(self, name, missing=False):
@@ -67,7 +91,48 @@ def factory(expected=None):
                 self.link.select('/tmp/jiritsu/' + name)
                 return self.link.jiritsu(18, b'\0\xff')
             return super().temp_remove(name)
-    return SoundCamera(expected)
+    return SoundCamera(expected, allow_service_resume=True)
+
+
+def completed_readonly_failure(state):
+    """Prove a failed native-enable attempt never reached a mutating worker.
+
+    Mode 0 is read-only only for these three workers, not for audio registration.
+    An interrupted staging/invocation/cleanup remains unresolved.
+    """
+    if (state.get('schema') != 'a7c2-shutter-job/1' or
+            state.get('phase') != 'needs_review' or
+            state.get('camera_firmware_written') is not False or
+            not isinstance(state.get('journal'), list)):
+        return False
+    allowed = {'shutter.staged.so', 'lut-runtime-staged.so', 'lut-program-staged.so'}
+    active = None
+    step = None
+    for event in state.get('journal', []):
+        kind = event.get('event')
+        stage = event.get('stage')
+        if kind == 'native_stage_intent':
+            if active is not None or stage not in allowed or event.get('mode') != 0:
+                return False
+            active, step = stage, 'staged'
+        elif kind == 'native_intent':
+            if stage != active or step != 'staged' or event.get('mode') != 0:
+                return False
+            step = 'invoked'
+        elif kind == 'native_extra_result':
+            if active is None or step != 'invoked':
+                return False
+        elif kind == 'native_result_verified':
+            if stage != active or step != 'invoked' or event.get('mode') != 0:
+                return False
+            step = 'verified'
+        elif kind == 'native_cleanup_verified':
+            if stage != active or step != 'verified' or event.get('mode') != 0:
+                return False
+            active, step = None, None
+        else:
+            return False
+    return active is None
 
 
 def run_native(camera, root, state, blob, kind, mode=0, plan=None):
@@ -103,22 +168,43 @@ def capture(camera):
             'settings-saved.bin': camera.snapshot(False)}
 
 
-def preflight(root, copy, zig=None, camera_factory=factory):
+def preflight(root, copy, zig=None, camera_factory=factory, *, expected=None, adopt_only=False):
     root.mkdir(parents=True, exist_ok=False)
     state = {'schema': 'a7c2-shutter-job/1', 'phase': 'preparing', 'firmware': '2.01',
              'camera_firmware_written': False, 'physical_sound_verified': False, 'journal': []}
     save(root, state)
     try:
-        with camera_factory() as camera:
+        with (camera_factory(expected) if expected else camera_factory()) as camera:
             values = capture(camera)
-            candidate.guard(values['appFw.so'], values['cpapp-b.bin'])
+            enabled=values['cpapp-b.bin'][candidate.OFFSET:candidate.OFFSET+2]==candidate.AFTER
+            candidate.guard(values['appFw.so'], values['cpapp-b.bin'], installed=enabled)
             state['identity'] = camera.identity
-            state['backup_copy'] = backup(root, copy, values)
-            plan, _ = candidate.build(values['appFw.so'], values['cpapp-b.bin'], root / 'build', zig)
+            if adopt_only and not enabled:
+                raise ValueError('电子快门声尚未开启。请先点击“开启电子快门声”，完成断电重开后再试听；本次没有写入固件或注册试听。')
+            evidence=values
+            if enabled:
+                # Adoption performs no firmware write; keep small exact
+                # branch/getter evidence rather than another complete image.
+                evidence={'native-sound-branch.bin':values['cpapp-b.bin'][candidate.OFFSET:candidate.OFFSET+2],
+                          'ap-sound-getters.bin':values['appFw.so'][0x286cde8:0x286cdfc]+values['appFw.so'][0x2885488:0x288549c]}
+            state['backup_copy'] = backup(root, copy, evidence)
+            source_cp=(candidate.patch(values['appFw.so'], values['cpapp-b.bin'], restore=True)['cpapp-b.bin'] if enabled else values['cpapp-b.bin'])
+            plan, _ = candidate.build(values['appFw.so'], source_cp, root / 'build', zig)
             camera.programs_pinned = True
             probe = run_native(camera, root, state, root / 'build/probe.so', 'probe')
             state['probe'] = probe
             candidate.require_registry(probe)
+            if enabled:
+                for name,path in (('appFw.so','/usr/lib/appFw.so'),('cpapp-b.bin','/cp/cpapp-b.bin')):
+                    if camera.read(path)!=values[name]:raise ValueError('Existing sound program changed during adoption')
+                from looktool import devicesettings
+                for key,memory in (('settings-ram.bin',True),('settings-saved.bin',False)):
+                    devicesettings.compare(camera.records(values[key]),camera.records(camera.snapshot(memory)),{},camera.core)
+                state.update(phase='written',adopted_existing_enabled=True,
+                    complete_readback_and_settings_verified=True,camera_firmware_written=False,
+                    backup_scope='existing native sound branch/getters; OFF uses a fresh two-byte inverse')
+                save(root,state)
+                return state
             if probe['image_mode'] == '2':
                 run_native(camera, root, state, root / 'build/wbi.so', 'wbi', 0)
             native = plan['native_program']

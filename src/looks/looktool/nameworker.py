@@ -49,23 +49,34 @@ def prepare(sources,names,ap,job_id,out,zig=None,*,target_ap=None,label_ids=reso
         'static const u64 ap_size='+str(len(ap))+'UL;',
         'static const u8 ap_plain_hash[32]='+cbytes(bytes(32) if byte_only else bytes.fromhex(firmware.sha(ap)))+';',
         'static const u8 ap_named_hash[32]='+cbytes(bytes(32) if byte_only else bytes.fromhex(firmware.sha(target_ap if target_ap is not None else ap)))+';']
-    if byte_only:lines[:0]=['#define CHECKPOINT_BYTES 1','#define BYTE_NAME_UPDATES 1']
+    if byte_only:lines[:0]=['#define CHECKPOINT_BYTES 1','#define BYTE_NAME_UPDATES 1',
+        '#define BYTE_NAME_STREAM_INSTALL 1','#define CHECKPOINT_STREAM_RESTORE 1']
     header=out/'names.private.h';header.write_text('\n'.join(lines)+'\n',encoding='ascii',newline='\n')
     destination=out/'names.so';build=compile_worker(ROOT/'src/looks/native/names.c',header,destination,zig,fingerprints=not byte_only)
-    build.update(path=str(destination),AP=None if byte_only else firmware.sha(ap),target_AP=None if byte_only else firmware.sha(target_ap if target_ap is not None else ap),count=len(specs),files=specs,job_id=job_id,byte_only=byte_only)
+    build.update(path=str(destination),AP=None if byte_only else firmware.sha(ap),target_AP=None if byte_only else firmware.sha(target_ap if target_ap is not None else ap),count=len(specs),files=specs,job_id=job_id,byte_only=byte_only,stream_install=byte_only)
     return target,build
 
-def validate(raw,mode,build):
+def completed_mount_busy(raw,mode,build):
+    if len(raw)!=REPORT.size or mode!=1 or not build.get('byte_only') or not build.get('stream_install'):return False
+    v=REPORT.unpack(raw);count=build['count']
+    return (v[:5]==(b'A7NMR001',1,1,9,count) and 1<=count<=68 and len(build['files'])==count
+        and v[5]==v[8]==-16 and all(v[i]==0 for i in (6,7,9,10,13,15,16,17))
+        and v[11]>0 and v[12]==v[14]==count)
+
+
+def validate(raw,mode,build,*,allow_completed_busy=False):
     if len(raw)!=REPORT.size or mode not in (0,1,2,3):raise ValueError('Invalid name result ABI')
     values=REPORT.unpack(raw)
     count=build['count']
     if not 1<=count<=68 or len(build['files'])!=count:raise ValueError('Invalid pinned resource count')
+    if allow_completed_busy and completed_mount_busy(raw,mode,build):
+        return {'native_verified':True,'mode':mode,'files':count,'restored':0,'readonly_deferred_busy':True}
     expected_ap=build.get('target_AP',build['AP']) if mode==3 else build['AP']
     if values[:5]!=(b'A7NMR001',1,mode,9,count) or any(values[i] for i in [5,6,7,8,9,10,17]) or (not build.get('byte_only') and values[18].hex()!=expected_ap):
-        raise ValueError(('Native name operation incomplete: phase=%s status=%s' % (values[3],values[5])) if build.get('byte_only') else name_failure_text(raw,mode,build))
+        raise ValueError(name_failure_text(raw,mode,build))
     if values[11]<=0 or any(n>count for n in values[12:17]):raise ValueError('Native name PID/count bounds differ')
     if mode==0 and any(values[12:17]):raise ValueError('Read-only name preflight reported a write')
-    if mode==1 and (values[12:15]!=(count,count,count) or any(values[15:17])):raise ValueError('Native name commit counts differ')
+    if mode==1 and (values[12:15]!=(count,0 if build.get('stream_install') else count,count) or any(values[15:17])):raise ValueError('Native name commit counts differ')
     if mode==2 and any(values[13:15]):raise ValueError('Name restoration reported a forward commit')
     if mode==3 and any(values[12:16]):raise ValueError('Name cleanup reported resource writes')
     return {'native_verified':True,'mode':mode,'files':count,'restored':values[15]}
@@ -81,5 +92,6 @@ def prepare_cleanup(build,header,current,out,zig=None):
     if count!=1:raise ValueError('Original name manifest sizes unavailable')
     target=out/'names.private.h';target.write_text(text,encoding='ascii',newline='\n')
     result=json.loads(json.dumps(build));result.update(compile_worker(ROOT/'src/looks/native/names.c',target,out/'names.so',zig,fingerprints=False))
+    result['path']=str(out/'names.so')
     for spec in result['files']:spec['after_bytes']=len(current[spec['file']])
     return result

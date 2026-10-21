@@ -1,6 +1,6 @@
 # A7C II 工具
 
-**桌面开发分支：**[Windows／macOS 六功能 GUI](docs/zh-CN/desktop.md)。整合版本待实机测试；下方已发布版本与本分支独立。
+**桌面开发分支：**[Windows GUI 与一键安装](docs/zh-CN/desktop.md)。首页默认安装 NC／CC／NN／Astia／GR 正片／GR 负片到自订 1–6，并启用 FL23／快门声、重开后开启竖屏。macOS 构建暂缓，新安装流程仍待实机验收；下方已发布版本与本分支独立。
 
 **交流群：**[Telegram（推荐加入）](https://t.me/sonyfwlab) · [Discord](https://discord.gg/SwPdfSd9c)。**更推荐大家加入 Telegram 群。**
 

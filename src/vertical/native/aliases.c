@@ -5,6 +5,9 @@
 #define _init probe_init
 #include "probe.c"
 #undef _init
+#ifndef VERTICAL_RECOVERY
+#define VERTICAL_RECOVERY 0
+#endif
 struct RsStat {u64 dev,ino;u32 mode,nlink,uid,gid;u64 rdev,pad1;i64 size;u32 blksize,pad2;u64 blocks,rest[7];};
 _Static_assert(sizeof(struct RsStat)==128,"stat ABI");
 struct RsResult {u8 magic[8];u32 version,mode,phase,count;i64 status,rollback,readonly;u32 source_ok,prior,created,removed,counts[3],reserved;u64 sizes[3];};
@@ -69,7 +72,10 @@ __attribute__((visibility("default"))) void _init(void) {
    else {r.mode=*(u32*)(request+8);if(r.mode>2)r.status=-22;}
   }
  }
- if(!r.status)r.status=rs_mount(1);
+ if(!r.status) {
+  r.status=rs_mount(1);
+  if(VERTICAL_RECOVERY&&r.mode!=1&&r.status==-30&&!rs_mount(0))r.status=0;
+ }
  for(u32 i=0;i<3&&!r.status;i++) {
   r.status=rs_source(i);if(r.status)break;
   i64 state=rs_link_state(i);if(state<0){r.status=state;break;}
@@ -78,6 +84,7 @@ __attribute__((visibility("default"))) void _init(void) {
   if(state==1&&r.mode==0)r.status=rs_alias(i);
  }
  if(!r.status)r.phase=1;
+ int completed_busy=0;
  if(!r.status&&r.mode) {
   i64 rw=rs_remount(0);r.phase=2;
   if(rw)r.status=rw;
@@ -88,12 +95,17 @@ __attribute__((visibility("default"))) void _init(void) {
   if(!r.status&&r.mode==2)r.status=rs_remove(r.prior);
   if(!r.status)r.status=rs_sync();
   if(r.status&&r.mode==1){r.rollback=rs_remove(r.created);if(!r.rollback)r.rollback=rs_sync();}
-  r.readonly=rs_remount(1);if(!r.status)r.status=r.readonly;
+  r.readonly=rs_remount(1);
+  completed_busy=VERTICAL_RECOVERY&&r.mode==2&&!r.status&&r.readonly==-16;
+  if(!r.status)r.status=r.readonly;
  }
- else r.readonly=rs_mount(1);
+ else {
+  r.readonly=rs_mount(1);
+  if(VERTICAL_RECOVERY&&r.mode==0&&r.readonly==-30&&!rs_mount(0))r.readonly=-16;
+ }
  if(!r.status&&r.mode==1)for(u32 i=0;i<3&&!r.status;i++)r.status=rs_alias(i);
- if(!r.status&&r.mode==2)for(u32 i=0;i<3&&!r.status;i++)if(rs_link_state(i)!=0)r.status=-17;
- if(!r.status)r.phase=r.mode?5:1;
+ if((!r.status||completed_busy)&&r.mode==2)for(u32 i=0;i<3;i++)if(rs_link_state(i)!=0){r.status=-17;completed_busy=0;break;}
+ if(!r.status||completed_busy)r.phase=r.mode?5:1;
  i64 fd=op("/tmp/jiritsu/a7c2.names.result",0x241);
  if(fd>=0){write_all(fd,&r,sizeof(r));sc(82,fd,0,0,0,0,0);cl(fd);}
 }

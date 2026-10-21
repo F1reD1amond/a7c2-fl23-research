@@ -16,6 +16,13 @@ import trial
 
 
 class IntegratedSoundTests(unittest.TestCase):
+    def test_main_reports_only_public_outcome_to_desktop(self):
+        report = []
+        with patch.object(cli, 'doctor', return_value=dict(phase='diagnostic', camera_io=False,
+            identity='private identity', journal=['private native buffer'])):
+            self.assertEqual(cli.main(['doctor'], report=report.append), 0)
+        self.assertEqual(report, [dict(phase='diagnostic', camera_io=False)])
+
     def scenario(self, check):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
@@ -43,13 +50,13 @@ class IntegratedSoundTests(unittest.TestCase):
             self.assertEqual(state['audio_job'], str(audio))
         self.scenario(check)
 
-    def test_quiet_audio_cannot_be_persisted_even_after_recovery(self):
+    def test_recorded_listening_judgment_is_not_a_mandatory_install_gate(self):
         def check(base, root, state, native, audio):
             cli.confirm_audio(root, state, 'quiet')
-            cli.confirm_recovery(root, state)
-            with patch.object(boot_trial, 'install') as install:
-                with self.assertRaisesRegex(ValueError, 'acceptable volume'): cli.install(root, state, 100)
-                install.assert_not_called()
+            with patch.object(boot_trial, 'install',return_value={'phase':'installed_cold_test_pending'}) as install:
+                result=cli.install(root,state,100)
+                self.assertEqual(result['phase'],'installed_cold_test_pending')
+                install.assert_called_once()
         self.scenario(check)
 
     def test_install_uses_exact_accepted_trial_bytes_without_reconverting_source(self):
@@ -68,25 +75,39 @@ class IntegratedSoundTests(unittest.TestCase):
                 self.assertEqual(args[5], 100)
         self.scenario(check)
 
-    def test_new_selected_conversion_cannot_install_old_accepted_sound(self):
+    def test_new_conversion_installs_current_bytes_without_reaudition(self):
         def check(base, root, state, native, audio):
             cli.confirm_audio(root, state, 'correct'); cli.confirm_recovery(root, state)
             converted = base / 'other'; converted.mkdir()
-            (converted / 'custom-native.private.bin').write_bytes(b'different audio')
+            payload=bytes([2])*64
+            (converted / 'custom-native.private.bin').write_bytes(payload)
             state['conversion'] = str(converted)
-            with patch.object(boot_trial, 'install') as install:
-                with self.assertRaisesRegex(ValueError, 'differs from the accepted'): cli.install(root, state, 100)
-                install.assert_not_called()
+            with patch.object(boot_trial, 'install',return_value={'phase':'installed_cold_test_pending'}) as install:
+                self.assertEqual(cli.install(root,state,100)['phase'],'installed_cold_test_pending')
+                self.assertIsNone(install.call_args.args[3])
+                self.assertEqual(install.call_args.args[4],payload)
         self.scenario(check)
 
     def test_current_temporary_buffer_is_not_stacked_or_persisted_without_cold_recovery(self):
         def check(base, root, state, native, audio):
             cli.confirm_audio(root, state, 'correct')
-            with patch.object(buffer_trial, 'run') as run, patch.object(boot_trial, 'install') as install:
-                for action in (lambda: cli.audition(root, state), lambda: cli.install(root, state, 100),
-                               lambda: cli.off(root, state)):
+            with patch.object(buffer_trial, 'run') as run, patch.object(boot_trial, 'install',return_value={'phase':'installed_cold_test_pending'}) as install:
+                for action in (lambda: cli.audition(root, state), lambda: cli.off(root, state)):
                     with self.assertRaisesRegex(ValueError, 'Cold-recover'): action()
-                run.assert_not_called(); install.assert_not_called()
+                result=cli.install(root,state,100)
+                self.assertEqual(result['phase'],'installed_cold_test_pending')
+                run.assert_not_called(); install.assert_called_once()
+        self.scenario(check)
+
+    def test_direct_save_does_not_require_or_fabricate_listening_or_recovery(self):
+        def check(base,root,state,native,audio):
+            with patch.object(trial,'factory',side_effect=AssertionError('No camera')):
+                before=(audio/'job.private.json').read_bytes()
+                with patch.object(boot_trial,'install',return_value={'phase':'installed_cold_test_pending'}) as install:
+                    self.assertEqual(cli.install(root,state,100)['phase'],'installed_cold_test_pending')
+                    install.assert_called_once()
+                    self.assertEqual((audio/'job.private.json').read_bytes(),before)
+                    self.assertIsNone(state['pending'])
         self.scenario(check)
 
     def test_unknown_off_result_is_durable_and_not_replayed(self):
@@ -109,6 +130,16 @@ class IntegratedSoundTests(unittest.TestCase):
                  patch.object(trial, 'change', side_effect=lambda *a, **k: calls.append('write') or {'phase': 'written'}):
                 cli.on(root, state, 100)
             self.assertEqual(calls, ['backup-preflight', 'write'])
+
+    def test_on_adopts_an_already_enabled_native_branch_without_rewriting(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base=Path(temp)
+            root,state=cli.workspace(base/'workspace',True,base/'backup2')
+            result={'phase':'written','adopted_existing_enabled':True,'camera_firmware_written':False}
+            with patch.object(trial,'preflight',return_value=result), patch.object(trial,'change') as change:
+                actual=cli.on(root,state,100)
+            self.assertEqual(actual,result)
+            change.assert_not_called()
 
     def test_convert_and_help_never_open_a_camera(self):
         with tempfile.TemporaryDirectory() as temp, patch.object(trial, 'factory', side_effect=AssertionError('USB')):

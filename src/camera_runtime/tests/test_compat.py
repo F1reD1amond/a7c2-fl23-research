@@ -73,6 +73,7 @@ class OriginalFirmware(unittest.TestCase):
         cls.ap=(folder/'appFw.so').read_bytes();cls.cp=(folder/'cpapp-b.bin').read_bytes()
         if [core.sha(cls.ap),core.sha(cls.cp)]!=core.ORIGINAL:raise AssertionError('Original source required')
         cls.flap=core.patch_program(cls.ap,0)
+        cls.flcp=core.patch_program(cls.cp,1)
         spec=next(s for s in cls.layout.runtime()['cp_sources'] if s['kind']=='stock')
         result=bytearray(cls.cp)
         for w in spec['windows']:
@@ -81,20 +82,27 @@ class OriginalFirmware(unittest.TestCase):
             result[at:at+len(new)]=new
         cls.lutcp=bytes(result)
         if core.sha(cls.lutcp)!=cls.layout.runtime()['cp_zero_tables_sha256']:raise AssertionError('Canonical LUT runtime differs')
-    def test_stock_lut_becomes_fl23_lut_without_changing_any_cp_byte(self):
+    def expected_native_update(self,cp):
+        result=bytearray(cp)
+        for at,size in ((0x138832,26),(0x1100b80,3872)):
+            result[at:at+size]=self.flcp[at:at+size]
+        return bytes(result)
+    def test_stock_lut_keeps_custom_data_and_updates_only_native_fl23_fields(self):
         for mask in [1,32,63]:
             with self.subTest(mask=mask):
                 source=self.layout._ap_target(self.ap,mask)
                 identity,enabled,after,f,r=compat.plan(source,self.lutcp)
                 self.assertFalse(enabled);self.assertFalse(identity['provenance_checked']);self.assertEqual(identity['kind'],'lut')
                 self.assertEqual(after['appFw.so'],self.layout._ap_target(self.flap,mask))
-                self.assertEqual(after['cpapp-b.bin'],self.lutcp)
+                self.assertTrue(after['cpapp-b.bin']==self.expected_native_update(self.lutcp))
                 self.assertEqual(self.firmware.apply(after,r),{'appFw.so':source,'cpapp-b.bin':self.lutcp})
                 self.assertEqual(self.firmware.apply(self.firmware.apply(after,r),f),after)
     def test_fl23_lut_is_recognized_without_reinstallation(self):
         source=self.layout._ap_target(self.flap,63)
         identity,enabled,after,f,r=compat.plan(source,self.lutcp)
-        self.assertTrue(enabled);self.assertEqual(after['appFw.so'],source);self.assertIsNone(f)
+        self.assertFalse(enabled)
+        identity,enabled,repeated,f,r=compat.plan(source,after['cpapp-b.bin'])
+        self.assertTrue(enabled);self.assertEqual(repeated['appFw.so'],source);self.assertIsNone(f)
     def test_changes_outside_patched_positions_are_accepted_and_preserved(self):
         source=self.layout._ap_target(self.ap,1)
         changed_ap=bytearray(source);changed_ap[0x70000]^=1
@@ -103,7 +111,7 @@ class OriginalFirmware(unittest.TestCase):
             identity,enabled,after,f,r=compat.plan(bytes(changed_ap),bytes(changed_cp))
         self.assertFalse(identity['provenance_checked'])
         self.assertEqual(after['appFw.so'][0x70000],changed_ap[0x70000])
-        self.assertEqual(after['cpapp-b.bin'],bytes(changed_cp))
+        self.assertTrue(after['cpapp-b.bin']==self.expected_native_update(bytes(changed_cp)))
         self.assertEqual(self.firmware.apply(after,r),{'appFw.so':bytes(changed_ap),'cpapp-b.bin':bytes(changed_cp)})
     def test_actual_patch_position_conflict_is_not_overwritten(self):
         source=self.layout._ap_target(self.ap,1)

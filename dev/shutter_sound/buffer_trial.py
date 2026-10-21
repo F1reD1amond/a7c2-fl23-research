@@ -112,6 +112,62 @@ def initial_marker(state):
     return bytes(raw) + bytes.fromhex(state.get('lease_token_hex', ''))
 
 
+def preallocation_marker_rejection(state, raw):
+    """The worker returned EEXIST before allocation, DMA or registration."""
+    if (state.get('schema') != 'a7c2-empty-sound-buffer-trial/1' or
+            state.get('camera_firmware_written') is not False):
+        return False
+    result=parse(raw)
+    if not (result.get('audio_registration_trial') and result['phase']==1 and result['status']==-17
+            and not any(result[n] for n in ('ap_called','cp_called','transfer_called',
+                                           'ap_release_called','cp_release_called','cp_retained'))
+            and result['unregister_status']==result['register_status']==0xffffffff):
+        return False
+    events=[event for event in state.get('journal',[]) if event.get('event')!='native_extra_result']
+    if [event.get('event') for event in events]!=[
+            'native_stage_intent','native_intent','native_result_verified','native_cleanup_verified']:
+        return False
+    if any(e.get('stage')!='shutter.staged.so' or e.get('mode')!=0 for e in events):
+        return False
+    return all(events[2].get('result',{}).get(k)==v for k,v in result.items())
+
+
+def replace_completed_marker(camera, root, previous_jobs):
+    """Replace an exact owned marker from a completed prior registration.
+
+    Do not release its old CP handle: it may be stale after a power cycle.
+    The new registration replaces kind3 normally; leased CP storage is reclaimed
+    by cold power-off. Unknown/in-progress registrations are never replayed.
+    """
+    actual=camera.read('/tmp/jiritsu/shutter.custom.lease',True)
+    if actual is None:
+        return dict(previous_marker_absent=True)
+    root=Path(root)
+    (root/'replaced-marker.before.private.bin').write_bytes(actual)
+    for path in previous_jobs:
+        path=Path(path)
+        try:
+            previous=json.loads((path/'job.private.json').read_text(encoding='utf-8'))
+            if previous.get('identity')!=camera.identity or initial_marker(previous)!=actual:
+                continue
+            # Decode the completed native report rather than relying on a
+            # title, marker signature or a local phase label alone.
+            report=parse((path/'report.private.bin').read_bytes())
+            if not report.get('temporary_pcm_registered') or initial_marker(dict(previous,result=report))!=actual:
+                continue
+        except (OSError,ValueError,KeyError,struct.error):
+            continue
+        for name in ('shutter.staged.so','shutter.probe.result','libJit.so','a7c2.probe.result'):
+            if camera.temp_read(name,True) is not None:
+                raise ValueError('Existing native execution needs review before replacing sound: '+name)
+        camera.temp_remove('shutter.custom.lease')
+        if camera.read('/tmp/jiritsu/shutter.custom.lease',True) is not None:
+            raise ValueError('Known prior sound marker replacement did not complete')
+        return dict(completed_prior_marker_replaced=True,previous_job=str(path),
+                    previous_cp_handle_released=False,camera_firmware_written=False)
+    raise ValueError('现有声音标记无法对应到已完成的试听报告，已保存原标记；未覆盖未知运行任务。')
+
+
 def retire_recovered_marker(camera, root, previous_job):
     previous = json.loads((Path(previous_job) / 'job.private.json').read_text(encoding='utf-8'))
     observation = previous.get('owner_observation', {})
@@ -135,7 +191,8 @@ def retire_recovered_marker(camera, root, previous_job):
             'camera_memory_or_firmware_changed': False}
 
 
-def run(root, original_job, zig=None, *, payload=None, register=False, wire_format=1, recovered_job=None):
+def run(root, original_job, zig=None, *, payload=None, register=False, wire_format=1, recovered_job=None,
+        replace_jobs=()):
     if register and wire_format != 0:
         raise ValueError('The first PCM16/format-1 trial produced noise or wrong sound. '
                          'Temporary audio registration is disabled pending decoder/layout proof; '
@@ -170,6 +227,9 @@ def run(root, original_job, zig=None, *, payload=None, register=False, wire_form
             candidate.guard(ap, cp, installed=True)
             worker = build(ap, root / 'build', zig, payload=payload, register=register, wire_format=wire_format, lease_token=token)
             camera.programs_pinned = True
+            if register and replace_jobs and recovered_job is None:
+                state['prior_marker_replacement']=replace_completed_marker(camera,root,replace_jobs)
+                trial.save(root,state)
 
             def record(event, **fields):
                 state['journal'].append({'event': event, **fields})
@@ -185,7 +245,11 @@ def run(root, original_job, zig=None, *, payload=None, register=False, wire_form
             state['result'] = result
             if register:
                 if not result.get('temporary_pcm_registered'):
-                    raise ValueError('Temporary registration incomplete; preserve evidence and do not repeat')
+                    raise ValueError('Temporary registration incomplete: phase=%s status=%s, '
+                        'AP_called=%s CP_called=%s transfer_called=%s, unregister=%s register=%s; '
+                        'inspect the completed native report before another attempt' % (
+                        result['phase'],result['status'],result['ap_called'],result['cp_called'],
+                        result['transfer_called'],result['unregister_status'],result['register_status']))
                 state['phase'] = 'temporary_pcm_registered_cold_reload_required_after_test'
                 trial.save(root, state)
                 return state

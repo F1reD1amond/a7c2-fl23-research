@@ -122,12 +122,10 @@ class BootTrialOrderingTests(unittest.TestCase):
             self.assertLess(state['events'].index(('program', 1, 'reverse')), state['events'].index(('files', 2)))
         self.scenario(check)
 
-    def test_unverified_audio_never_opens_a_camera(self):
+    def test_invalid_encoded_audio_never_opens_a_camera(self):
         def check(job, state, install, factory, audio):
-            path = audio / 'job.private.json'
-            value = json.loads(path.read_text()); value['owner_audio_correct'] = False
-            path.write_text(json.dumps(value))
-            with self.assertRaisesRegex(ValueError, 'confirm correct'): install()
+            (audio/'payload.private.bin').write_bytes(b'bad')
+            with self.assertRaisesRegex(ValueError,'another body or payload'): install()
             self.assertFalse(state['events'])
             self.assertFalse(job.exists())
         self.scenario(check)

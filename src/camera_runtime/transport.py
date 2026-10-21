@@ -232,3 +232,30 @@ class Session:
     def ap_write(self,key,data):
         if key not in core.AP_KEYS or len(data)!=1:raise ValueError('AP 綁定目標或長度不符')
         return self.call(self.camera.writeBackup,key,data)
+
+
+class RecoverySession(Session):
+    """Reattach an authenticated service endpoint for a recorded body.
+
+    Acquisition sends no authentication/start/stop. The caller accounts for
+    the previous native result and proves the live model before new writes.
+    """
+    def __enter__(self):
+        if not self.expected or self.expected.get('model') != core.MODEL or not self.expected.get('serial_sha256'):
+            raise ValueError('Existing service recovery requires a recorded A7C II body identity')
+        self.dev = get_device(0x0336)
+        self.backend = Bounded(self.dev, 30)
+        self.auth = SonySenserAuthDevice(GenericUsbDriver(self.backend))
+        self.channel = SonySenserDevice(self.auth.driver)
+        self.camera = SonySenserCamera(self.channel)
+        try:
+            snapshot = self.call(self.camera.getBackupPresetData, True)
+            self.identity = service_identity(snapshot, core.MODEL)
+            if self.identity != {k: self.expected[k] for k in ('model', 'serial_sha256')}:
+                raise ValueError('Service endpoint belongs to a different body; no authentication or write attempted')
+            self.backend.budget = 180
+        except BaseException:
+            self.healthy = False
+            usb.util.dispose_resources(self.dev)
+            raise
+        return self

@@ -1,5 +1,7 @@
 # Vertical shooting display — development preview
 
+This page describes the older session-only `vertical.py` CLI. Desktop preview.9 saves the native switch as part of combined setup; see the [desktop guide](desktop.md). Persistent operation still needs physical acceptance. The saved-OFF restriction below applies to the older CLI only.
+
 [Home](../../README.md) · [简体中文](../zh-CN/vertical-display.md)
 
 For **A7C II / ILCE-7CM2, firmware 2.01**. This branch contains an experimental shooting-display rotation tool. On one Windows-connected camera, enabling the native switch rotated exposure values; adding three resource aliases restored most missing portrait icons. The user accepted the current position of the Av/Tv/Ev/ISO dial-function guide.

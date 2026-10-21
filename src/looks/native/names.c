@@ -1,5 +1,6 @@
 /* Fixed resource allowlist only. Atomic inode replacement keeps the running
- * UI's old mmap intact. Old hardlinks remain until named-UI verification. Job-pinned names appended without replacing existing records.
+ * UI's old mmap intact. Legacy mode retains old hardlinks; byte-stream mode
+ * reconstructs rollback from appended records without retaining 68 old copies.
  * Modes: 0 check, 1 stage/install, 2 restore (plain AP), 3 cleanup (named AP).
  * No AP/CP writes, Backup settings, arbitrary paths, WBI, shell or reboot.
  */
@@ -152,10 +153,53 @@ static i64 recreate_original(u32 i) {
  if(!v)v=sc(82,fd,0,0,0,0,0);c=cl(&fd);if(!v)v=c;if(v)return v;
  v=verify(backup,a->size,a->before,0);if(!v)r.staged++;return v;
 }
+#ifdef CHECKPOINT_STREAM_RESTORE
+/* Only one reconstructed inode exists at a time. Do not edit an inode that
+ * the live UI may have mapped. f_bfree is used because this worker is root. */
+struct StatFS {i64 type,bsize;u64 blocks,bfree,bavail,files,ffree;u32 fsid[2];i64 namelen,frsize,flags,spare[4];};
+_Static_assert(sizeof(struct StatFS)==120,"statfs ABI");
+static i64 restore_capacity(void) {
+ struct StatFS s;i64 v=sc(43,(i64)"/usr/share/app",(i64)&s,0,0,0,0);if(v)return v;
+ if(s.bsize<=0)return -22;u64 need=0;
+ for(u32 i=0;i<asset_count;i++)if(restore_needed[i]&&!old_present[i]) {
+  u64 blocks=((u64)assets[i].size+s.bsize-1)/s.bsize;
+  if(blocks>need)need=blocks;
+ }
+ return need&&(s.bfree<need+2||!s.ffree)?-28:0;
+}
+#endif
+#ifdef BYTE_NAME_STREAM_INSTALL
+/* Keep the old live mmap intact, but do not pin every unmapped old inode with
+ * a hardlink. Appended names carry the complete original payload; rollback
+ * reconstructs it using the pinned count/pointers/length. Reserve a second
+ * file's space for that atomic rollback before staging another replacement. */
+static i64 install_capacity(int remaining) {
+ struct StatFS s;i64 v=sc(43,(i64)"/usr/share/app",(i64)&s,0,0,0,0);if(v)return v;
+ if(s.bsize<=0)return -22;u64 stage=0,restore=0,growth=0;
+ for(u32 i=0;i<asset_count;i++) {
+  u64 a=((u64)assets[i].size+s.bsize-1)/s.bsize,b=((u64)after_sizes[i]+s.bsize-1)/s.bsize;
+  if(a>restore)restore=a;
+  if(!remaining||!committed[i]){if(b>stage)stage=b;if(b>a)growth+=b-a;}
+ }
+ return s.bfree<stage+restore+growth+2||s.ffree<2?-28:0;
+}
+#endif
 static i64 rollback_install(void) {
  i64 status=0;
+#ifdef BYTE_NAME_STREAM_INSTALL
+ /* Free any incomplete staging inode before reserving rollback space. */
+ for(u32 i=0;i<asset_count;i++)if(temp_created[i]) {
+  paths(i);i64 v=unlink_path(temp);if(v&&!status)status=v;if(!v)temp_created[i]=0;
+ }
+#endif
  for(u32 j=asset_count;j>0;j--) {u32 i=j-1;paths(i);
-  if(committed[i]) {i64 v=rename_path(backup,actual);if(v&&!status)status=v;
+  if(committed[i]) {
+#ifdef BYTE_NAME_STREAM_INSTALL
+   u32 forward_staged=r.staged;i64 v=recreate_original(i);r.staged=forward_staged;if(v){if(!status)status=v;break;}
+#else
+   i64 v=0;
+#endif
+   v=rename_path(backup,actual);if(v&&!status)status=v;
    if(!v) {committed[i]=0;backup_created[i]=0;r.restored++;}}
  }
  if(!status)for(u32 i=0;i<asset_count;i++) {paths(i);i64 v=verify(actual,assets[i].size,assets[i].before,0);if(v){status=v;break;}}
@@ -193,9 +237,27 @@ static void work(void) {
     if(missing!=0)r.status=verify(backup,a->size,a->before,0);}}
   if(r.status)return;
  }
- r.phase=2;if(!req.mode||req.mode==4){r.phase=9;return;}
+ r.phase=2;
+#ifdef CHECKPOINT_STREAM_RESTORE
+ if(req.mode==2||req.mode==4){r.status=restore_capacity();if(r.status)return;}
+#endif
+#ifdef BYTE_NAME_STREAM_INSTALL
+ if(req.mode<2){r.status=install_capacity(0);if(r.status)return;}
+#endif
+ if(!req.mode||req.mode==4){r.phase=9;return;}
  mounted_rw=1;r.remount=remount(0);if(r.remount){r.status=r.remount;return;}
  if(req.mode==1) {
+#ifdef BYTE_NAME_STREAM_INSTALL
+  for(u32 i=0;i<asset_count;i++) {
+   r.status=install_capacity(1);if(r.status)return;
+   r.phase=3;r.status=stage_one(i);if(r.status)return;
+   paths(i);r.status=verify(actual,assets[i].size,assets[i].before,0);if(r.status)return;
+   r.phase=5;r.status=rename_path(temp,actual);if(r.status)return;
+   committed[i]=1;temp_created[i]=0;r.committed++;
+   r.status=sync_dir();if(r.status)return;
+   r.status=verify(actual,after_sizes[i],assets[i].after,0);if(r.status)return;
+  }
+#else
   r.phase=3;for(u32 i=0;i<asset_count;i++){r.status=stage_one(i);if(r.status)return;}
   r.phase=4;for(u32 i=0;i<asset_count;i++){paths(i);
    r.status=verify(actual,assets[i].size,assets[i].before,0);if(r.status)return;
@@ -203,13 +265,24 @@ static void work(void) {
   r.status=sync_dir();if(r.status)return;
   r.phase=5;for(u32 i=0;i<asset_count;i++){paths(i);r.status=rename_path(temp,actual);if(r.status)return;
    committed[i]=1;temp_created[i]=0;r.committed++;}
+#endif
   for(u32 i=0;i<asset_count;i++){paths(i);r.status=verify(actual,after_sizes[i],assets[i].after,0);if(r.status)return;}
  } else if(req.mode==2) {
+#ifdef CHECKPOINT_STREAM_RESTORE
+  r.phase=6;for(u32 i=0;i<asset_count;i++)if(restore_needed[i]) {
+   if(!old_present[i]){r.status=recreate_original(i);if(r.status)return;}
+   paths(i);r.status=rename_path(backup,actual);if(r.status)return;
+   backup_created[i]=0;r.restored++;
+   r.status=sync_dir();if(r.status)return;
+   r.status=verify(actual,assets[i].size,assets[i].before,0);if(r.status)return;
+  }
+#else
   r.phase=3;for(u32 i=0;i<asset_count;i++)if(restore_needed[i]&&!old_present[i]) {
    r.status=recreate_original(i);if(r.status)return;
   }
   r.status=sync_dir();if(r.status)return;
   r.phase=6;for(u32 i=0;i<asset_count;i++){if(!restore_needed[i])continue;paths(i);r.status=rename_path(backup,actual);if(r.status)return;r.restored++;}
+#endif
   for(u32 i=0;i<asset_count;i++){paths(i);r.status=verify(actual,assets[i].size,assets[i].before,0);if(r.status)return;}
   for(u32 i=0;i<asset_count;i++)if(!restore_needed[i]&&old_present[i]){paths(i);r.status=unlink_path(backup);if(r.status)return;r.removed_backups++;}
  } else {
@@ -228,7 +301,11 @@ __attribute__((visibility("default"))) void _init(void) {
   if(temp_created[i]) {i64 v=unlink_path(temp);if(v&&!r.rollback)r.rollback=v;}
   if(!r.rollback&&backup_created[i]) {i64 v=unlink_path(backup);if(v&&!r.rollback)r.rollback=v;}
  }
- if(r.status&&req.mode==2&&!r.restored&&mounted_rw)for(u32 i=0;i<asset_count;i++)if(backup_created[i]) {
+ if(r.status&&req.mode==2&&mounted_rw
+#ifndef CHECKPOINT_STREAM_RESTORE
+ &&!r.restored
+#endif
+ )for(u32 i=0;i<asset_count;i++)if(backup_created[i]) {
   paths(i);i64 v=unlink_path(backup);if(v&&!r.rollback)r.rollback=v;
  }
  if(r.status&&(req.mode==1||req.mode==2)&&mounted_rw) {

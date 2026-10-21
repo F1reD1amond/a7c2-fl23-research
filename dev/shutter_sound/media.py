@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import wave
 
 import native_codec
@@ -59,11 +60,28 @@ def extract(source, destination, *, start=0, duration=None, ffmpeg=None):
     return rate, len(samples)
 
 
+def cleanup(output):
+    """Remove only this converter's files and its now-empty output folder."""
+    root=Path(output)
+    for name in ('selected.private.wav','custom-native.private.bin','preview.private.wav','conversion.private.json'):
+        (root/name).unlink(missing_ok=True)
+    root.rmdir()
+
+
 def convert(source, output, *, start=0, duration=None, peak=0.4, ffmpeg=None):
     root = Path(output)
     if not math.isfinite(peak) or not 0 < peak <= 0.5:
         raise ValueError('Use --peak greater than 0 and at most 0.5')
     root.mkdir(parents=True, exist_ok=False)
+    try:
+        return _convert(source,root,start=start,duration=duration,peak=peak,ffmpeg=ffmpeg)
+    except BaseException:
+        try:cleanup(root)
+        except OSError as exc:print('Temporary audio cleanup stopped: '+str(exc),file=sys.stderr)
+        raise
+
+
+def _convert(source, root, *, start, duration, peak, ffmpeg):
     wav = root / 'selected.private.wav'
     rate, frames = extract(source, wav, start=start, duration=duration, ffmpeg=ffmpeg)
     # A short edge fade avoids adding hard cut discontinuities; no source edit.

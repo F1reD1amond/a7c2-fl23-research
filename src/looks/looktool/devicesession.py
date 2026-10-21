@@ -16,8 +16,9 @@ def modules():
     return transport,core
 
 class Camera:
-    def __init__(self,expected=None):
+    def __init__(self,expected=None,*,allow_service_resume=False):
         self.expected=expected;self.healthy=True;self.identity_pending=False;self.programs_pinned=False
+        self.allow_service_resume=allow_service_resume
     def __enter__(self):
         from .devicelock import DeviceLock
         self.lock=DeviceLock();self.lock.__enter__()
@@ -31,7 +32,12 @@ class Camera:
         import usb.core,usb.backend.libusb1
         backend=usb.backend.libusb1.get_backend(find_library=transport.libusb_package.find_library)
         detected=usb.core.find(idVendor=0x054c,idProduct=0x0e8a,backend=backend)
-        if detected is None:
+        service_present=False
+        if detected is None and self.allow_service_resume:
+            service=usb.core.find(idVendor=0x054c,idProduct=0x0336,backend=backend)
+            service_present=service is not None
+            if service_present:transport.usb.util.dispose_resources(service)
+        if detected is None and not service_present:
             # A successful auth.stop re-enumerates asynchronously. Wait for
             # the normal descriptor locally; never re-authenticate service.
             deadline=time.monotonic()+15
@@ -51,6 +57,12 @@ class Camera:
                 print('Known initial storage busy/no-media state. Acquiring service access for pinned-program/native-model identification; no firmware writes.',flush=True)
                 self.link=open_service(transport);self.identity_pending=True
         else:
+            if self.allow_service_resume and self.expected and self.expected.get('model')==self.core.MODEL:
+                print('普通 USB 身份未出现；只读取已有服务会话的机身序列，核对后续接，不重复认证。',flush=True)
+                self.link=transport.RecoverySession(self.expected);self.link.__enter__()
+                self.identity=dict(self.link.identity,identification_method='recorded-body-existing-service')
+                self.service_only=False
+                return self
             raise ValueError('Normal Mass Storage USB serial is required for body binding; end I/O and reconnect USB')
         try:
             self.identity=dict(self.link.identity,usb_serial_sha256=usb_serial)
@@ -125,9 +137,13 @@ def invoke(camera,blob,*,stage,request,result,contents,mode,decode,record,save_r
     expected[result]=raw
     for extra in extras:
         value=camera.temp_read(extra)
-        if extra=='a7c2.probe.result':camera.core.parse_native('probe',value)
+        extra_info=None
+        if extra=='a7c2.probe.result':
+            extra_info=camera.core.parse_native('probe',value)
+            if isinstance(parsed,dict) and isinstance(extra_info,dict):
+                parsed['usr_mount_readonly']=extra_info.get('usr_mount_readonly')
         expected[extra]=value
-        record('native_extra_result',name=extra,sha256=firmware.sha(value))
+        record('native_extra_result',name=extra,sha256=firmware.sha(value),details=extra_info)
     record('native_result_verified',stage=stage,mode=mode,result=parsed)
     for name in reversed(names):
         actual=camera.temp_read(name,True)

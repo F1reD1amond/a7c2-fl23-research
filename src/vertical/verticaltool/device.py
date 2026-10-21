@@ -109,7 +109,7 @@ class Workers:
     def call(self, name, decoder, mode=0, contents=None):
         from looktool.devicesession import invoke
         self.sequence += 1
-        aliases = name == 'aliases.so'
+        aliases = name in ('aliases.so','aliases_recovery.so')
         return invoke(self.camera, (ASSETS / name).read_bytes(),
             stage='lut-names-staged.so' if aliases else 'lut-runtime-staged.so',
             request='a7c2.names.request' if aliases else None,
@@ -126,7 +126,8 @@ class Workers:
         return require_ok(self.call(name, lambda raw: parse_ram(raw, target), mode=target))
 
     def aliases(self, mode):
-        result = self.call('aliases.so', lambda raw: parse_aliases(raw, mode), mode=mode,
+        name='aliases_recovery.so' if getattr(self,'allow_writable_recovery',False) else 'aliases.so'
+        result = self.call(name, lambda raw: parse_aliases(raw, mode), mode=mode,
                            contents=struct.pack('<8sII', b'A7VRS001', mode, 0))
         self.journal.report['last_alias_result'] = result
         self.journal.record('alias_result', result=result)

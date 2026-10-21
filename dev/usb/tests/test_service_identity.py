@@ -8,8 +8,8 @@ import unittest
 from unittest.mock import Mock,patch
 
 ROOT=Path(__file__).resolve().parents[3]
-sys.path[:0]=[str(ROOT/'src/fl23'),str(ROOT/'src/fl23/vendor')]
-spec=importlib.util.spec_from_file_location('service_first_transport',ROOT/'src/fl23/transport.py')
+sys.path[:0]=[str(ROOT/'src/camera_runtime'),str(ROOT/'src/camera_runtime/vendor')]
+spec=importlib.util.spec_from_file_location('service_first_transport',ROOT/'src/camera_runtime/transport.py')
 t=importlib.util.module_from_spec(spec);spec.loader.exec_module(t)
 
 class SessionTests(unittest.TestCase):

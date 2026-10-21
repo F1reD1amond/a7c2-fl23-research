@@ -1,7 +1,8 @@
-"""Reviewed full7-v4 code identity with independently variable checked tables.
+"""Reviewed layouts, edited-byte checks, and independent custom tables.
 
-The original exact-SHA adapter remains unchanged. This additional adapter
-recognizes a pinned program layout and still binds every job to full hashes.
+Legacy jobs still record their complete source identities. First activation
+checks its actual windows, and legacy code matching normalizes only reviewed
+native FL23 updates. Desktop transactions use structural checks directly.
 """
 import hashlib,struct,json
 from pathlib import Path
@@ -41,9 +42,48 @@ def identify_ap(ap):
     raise ValueError('Unsupported AP identity; no firmware/settings writes performed')
 
 def code_hash(cp):
+    cp=normalize_fl23_native(cp)
     start=six.TABLE_FILE+8;end=six.TABLE_FILE+32+6*six.TABLE_BYTES
     if len(cp)<end:raise ValueError('Truncated CP program')
     h=hashlib.sha256();h.update(cp[:start]);h.update(bytes(end-start));h.update(cp[end:]);return h.hexdigest()
+
+def fl23_native_windows():
+    """Reviewed native FL23 fields that remain independent of custom slots."""
+    root=Path(__file__).resolve().parents[3]
+    folder=root/'src/camera_runtime/assets'
+    if not folder.is_dir():folder=root/'src/fl23/assets'
+    manifest=json.loads((folder/'patches.json').read_text(encoding='utf-8'))[1]['writes']
+    stock=next(s for s in runtime()['cp_sources'] if s['kind']=='stock')
+    result=[]
+    for w in manifest:
+        at=int(w['file_offset'],16)
+        if at not in (0x138832,0x1100b80):continue
+        old,new=bytes.fromhex(w['before_hex']),bytes.fromhex(w['after_hex'])
+        legacy=bytearray(old)
+        for patch in stock['windows']:
+            pos=patch['offset'];raw=bytes.fromhex(patch['after'])
+            a,b=max(at,pos),min(at+len(old),pos+len(raw))
+            if a<b:legacy[a-at:b-at]=raw[a-pos:b-pos]
+        result.append((at,old,new,bytes(legacy)))
+    return result
+
+def normalize_fl23_native(cp):
+    result=None
+    for at,old,new,legacy in fl23_native_windows():
+        if cp[at:at+len(new)] in (new,*fl23_previous_values(at)) and cp[at:at+len(new)]!=legacy:
+            if result is None:result=bytearray(cp)
+            result[at:at+len(new)]=legacy
+    return bytes(result) if result is not None else cp
+
+
+def fl23_previous_values(offset):
+    """Known published native-field revisions, never full firmware admission."""
+    path=Path(__file__).resolve().parents[3]/'src/camera_runtime/assets/fl23-native-history.json'
+    if not path.is_file():return ()
+    history=json.loads(path.read_text(encoding='utf-8'))
+    if history.get('schema')!='a7c2-reviewed-fl23-native-history/1':raise ValueError('Unknown native FL23 migration data')
+    if offset not in (0x138832,0x1100b80):return ()
+    return tuple(bytes.fromhex(row['after_hex']) for row in history['windows'] if int(row['file_offset'],16)==offset)
 
 def structural_ap(ap):
     """Recognize actual converter bytes/slot mask, without a file digest."""
@@ -118,7 +158,12 @@ def identify(ap,cp):
         six.read_tables(cp)
     elif a.get('first_install'):
         spec=next((s for s in asset['cp_sources'] if s['kind']==a['kind']),None)
-        if spec is None or c!=spec['sha256']:raise ValueError('First import needs the exact matching stock/FL23 AP+CP pair')
+        if spec is None or len(cp)!=spec['bytes']:raise ValueError('First import needs matching A7C II 2.01 program extents')
+        # FL23 curve improvements change its full CP digest. Admission uses
+        # the identified AP and every actual CP window we will replace.
+        for w in spec['windows']:
+            at=w['offset'];old=bytes.fromhex(w['before'])
+            if cp[at:at+len(old)]!=old:raise ValueError('First-import CP window conflicts at '+hex(at))
     else:
         if code_hash(cp)!=asset['cp_code_sha256']:raise ValueError('Unsupported standalone CP code identity')
         six.read_tables(cp)
@@ -136,7 +181,8 @@ def replace(ap,cp,replacements,*,hash_checks=True,native_photo=None,native_bank=
             at=w['offset'];old,new=bytes.fromhex(w['before']),bytes.fromhex(w['after'])
             if cp[at:at+len(old)]!=old:raise ValueError('Bootstrap source window differs')
             result[at:at+len(new)]=new
-        if hash_checks and firmware.sha(result)!=runtime()['cp_zero_tables_sha256']:raise ValueError('Canonical runtime differs')
+        # The final code/layout check below also permits the reviewed updated
+        # native FL23 curves. Do not reject them with the old full-file digest.
     if identity['kind']!='legacy-six':
         source=bytearray(ap)
         spec=next(s for s in runtime()['ap_sources'] if identity['kind'].startswith(s['kind']))

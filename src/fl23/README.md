@@ -114,7 +114,7 @@ python app.py verify
 
 ## 验证状态
 
-69 项离线测试通过（`python -m unittest discover -s tests`），覆盖资产杂凑、色彩记录、
+82 项离线测试通过（`python -m unittest discover -s tests`），覆盖资产杂凑、色彩记录、USB 设备层、
 Gamma 记录与路由、目录约定、备份三层校验、驱动识别与流程前置条件。
 **0.5.2 的 Gamma 路由修正尚未重新上机实拍**，详见
 `docs/fl23-v052-gamma-route-helper.md`。

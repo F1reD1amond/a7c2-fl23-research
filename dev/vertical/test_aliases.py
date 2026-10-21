@@ -9,9 +9,9 @@ BASE=0x7f00000000;FMT='<8sIIIIqqqIIII3II3Q'
 SRC=[f'/usr/share/app/image_{i:02d}_32_IPSX.uxc' for i in range(3)]
 DST=[f'/usr/share/app/image_{i:02d}_23_IPSX.uxc' for i in range(3)]
 TARGET=[Path(s).name for s in SRC]
-def run(mode=1,existing='none',fail_create=-1,fail_unlink=-1,fail_sync=False,fail_rw=False,fail_ro=False,alias_inode_wrong=False,wrong_header=False,model=16):
+def run(mode=1,existing='none',fail_create=-1,fail_unlink=-1,fail_sync=False,fail_rw=False,fail_ro=False,alias_inode_wrong=False,wrong_header=False,model=16,recovery=False,start_rw=False,fail_ro_busy=False):
  u=Uc(UC_ARCH_ARM64,UC_MODE_ARM);u.mem_map(0x10000000,0x400000)
- with (ASSETS/'aliases.so').open('rb') as f:
+ with (ASSETS/('aliases_recovery.so' if recovery else 'aliases.so')).open('rb') as f:
   e=ELFFile(f)
   for s in e.iter_segments():
    if s['p_type']=='PT_LOAD':u.mem_write(0x10000000+s['p_vaddr'],s.data())
@@ -27,7 +27,7 @@ def run(mode=1,existing='none',fail_create=-1,fail_unlink=-1,fail_sync=False,fai
  for i,n in enumerate([7844,7880,3709]):files[SRC[i]]=struct.pack('<8sHHI',b'uxd\x07\0\0\0\0' if not wrong_header else b'invalid!',8,i,n|(((n+1)&~1)<<12))
  links={} if existing=='none' else {p:TARGET[i] if existing=='own' else 'foreign.uxc' for i,p in enumerate(DST)}
  if existing=='regular':links={};files[DST[0]]=b'foreign-data'
- initial_links=dict(links);initial_sources={p:files[p] for p in SRC};handles={};audit=[];state={'ro':True,'sync_failed':False}
+ initial_links=dict(links);initial_sources={p:files[p] for p in SRC};handles={};audit=[];state={'ro':not start_rw,'sync_failed':False}
  def text(p):
   b=bytearray()
   while True:
@@ -72,7 +72,8 @@ def run(mode=1,existing='none',fail_create=-1,fail_unlink=-1,fail_sync=False,fai
    else:r=-22 if path in files else -2
   elif no==40:
    assert a[0]==0 and text(a[1])=='/usr' and a[2]==0 and a[3] in (0xc30,0xc31);ro=bool(a[3]&1);audit.append(('mount',ro))
-   if (ro and fail_ro) or (not ro and fail_rw):r=-5
+   if ro and fail_ro_busy:r=-16
+   elif (ro and fail_ro) or (not ro and fail_rw):r=-5
    else:state['ro']=ro
   elif no==63:
    h=handles[a[0]]
@@ -97,14 +98,19 @@ def run(mode=1,existing='none',fail_create=-1,fail_unlink=-1,fail_sync=False,fai
  u.hook_add(UC_HOOK_INTR,syscall);u.emu_start(0x10000000+init,0x70000000,count=5000000);assert u.reg_read(UC_ARM64_REG_PC)==0x70000000
  result=struct.unpack(FMT,files['/tmp/jiritsu/a7c2.names.result']);assert result[0]==b'A7VRS001' and result[1]==1 and result[4]==3
  status=result[5];assert all(files[p]==v for p,v in initial_sources.items())
- if model!=16:assert status==-22 and not any(a[0] in ['symlink','mount'] for a in audit)
+ if start_rw and (not recovery or mode==1):assert status==-30 and links==initial_links and not any(a[0] in ['symlink','mount'] for a in audit)
+ elif model!=16:assert status==-22 and not any(a[0] in ['symlink','mount'] for a in audit)
  elif wrong_header:assert status==-22 and not any(a[0] in ['symlink','mount'] for a in audit)
  elif existing in ['foreign','regular'] or (existing=='own' and mode==1):assert status==-17 and links==initial_links
+ elif fail_ro_busy:
+  assert status and result[7]==-16 and not state['ro']
+  if recovery and mode==2 and fail_unlink<0 and not fail_sync:assert status==-16 and result[3]==5 and result[11]==result[9] and not links
+  else:assert result[3]!=5
  elif fail_ro:assert status and result[7] and not state['ro']
  elif fail_rw:assert status and state['ro'] and links==initial_links
  elif fail_unlink>=0:assert status and state['ro']
  elif fail_create>=0 or alias_inode_wrong or fail_sync:assert status and result[6]==0 and not links and state['ro']
- elif mode==0:assert status==0 and links==initial_links and state['ro'] and not any(a[0]=='mount' for a in audit)
+ elif mode==0:assert status==0 and links==initial_links and state['ro']==(not start_rw) and result[7]==(-16 if start_rw else 0) and not any(a[0]=='mount' for a in audit)
  elif mode==1:assert status==0 and result[3]==5 and links=={p:TARGET[i] for i,p in enumerate(DST)} and state['ro']
  elif mode==2:assert status==0 and not links and state['ro']
  return {'mode':mode,'existing':existing,'faults':dict(fail_create=fail_create,fail_unlink=fail_unlink,fail_sync=fail_sync,fail_rw=fail_rw,fail_ro=fail_ro,alias_inode_wrong=alias_inode_wrong,wrong_header=wrong_header,model=model),'status':status,'rollback':result[6],'readonly':result[7],'created':result[10],'removed':result[11],'remaining_links':len(links)}
@@ -113,6 +119,14 @@ cases += [dict(fail_create=i) for i in range(3)]
 cases += [dict(mode=2,existing='own',fail_unlink=i) for i in range(3)]
 cases += [dict(fail_create=2,fail_unlink=0)]
 cases += [dict(mode=0,existing='own')]
+cases += [dict(recovery=True,mode=0,start_rw=True,existing='own'),
+ dict(recovery=True,mode=2,start_rw=True,existing='own'),
+ dict(recovery=True,mode=2,existing='own',fail_ro_busy=True),
+ dict(recovery=True,mode=2,start_rw=True,existing='own',fail_ro_busy=True),
+ dict(recovery=True,mode=1,start_rw=True),
+ dict(recovery=True,mode=2,start_rw=True,existing='own',fail_ro_busy=True,fail_unlink=1),
+ dict(recovery=True,mode=0,start_rw=True,existing='foreign'),
+ dict(mode=0,start_rw=True)]
 
 import unittest
 class NativeCases(unittest.TestCase):

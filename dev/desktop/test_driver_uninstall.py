@@ -5,6 +5,8 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+from contextlib import redirect_stdout
+import io
 
 from desktopapp import drivers
 
@@ -23,6 +25,19 @@ class DriverUninstallTests(unittest.TestCase):
         self.assertEqual(drivers.uninstall_plan(self.rows, {'0e8a', '0336'}, self.root / 'INF'), ['oem42.inf'])
         self.assertFalse(drivers.is_camera_id(r'USB\VID_1234&PID_0E8A\OTHER', {'0e8a'}))
         self.assertFalse(drivers.is_camera_id(r'USB\VID_054C&PID_0E8A0\OTHER', {'0e8a'}))
+
+    def test_compatible_drivers_skip_installer_and_elevation_with_visible_result(self):
+        for pid,service in (('0e8a','WinUSB'),('0336','libusbK')):
+            report=dict(devices=[dict(id='USB\\VID_054C&PID_'+pid.upper()+'\\Camera',service=service)])
+            output=io.StringIO()
+            with patch.object(drivers.sys,'platform','win32'),patch.object(drivers,'scan',return_value=report) as scan, \
+                 patch.object(drivers,'installer') as install,patch.object(drivers,'elevate_request') as elevate,redirect_stdout(output):
+                result=drivers.install({'pid':pid},self.root)
+            self.assertFalse(result['driver_changed']);install.assert_not_called();elevate.assert_not_called()
+            self.assertEqual(scan.call_count,1);self.assertIn('跳过驱动安装',output.getvalue())
+            with patch.object(drivers.sys,'platform','win32'),patch.object(drivers,'scan') as scan:
+                drivers.install({'pid':pid},self.root,report=report)
+            scan.assert_not_called()
 
     def test_windows_native_driver_never_deleted(self):
         rows = [dict(self.rows[0], inf='usbstor.inf')]

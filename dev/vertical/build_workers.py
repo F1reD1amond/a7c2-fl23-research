@@ -1,4 +1,4 @@
-"""Rebuild the four small freestanding ARM64 workers, without camera access."""
+"""Rebuild native display workers and the disable-only recovery variant."""
 import argparse
 from pathlib import Path
 import sys
@@ -13,7 +13,7 @@ def main():
     args = parser.parse_args()
     from looktool.nativebuild import compile_worker
     native = ROOT / 'src/vertical/native'
-    for name in ('vertical_probe', 'vertical_enable_ram', 'vertical_disable_ram', 'aliases'):
+    for name in ('vertical_probe', 'vertical_enable_ram', 'vertical_disable_ram', 'aliases', 'aliases_recovery'):
         result = compile_worker(native / (name + '.c'), native / 'vertical_probe.c',
             ROOT / 'src/vertical/assets' / (name + '.so'), args.zig, fingerprints=False)
         print(name + '.so:', result['bytes'], 'bytes')

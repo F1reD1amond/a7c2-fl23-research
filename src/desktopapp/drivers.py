@@ -26,7 +26,7 @@ def scan():
     report = {'platform': sys.platform, 'architecture': platform.machine(),
               'camera_io': False, 'devices': [], 'errors': []}
     if sys.platform == 'win32':
-        script = r"$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); Get-PnpDevice -PresentOnly | Where-Object {$_.InstanceId -match '^USB\\VID_054C&PID_(0E8A|0336)'} | ForEach-Object { [pscustomobject]@{id=$_.InstanceId;name=$_.FriendlyName;status=$_.Status;service=(Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName 'DEVPKEY_Device_Service' -ErrorAction SilentlyContinue).Data;problem=$_.Problem} } | ConvertTo-Json -Compress"
+        script = r"$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); Get-PnpDevice -PresentOnly | Where-Object {$_.InstanceId -match '^USB\\VID_054C&PID_'} | ForEach-Object { [pscustomobject]@{id=$_.InstanceId;name=$_.FriendlyName;status=$_.Status;service=(Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName 'DEVPKEY_Device_Service' -ErrorAction SilentlyContinue).Data;description=(Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName 'DEVPKEY_Device_BusReportedDeviceDesc' -ErrorAction SilentlyContinue).Data;compatible_ids=(Get-PnpDeviceProperty -InstanceId $_.InstanceId -KeyName 'DEVPKEY_Device_CompatibleIds' -ErrorAction SilentlyContinue).Data;problem=$_.Problem} } | ConvertTo-Json -Compress"
         # System PowerShell 5.1 is sufficient; it is not a prerequisite gate.
         try:
             done = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive',
@@ -43,14 +43,26 @@ def scan():
             report['errors'].append({'stage': 'windows-pnp', 'error': repr(exc)})
     try:
         import usb.core
+        import usb.util
         import usb.backend.libusb1
         import libusb_package
         backend = usb.backend.libusb1.get_backend(find_library=libusb_package.find_library)
         report['libusb_available'] = backend is not None
         if backend:
-            report['libusb_devices'] = [{'vid': '054c', 'pid': f'{d.idProduct:04x}'}
-                for d in usb.core.find(find_all=True, idVendor=0x054c, backend=backend)
-                if d.idProduct in (0x0e8a, 0x0336)]
+            report['libusb_devices'] = []
+            for d in usb.core.find(find_all=True, idVendor=0x054c, backend=backend):
+                row = {'vid': '054c', 'pid': f'{d.idProduct:04x}', 'known_camera_identity': f'{d.idProduct:04x}' in PIDS}
+                try:
+                    row['product'] = usb.util.get_string(d, d.iProduct) if d.iProduct else ''
+                    row['interfaces'] = [{'class': i.bInterfaceClass, 'subclass': i.bInterfaceSubClass,
+                        'protocol': i.bInterfaceProtocol, 'number': i.bInterfaceNumber} for config in d for i in config]
+                except Exception as exc:
+                    row['descriptor_error'] = repr(exc)
+                finally:
+                    usb.util.dispose_resources(d)
+                report['libusb_devices'].append(row)
+            if any(not row['known_camera_identity'] for row in report['libusb_devices']):
+                report['usb_identity_note'] = '已列出所有 Sony USB 身份；未知 PID 不等于已确认的 A7C II。请核对设备名称、接口类型及海量存储模式，不会给未知设备自动换驱动。'
     except Exception as exc:
         report['errors'].append({'stage': 'libusb-enumeration', 'error': repr(exc)})
     if sys.platform == 'darwin':
@@ -171,7 +183,7 @@ def elevated_result(folder, code):
     raise RuntimeError('Administrator driver process did not complete: ' + str(code))
 
 
-def install(arguments, job):
+def install(arguments, job, *, report=None):
     if sys.platform == 'darwin':
         return scan()
     if sys.platform != 'win32':
@@ -179,13 +191,26 @@ def install(arguments, job):
     pid = str(arguments.get('pid', '0e8a')).lower()
     if pid not in PIDS:
         raise ValueError('Unsupported USB identity')
-    before = scan()
+    print('正在检测 Sony 054C:' + pid.upper() + ' 的现有驱动…', flush=True)
+    before = scan() if report is None else report
     write_json(job / 'driver-before.private.json', before)
+    write_json(job / ('driver-before-' + pid + '.private.json'), before)
     matching = [d for d in before['devices'] if ('PID_' + pid.upper()) in d['id'].upper()]
     if not matching:
-        raise RuntimeError('Selected camera USB identity is not present. For 0336, enter service mode first; preserve this log and reconnect if authentication stopped.')
+        detected=[]
+        for row in before['devices']:
+            match=re.search(r'VID_054C&PID_[0-9A-F]{4}(?:&MI_[0-9A-F]{2})?',row['id'],re.I)
+            detected.append((match.group(0) if match else 'Sony USB')+' '+str(row.get('description') or row.get('name') or ''))
+        details='；'.join(detected) or '未发现 Sony USB 设备'
+        raise RuntimeError(('未找到相机的海量存储身份 054C:0E8A，请在相机选择“海量存储”后重新连接。' if pid=='0e8a' else
+                            '未找到服务身份 054C:0336，请先使用“两阶段驱动与连接”入口。')+
+                           '当前检测：'+details+'。完整设备／接口信息已保存，不会为未知 PID 自动更换驱动。')
     if all(str(d.get('service', '')).lower() in ('winusb', 'libusbk', 'libusb0') for d in matching):
-        return {'driver_changed': False, 'note': 'Existing compatible driver retained', 'report': before}
+        services = ', '.join(sorted({str(d['service']) for d in matching}))
+        print('054C:%s 已安装 %s，直接沿用，跳过驱动安装与管理员申请。' % (pid.upper(), services), flush=True)
+        result = {'driver_changed': False, 'pid': pid, 'note': '已安装可用驱动，本次沿用，未重复安装', 'report': before}
+        write_json(job / ('driver-result-' + pid + '.private.json'), result)
+        return result
     if not ctypes.windll.shell32.IsUserAnAdmin():
         if arguments.get('elevated'):
             raise PermissionError('Windows administrator permission was not granted')
@@ -193,15 +218,21 @@ def install(arguments, job):
     exe = installer()
     command = driver_arguments(exe, pid, job / ('driver-' + pid))
     print('Installing WinUSB for Sony 054C:' + pid.upper(), flush=True)
-    done = subprocess.run(command, capture_output=True, text=True, encoding='utf-8',
-                          errors='replace', cwd=job, creationflags=0x08000000)
+    try:
+        done = subprocess.run(command, capture_output=True, text=True, encoding='utf-8',
+                              errors='replace', cwd=job, creationflags=0x08000000,timeout=180)
+    except subprocess.TimeoutExpired as exc:
+        print(exc.stdout or '',flush=True);print(exc.stderr or '',file=sys.stderr,flush=True)
+        raise RuntimeError('驱动安装超过 180 秒，已停止等待；请保留日志核对当前绑定，不自动重复安装。') from exc
     print(done.stdout, flush=True)
     print(done.stderr, file=sys.stderr, flush=True)
     after = scan()
     write_json(job / 'driver-report.private.json', after)
     if done.returncode:
         raise RuntimeError('libwdi installer exit code ' + str(done.returncode))
-    return {'driver_changed': True, 'pid': pid, 'report': after}
+    result = {'driver_changed': True, 'pid': pid, 'report': after}
+    write_json(job / ('driver-result-' + pid + '.private.json'), result)
+    return result
 
 
 def unmount_camera_volume(volume):
@@ -223,10 +254,12 @@ def prepare(job):
     """Explicit two-stage setup; install only a currently present camera PID."""
     from looktool.devicesession import Camera, modules
     transport, _ = modules()
+    results = []
     if sys.platform == 'win32':
-        install({'pid': '0e8a'}, job)
+        results.append(install({'pid': '0e8a'}, job))
 
         def service_driver():
+            print('正在等待服务身份 054C:0336；出现后先检测驱动，已有可用绑定则跳过安装。', flush=True)
             deadline = time.monotonic() + 20
             while True:
                 report = scan()
@@ -236,14 +269,16 @@ def prepare(job):
                     write_json(job / 'service-driver-enumeration.private.json', report)
                     raise RuntimeError('Sony service PID 0336 did not appear. Preserve this log and reconnect before another setup attempt.')
                 time.sleep(.5)
-            print('Service device appeared; preparing its driver before authentication.', flush=True)
-            install({'pid': '0336'}, job)
+            print('服务身份已出现，检测现有驱动。', flush=True)
+            results.append(install({'pid': '0336'}, job, report=report))
 
         transport.SERVICE_DRIVER_SETUP = service_driver
     try:
+        print('正在建立相机服务连接（此步骤不写固件）；两种 USB 身份分别检查。', flush=True)
         with Camera() as camera:
+            print('服务连接成功，驱动准备结束。', flush=True)
             return {'model': camera.identity['model'], 'service_connected': True,
-                    'camera_firmware_written': False}
+                    'camera_firmware_written': False, 'driver_results': results}
     finally:
         transport.SERVICE_DRIVER_SETUP = None
 

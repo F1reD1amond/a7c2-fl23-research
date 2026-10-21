@@ -13,6 +13,11 @@ import core
 import app
 
 class OfflineTests(unittest.TestCase):
+    def test_probe_reports_usr_mount_readonly_separately(self):
+        for options, expected in ((b'ro,sync', True), (b'rw,sync', False)):
+            mounts=b'/dev/nflasha15 /usr ext2 '+options+b' 0 0\n'
+            raw=struct.pack('<8sIIqqqqQIIII',b'A7PRB001',1,16,0,0,519,0,0,0,len(mounts),0,0)+mounts
+            self.assertIs(core.parse_native('probe',raw)['usr_mount_readonly'],expected)
     def test_asset_integrity(self):self.assertEqual(core.assets()['firmware'],'2.01')
     def blank_units(self,salt):
         a=bytearray(8192);b=bytearray(28672)

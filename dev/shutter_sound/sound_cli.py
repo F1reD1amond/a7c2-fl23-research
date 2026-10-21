@@ -48,7 +48,9 @@ def workspace(root, create=False, backup_copy=None):
         other = Path(backup_copy).resolve()
         if other == root or root in other.parents or other in root.parents:
             raise ValueError('Keep the second backup outside the workspace, in a separate directory')
-        root.mkdir(parents=True, exist_ok=False)
+        if (root/'sound.pending').exists() or any(root.glob('jobs/*/job.private.json')):
+            raise ValueError('Existing camera-job evidence needs review; keep this workspace')
+        root.mkdir(parents=True, exist_ok=True)
         state = {'schema': SCHEMA, 'backup_root': str(other), 'history': [], 'pending': None}
         save(root, state)
     else:
@@ -61,9 +63,86 @@ def new_path(root, label):
     return root / 'jobs' / (stamp + '-' + label + '-' + uuid.uuid4().hex[:8])
 
 
-def require_idle(state):
+def require_idle(state, root=None):
+    if root is not None:
+        retire_readonly_failure(root, state)
     if state.get('pending'):
         raise ValueError('Previous operation is unresolved. Use status and keep its job; do not replay it.')
+
+
+def retire_readonly_failure(root, state):
+    pending = state.get('pending')
+    if pending and pending.get('command')=='install':
+        return retire_prewrite_install(root,state)
+    if pending and pending.get('command')=='audition':
+        return retire_preallocation_audition(root,state)
+    if not pending or pending.get('command') not in ('on', 'adopt'):
+        return False
+    path = pending.get('job')
+    if not path or path != state.get('native_job'):
+        return False
+    try:
+        previous = load_job(path)
+    except (OSError, ValueError):
+        return False
+    if not trial.completed_readonly_failure(previous):
+        return False
+    # Keep the original immutable evidence; discard only its active binding.
+    state.setdefault('history', []).append(dict(command=pending['command'], job=path,
+        phase='failed_before_mutation', retired_readonly_failure=True))
+    if previous.get('identity'):
+        state['native_identity'] = previous['identity']
+    state['native_job'] = None
+    state['pending'] = None
+    save(root, state)
+    print('旧声音任务已确认停在写入前，检查结果和临时清理均完整；已解除占用，原日志保留。', flush=True)
+    return True
+
+
+def retire_prewrite_install(root,state):
+    pending=state['pending'];path=pending.get('job')
+    if not path or path!=state.get('boot_job'):return False
+    try:previous=load_job(path)
+    except (OSError,ValueError):return False
+    if (previous.get('schema')!='a7c2-native-boot-sound-job/1' or
+            previous.get('phase')!='needs_review' or
+            previous.get('camera_firmware_written') is not False or
+            previous.get('journal')!=[]):return False
+    state.setdefault('history',[]).append(dict(command='install',job=path,
+        phase='failed_before_native_execution'))
+    state['pending']=None;state['boot_job']=None
+    save(root,state)
+    print('上次保存停在电脑端准备阶段，未执行相机写入；已解除占用，保留原日志。',flush=True)
+    return True
+
+
+def retire_preallocation_audition(root,state):
+    import buffer_trial
+    pending=state['pending']
+    path=pending.get('job')
+    if not path or path!=state.get('audio_job'):
+        return False
+    try:
+        job=load_job(path)
+        if job.get('phase')!='needs_review' or not buffer_trial.preallocation_marker_rejection(
+                job,(Path(path)/'report.private.bin').read_bytes()):
+            return False
+    except (OSError,ValueError,KeyError,struct.error):
+        return False
+    state.setdefault('history',[]).append(dict(command='audition',job=path,
+        phase='rejected_before_allocation',reason='existing_completed_marker'))
+    state['pending']=None
+    state['audio_job']=None
+    save(root,state)
+    print('上次试听因旧标记在分配前停止，没有注册新声音；本次按当前状态新建试听。',flush=True)
+    return True
+
+
+def audio_evidence(root,state):
+    paths=[state.get('audio_job'),*state.get('legacy_audio_jobs',[])]
+    paths.extend(item.get('job') for item in state.get('history',[]) if item.get('command')=='audition')
+    paths.extend(str(path.parent) for path in (Path(root)/'jobs').glob('*/job.private.json'))
+    return list(dict.fromkeys(str(path) for path in paths if path))
 
 
 def native_job(state, *, enabled=True):
@@ -84,8 +163,9 @@ def require_recovered_trial(state):
 
 
 def operate(root, state, command, job, operation):
-    # Durable intent precedes any camera action. Failure is retained, never retried.
-    require_idle(state)
+    # Durable intent precedes camera action. Only proven pre-mutation enable/
+    # adoption failures can release their binding; writes are never replayed.
+    require_idle(state, root)
     state['pending'] = {'command': command, 'job': str(job)}
     save(root, state)
     try:
@@ -102,7 +182,7 @@ def operate(root, state, command, job, operation):
 
 def on(root, state, battery, zig=None, *, power_confirmed=False):
     import trial
-    require_idle(state)
+    require_idle(state, root)
     require_recovered_trial(state)
     from looktool.power import require_power
     state['power_confirmation'] = require_power(battery, confirmed=power_confirmed)
@@ -111,10 +191,14 @@ def on(root, state, battery, zig=None, *, power_confirmed=False):
     job = new_path(root, 'native-on')
     state['native_job'] = str(job)
     def run():
-        trial.preflight(job, Path(state['backup_root']) / job.name, zig)
+        options = {'expected': state['native_identity']} if state.get('native_identity') else {}
+        prepared=trial.preflight(job, Path(state['backup_root']) / job.name, zig, **options)
+        if prepared and prepared.get('adopted_existing_enabled'):
+            print('电子快门声已启用；已核对并接入声音工具，没有重复刷写。',flush=True)
+            return prepared
         return trial.change(job, zig=zig)
     result = operate(root, state, 'on', job, run)
-    print(RELOAD)
+    print('本次只接入已启用的声音开关，保持开机继续。' if result.get('adopted_existing_enabled') else RELOAD)
     return result
 
 
@@ -150,32 +234,54 @@ def attach(root, state, original, audio=None):
 
 def import_audio(root, state, source, **options):
     import media
-    require_idle(state)
-    if state.get('boot_job') and load_job(state['boot_job'])['phase'] != 'restored_cold_test_pending':
-        raise ValueError('Run restore-sound and cold-reload before replacing a persistent sound')
+    # Conversion has its own host-only selection file. Never inherit or clear
+    # a camera transaction lock, or overwrite its state while ffmpeg is busy.
+    root=Path(root).resolve();root.mkdir(parents=True,exist_ok=True)
     folder = new_path(root, 'converted')
     report = media.convert(source, folder, **options)
-    state['conversion'] = str(folder)
-    save(root, state)
+    temp=root/('conversion-'+uuid.uuid4().hex+'.pending')
+    try:
+        temp.write_text(json.dumps(dict(schema='a7c2-sound-conversion/1',conversion=str(folder)),indent=2),encoding='utf-8')
+        temp.replace(root/'conversion.private.json')
+    except BaseException:
+        temp.unlink(missing_ok=True)
+        media.cleanup(folder)
+        raise
     return {'phase': 'converted_offline', 'camera_io': False, 'bytes': report['encoded_bytes'],
             'preview': str(folder / 'preview.private.wav')}
 
 
+def selected_conversion(root,state):
+    path=Path(root)/'conversion.private.json'
+    if path.is_file():return json.loads(path.read_text(encoding='utf-8'))['conversion']
+    return state.get('conversion')
+
+
 def audition(root, state, zig=None):
     import buffer_trial
-    require_idle(state)
-    original, _ = native_job(state)
+    require_idle(state, root)
     if state.get('boot_job') and load_job(state['boot_job'])['phase'] != 'restored_cold_test_pending':
         raise ValueError('Restore the persistent sound and cold-reload before a new audition')
     require_recovered_trial(state)
-    if not state.get('conversion'):
+    conversion=selected_conversion(root,state)
+    if not conversion:
         raise ValueError('Convert a source with import first')
     previous = Path(state['audio_job']) if state.get('audio_job') else None
-    payload = (Path(state['conversion']) / 'custom-native.private.bin').read_bytes()
+    payload = (Path(conversion) / 'custom-native.private.bin').read_bytes()
+    if not state.get('native_job'):
+        # A temporary audition never enables the permanent CP branch silently.
+        # Adopt an already-enabled branch through fresh read-only evidence.
+        adoption = new_path(root, 'native-adopt')
+        state['native_job'] = str(adoption)
+        operate(root, state, 'adopt', adoption, lambda: trial.preflight(adoption,
+            Path(state['backup_root']) / adoption.name, zig,
+            expected=state.get('native_identity'), adopt_only=True))
+    original, _ = native_job(state)
+    replace_jobs=audio_evidence(root,state)
     job = new_path(root, 'audition')
     state['audio_job'] = str(job)
     result = operate(root, state, 'audition', job, lambda: buffer_trial.run(job, original,
-        zig, payload=payload, register=True, wire_format=0, recovered_job=previous))
+        zig, payload=payload, register=True, wire_format=0, recovered_job=previous,replace_jobs=replace_jobs))
     print('USB I/O ended. Unplug USB WITHOUT switching off, removing the battery or changing Audio Signals. '
           'Take one electronic exposure; check volume/distortion/pitch/speed and normal shooting/playback. '
           'Then record confirm --result correct (or the actual failure). No ROM was written.')
@@ -188,7 +294,7 @@ def confirm_audio(root, state, result):
     if not state.get('audio_job'):
         raise ValueError('No audition to confirm')
     value = buffer_trial.confirm(Path(state['audio_job']), result)
-    print('Confirmation recorded offline. Cold-recover before install or another audition, then run confirm-recovery.')
+    print('试听结果已记录；可直接保存当前转换片段，无需先断电恢复。')
     return value
 
 
@@ -202,22 +308,23 @@ def confirm_recovery(root, state):
 
 def install(root, state, battery, zig=None, *, power_confirmed=False):
     import boot_trial
-    require_idle(state)
-    from looktool.power import require_power
-    state['power_confirmation'] = require_power(battery, confirmed=power_confirmed)
+    require_idle(state,root)
     original, _ = native_job(state)
-    require_recovered_trial(state)
-    if not state.get('audio_job'):
-        raise ValueError('First audition and confirm this sound')
+    conversion=selected_conversion(root,state)
+    audio=Path(state['audio_job']) if state.get('audio_job') else None
+    if conversion:
+        payload=(Path(conversion)/'custom-native.private.bin').read_bytes()
+        if audio and (audio/'payload.private.bin').read_bytes()!=payload:audio=None
+    elif audio:
+        payload=(audio/'payload.private.bin').read_bytes()
+    else:
+        return installation_step('sound_conversion_required','import')
     if state.get('boot_job') and load_job(state['boot_job'])['phase'] != 'restored_cold_test_pending':
         raise ValueError('Restore the previous persistent sound before installing another')
-    audio = Path(state['audio_job'])
-    payload = (audio / 'payload.private.bin').read_bytes()
-    if not load_job(audio).get('owner_audio_correct'):
-        raise ValueError('Confirm acceptable volume, pitch/speed and normal shooting/playback first')
-    if state.get('conversion') and (Path(state['conversion']) / 'custom-native.private.bin').read_bytes() != payload:
-        raise ValueError('The selected conversion differs from the accepted audition; audition it first')
-    # Reuse the exact accepted payload, never reconvert the source during install.
+    boot_trial.require_dependencies()
+    from looktool.power import require_power
+    state['power_confirmation'] = require_power(battery, confirmed=power_confirmed)
+    # Save the current converted bytes. Audition and cold recovery are optional.
     job = new_path(root, 'persistent')
     state['boot_job'] = str(job)
     options = {'power_confirmed': True} if power_confirmed else {}
@@ -225,6 +332,19 @@ def install(root, state, battery, zig=None, *, power_confirmed=False):
         Path(state['backup_root']) / job.name, original, audio, payload, battery, zig, **options))
     print(RELOAD)
     return result
+
+
+def installation_step(phase,next_action):
+    return dict(phase=phase,next_action=next_action,user_action_required=True,
+                camera_io=False,camera_firmware_written=False)
+
+
+def compile_install(ap,cp,payload,output,zig=None):
+    import boot_trial
+    target,parts=boot_trial.prepare(Path(ap).read_bytes(),Path(cp).read_bytes(),
+        Path(payload).read_bytes(),Path(output),zig)
+    return dict(phase='sound_install_compiled_offline',camera_io=False,camera_firmware_written=False,
+                program_windows=len(parts['windows']))
 
 
 def restore_sound(root, state, zig=None):
@@ -248,7 +368,7 @@ def verify(root, state, heard_correct=False):
     return operate(root, state, 'verify', job, lambda: boot_trial.verify_loaded(job, heard_correct))
 
 
-def status(state):
+def status(state,root=None):
     result = {'phase': 'local_status_only', 'camera_io': False, 'pending': state.get('pending'),
               'hardware_state_not_inferred_from_local_status': True}
     for key in ('native_job', 'audio_job', 'boot_job'):
@@ -259,8 +379,37 @@ def status(state):
             result[key] = {'path': path, 'phase': phase}
         else:
             result[key] = None
-    result['conversion'] = state.get('conversion')
+    result['conversion'] = selected_conversion(root,state) if root is not None else state.get('conversion')
     return result
+
+
+def check_connection(state):
+    """Read the current sound branch without staging or invoking any worker."""
+    import candidate
+    expected=state.get('native_identity')
+    if expected is None and state.get('native_job'):
+        expected=load_job(state['native_job']).get('identity')
+    with trial.factory(expected) as camera:
+        ap=camera.read('/usr/lib/appFw.so')
+        cp=camera.read('/cp/cpapp-b.bin')
+        enabled=cp[candidate.OFFSET:candidate.OFFSET+2]==candidate.AFTER
+        candidate.guard(ap,cp,installed=enabled)
+    return dict(phase='sound_connection_checked',camera_io=True,camera_firmware_written=False,
+                sound_support_enabled_on_disk=enabled)
+
+
+def prepare_audition(root,state):
+    """Exercise marker replacement only; do not stage or register audio."""
+    import buffer_trial
+    import candidate
+    require_idle(state,root)
+    original,value=native_job(state)
+    job=new_path(root,'audition-preparation');job.mkdir(parents=True)
+    with trial.factory(value['identity']) as camera:
+        candidate.guard(camera.read('/usr/lib/appFw.so'),camera.read('/cp/cpapp-b.bin'),installed=True)
+        result=buffer_trial.replace_completed_marker(camera,job,audio_evidence(root,state))
+    return dict(result,phase='sound_audition_prepared',camera_firmware_written=False,
+                audio_registration_started=False)
 
 
 def doctor():
@@ -290,6 +439,9 @@ def parser():
         ('install', 'Persist the exact owner-accepted sound; files before boot hook'),
         ('verify', 'Read loaded code/files/descriptor after cold boot'),
         ('restore-sound', 'Restore native sound; disable/read back boot hook before removing files'),
+        ('check-connection', 'Read current sound programs and body identity; no workers or writes'),
+        ('prepare-audition', 'Replace only an exact completed prior marker; no audio registration'),
+        ('compile-install','Offline boot-reader verification and native worker generation; no USB'),
         ('status', 'Read local workspace state; no camera connection')):
         s = sub.add_parser(name, help=help_text)
         s.add_argument('--workspace', required=True, type=Path)
@@ -317,14 +469,23 @@ def parser():
                            choices=('correct', 'quiet', 'noise', 'wrong-speed', 'native', 'silent'))
         if name == 'verify':
             s.add_argument('--heard-correct', action='store_true')
+        if name=='compile-install':
+            for flag in ('ap','cp','native-bin'):s.add_argument('--'+flag,type=Path,required=True)
     return p
 
 
-def main(argv=None):
+def main(argv=None, *, report=None):
     args = parser().parse_args(argv)
     try:
         if args.command == 'doctor':
             result = doctor()
+        elif args.command=='import':
+            result=import_audio(args.workspace,None,args.source,start=args.start,
+                duration=args.duration,peak=args.peak,ffmpeg=args.ffmpeg)
+        elif args.command=='compile-install':
+            result=compile_install(args.ap,args.cp,args.native_bin,args.workspace)
+        elif args.command=='status' and not (args.workspace/'sound.private.json').exists():
+            result=status({},args.workspace)
         else:
             if sys.version_info < (3, 10) or struct.calcsize('P') != 8:
                 raise ValueError('Use 64-bit Python 3.10 or newer')
@@ -334,22 +495,31 @@ def main(argv=None):
             if command == 'on': result = on(root, state, args.battery_percent, args.zig, power_confirmed=args.power_confirmed)
             elif command == 'off': result = off(root, state, args.zig)
             elif command == 'attach': result = attach(root, state, args.native_job, args.audio_job)
-            elif command == 'import': result = import_audio(root, state, args.source, start=args.start,
-                duration=args.duration, peak=args.peak, ffmpeg=args.ffmpeg)
             elif command == 'audition': result = audition(root, state, args.zig)
             elif command == 'confirm': result = confirm_audio(root, state, args.result)
             elif command == 'confirm-recovery': result = confirm_recovery(root, state)
             elif command == 'install': result = install(root, state, args.battery_percent, args.zig, power_confirmed=args.power_confirmed)
             elif command == 'restore-sound': result = restore_sound(root, state, args.zig)
             elif command == 'verify': result = verify(root, state, args.heard_correct)
-            else: result = status(state)
+            elif command == 'check-connection': result = check_connection(state)
+            elif command == 'prepare-audition': result = prepare_audition(root,state)
+            else: result = status(state,root)
+        # The desktop needs the actual result phase, especially for cold reload
+        # versus adoption/temporary audition. Do not infer it from command success.
+        public = {key: result[key] for key in ('phase', 'camera_io', 'camera_firmware_written',
+            'complete_readback_and_settings_verified', 'owner_audio_correct', 'bytes', 'preview',
+            'adopted_existing_enabled', 'sound_support_enabled_on_disk','audio_registration_started',
+            'completed_prior_marker_replaced','previous_marker_absent','previous_cp_handle_released') if key in result}
+        public.update({key:result[key] for key in ('next_action','user_action_required') if key in result})
+        if report is not None:
+            report(public)
         # Never print body identity, raw native buffers or the complete private journal.
-        print(json.dumps({key: result[key] for key in ('phase', 'camera_io', 'camera_firmware_written',
-            'complete_readback_and_settings_verified', 'owner_audio_correct', 'bytes', 'preview')
-            if key in result} if args.command not in ('status', 'doctor') else result, indent=2))
+        print(json.dumps(public if args.command not in ('status', 'doctor') else result, indent=2))
         return 0
     except (ValueError, OSError, ImportError, RuntimeError, KeyError) as exc:
-        print('Stopped: ' + str(exc) + '\nKeep the workspace and backup; do not repeat unknown writes.', file=sys.stderr)
+        detail=('\n电脑端转换失败，本次没有相机读写；请修正输入后重新转换。' if args.command=='import' else
+                '\nKeep the workspace and backup; do not repeat unknown writes.')
+        print('Stopped: ' + str(exc) + detail, file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         print('Interrupted. Preserve the workspace; inspect status before further device operations.', file=sys.stderr)

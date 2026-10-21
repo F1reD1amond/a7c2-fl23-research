@@ -7,7 +7,7 @@ import argparse,gzip,json,struct
 from pathlib import Path
 
 NAME_REPORT=struct.Struct('<8sIIII7q6I32s')
-LINUX_ERRNO={2:'ENOENT',5:'EIO',13:'EACCES',17:'EEXIST',22:'EINVAL',27:'EFBIG',30:'EROFS',75:'EOVERFLOW',84:'EILSEQ',116:'ESTALE'}
+LINUX_ERRNO={2:'ENOENT',5:'EIO',13:'EACCES',16:'EBUSY',17:'EEXIST',22:'EINVAL',27:'EFBIG',28:'ENOSPC',30:'EROFS',75:'EOVERFLOW',84:'EILSEQ',116:'ESTALE'}
 
 def name_report(raw,expected_mode=None,build=None):
     if len(raw)!=NAME_REPORT.size:raise ValueError('Expected exactly 136 bytes for the native name report')
@@ -34,8 +34,10 @@ def name_failure_text(raw,mode,build):
     d=name_report(raw,mode,build)
     return ('Native name transaction incomplete: requested_mode=%s, mode=%s, phase=%s, status=%s (%s), '
             'rollback=%s, remount=%s, readonly=%s, cleanup=%s, AP_match=%s; '
+            'staged=%s, linked=%s, committed=%s, restored=%s; '
             'preserve this job and inspect/recover its existing result, do not repeat restore.' %
-            (mode,d['mode'],d['phase'],d['status'],d['status_name'],d['rollback'],d['remount'],d['readonly'],d['cleanup'],d['ap_matches_job']))
+            (mode,d['mode'],d['phase'],d['status'],d['status_name'],d['rollback'],d['remount'],d['readonly'],d['cleanup'],d['ap_matches_job'],
+             d['staged'],d['linked'],d['committed'],d['restored']))
 
 def read_limited(path,limit):
     with (gzip.open(path,'rb') if path.suffix=='.gz' else path.open('rb')) as stream:raw=stream.read(limit+1)

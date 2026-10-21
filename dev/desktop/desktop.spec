@@ -3,10 +3,14 @@ import sys
 from PyInstaller.utils.hooks import collect_all
 
 root = Path(SPECPATH).parents[1]
+for slot in range(1, 7):
+    path = root / 'desktop-assets/presets/default-six-v1' / ('slot%d.a7look' % slot)
+    if not path.is_file():
+        raise FileNotFoundError('Prepare the six-look distribution pack first: ' + str(path))
 datas, binaries, hidden = [], [], ['PySide6.QtCore', 'PySide6.QtGui', 'PySide6.QtWidgets',
-                                 'tarfile', 'lzma', 'bz2', 'zlib', 'urllib.request']
+                                 'tarfile', 'lzma', 'bz2', 'zlib', 'urllib.request', 'wave']
 for package in ('numpy', 'scipy', 'PIL', 'tifffile', 'yaml', 'elftools', 'usb',
-                'libusb_package', 'Cryptodome', 'imageio_ffmpeg', 'ziglang'):
+                'libusb_package', 'Cryptodome', 'imageio_ffmpeg', 'ziglang', 'keystone', 'capstone', 'unicorn'):
     d, b, h = collect_all(package)
     datas.extend(d)
     binaries.extend(b)
@@ -25,7 +29,8 @@ for folder in ('src/desktopapp', 'src/camera_runtime', 'src/looks/looktool',
         datas.append((str(source), str(relative.parent)))
 for name in ('desktop.py', 'LICENSE', 'desktop-requirements.txt',
              'dev/desktop/offline_smoke.py', 'docs/en/desktop.md',
-             'docs/zh-CN/desktop.md', 'calibration/a7c2-2.01.virtual.npz'):
+             'docs/zh-CN/desktop.md', 'docs/en/desktop-validation.md',
+             'docs/zh-CN/desktop-validation.md', 'calibration/a7c2-2.01.virtual.npz'):
     datas.append((str(root / name), str(Path(name).parent)))
 
 a = Analysis([str(root / 'dev/desktop/frozen_entry.py')], pathex=[],

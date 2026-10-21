@@ -14,7 +14,7 @@ VERSION='2.01'
 ORIGINAL=['2ea02f7ecbc5bb917316fe8ef4ce5ffd87eb66efaae78ba2ce11420552df539b',
           'f5a477588698ef965748903b8959a39ce4f59ffd4aee4d4234ef1670f56a1428']
 FINAL=['1aaeb8fbe0297950cab454d498d1a5ba874f91542aa2737aae27a73971e324d7',
-       '30a595529fe842244da735c0602ca8a379a911e1d79340c624ae1f04d550f342']
+       '442c9261d7c76c30f65e5b66ae133fea40fc31ee6c0046ff78b6b45df8ab455c']
 PROGRAMS=['appFw.so','cpapp-b.bin']
 CP_KEYS=[0x02a40001,0x02a4000d]
 AP_KEYS=[0x02cf1287,0x02cf1289]
@@ -129,7 +129,10 @@ def parse_native(name,raw,mode=None):
         v=struct.unpack_from('<8sIIqqqqQIIII',raw)
         if v[:3]!=(b'A7PRB001',1,16) or any(v[i] for i in [3,4,6]) or len(raw)!=72+sum(v[8:11]):
             raise ValueError('型號欄位、權限或診斷結果不符')
-        return {'model_index':v[2],'product_column':9,'root_verified':True}
+        mounts=raw[72+v[8]:72+v[8]+v[9]]
+        usr=[line.split() for line in mounts.splitlines() if len(line.split())>=4 and line.split()[1]==b'/usr']
+        readonly=(b'ro' in usr[0][3].split(b',')) if len(usr)==1 and usr[0][0]==b'/dev/nflasha15' and usr[0][2]==b'ext2' else None
+        return {'model_index':v[2],'product_column':9,'root_verified':True,'usr_mount_readonly':readonly}
     if name=='wbi':
         if len(raw)!=192:raise ValueError('開機快照結果長度不符')
         v=struct.unpack('<8sII9q16s16s32s32sII',raw)
