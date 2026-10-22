@@ -334,9 +334,13 @@ def audition(root, state, zig=None):
 def confirm_audio(root, state, result):
     import buffer_trial
     supersede_pending(root,state,'confirm-audio')
-    if not state.get('audio_job'):
-        raise ValueError('No audition to confirm')
-    value = buffer_trial.confirm(Path(state['audio_job']), result)
+    previous=optional_job(state.get('audio_job'))
+    if previous and previous.get('phase')=='temporary_pcm_registered_cold_reload_required_after_test':
+        value=buffer_trial.confirm(Path(state['audio_job']),result)
+    else:
+        state.setdefault('history',[]).append(dict(command='confirm-audio',result=result,owner_statement_only=True))
+        save(root,state)
+        value=dict(phase='owner_audio_statement_recorded',camera_io=False,owner_audio_correct=result=='correct')
     print('试听结果已记录；可直接保存当前转换片段，无需先断电恢复。')
     return value
 
@@ -344,9 +348,14 @@ def confirm_audio(root, state, result):
 def confirm_recovery(root, state):
     import buffer_trial
     supersede_pending(root,state,'confirm-recovery')
-    if not state.get('audio_job'):
-        raise ValueError('No temporary audition to cold-recover')
-    return buffer_trial.confirm_recovery(Path(state['audio_job']))
+    previous=optional_job(state.get('audio_job'))
+    if previous and previous.get('phase') in ('temporary_pcm_registered_cold_reload_required_after_test',
+            'owner_confirmed_audio_cold_reload_required','owner_audio_failed_cold_reload_required',
+            'owner_requested_gain_adjustment_cold_reload_required'):
+        return buffer_trial.confirm_recovery(Path(state['audio_job']))
+    state.setdefault('history',[]).append(dict(command='confirm-recovery',owner_statement_only=True))
+    save(root,state)
+    return dict(phase='owner_confirmed_cold_recovered',camera_io=False,owner_statement_only=True)
 
 
 @replace_request('install')

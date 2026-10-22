@@ -101,8 +101,8 @@ def test_occupied_native_loader_is_not_overwritten_or_automatically_stopped(tmp_
 def test_changing_camera_files_stop_without_deleting_them(tmp_path):
     root,state=sound_cli.workspace(tmp_path/'sound',True,tmp_path/'backup')
     cam=camera({});calls=[b'first',b'changed']
-    def read(name,missing=False):return calls.pop(0) if name=='shutter.staged.so' else None
-    cam.temp_read.side_effect=read
+    def read(path,missing=False):return calls.pop(0) if path=='/tmp/jiritsu/shutter.staged.so' else None
+    cam.read.side_effect=read
     with patch.object(trial,'factory',return_value=cam),pytest.raises(RuntimeError,match='仍在变化'):
         with replacement.CurrentRequest(root,state,'audition') as request:request.open(None)
     cam.temp_remove.assert_not_called()

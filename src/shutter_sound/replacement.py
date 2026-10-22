@@ -124,43 +124,47 @@ class CurrentRequest:
         return self.camera
 
     def prepare(self):
-        """Start from current sound state; old jobs/reports never gate a request."""
-        camera=self.camera
-        # Keep the OS/process mutex and the actual loader occupancy check.
-        # Never run a second native plugin over an occupied execution entry.
-        if camera.temp_read('libJit.so',True) is not None:
-            camera.mark_unknown()
-            link=getattr(camera,'link',None)
-            if link is not None:link.mutating=True
-            raise RuntimeError('相机执行入口当前仍被占用，本次声音操作尚未开始。请等待正在执行的操作结束。')
-        names=('shutter.staged.so','shutter.probe.result','a7c2.probe.result',
-               'lut-runtime-staged.so','a7c2.runtime.result','lut-program-staged.so',
-               'a7c2.install.request','a7c2.install.result','a7c2.wbi.request','a7c2.wbi.result')
-        actual={n:camera.temp_read(n,True) for n in names}
-        actual={n:raw for n,raw in actual.items() if raw is not None}
-        # Save never needs the old RAM audition marker. A new audition removes
-        # that fixed temporary marker and registers the CURRENT selected bytes;
-        # it does not release any old CP handle or replay a previous worker.
-        if self.command=='audition':
-            marker=camera.read('/tmp/jiritsu/shutter.custom.lease',True)
-            if marker is not None:actual['shutter.custom.lease']=marker
-        for name,raw in actual.items():
-            (self.evidence/(name+'.before.private.bin')).write_bytes(raw)
-        try:
-            if camera.temp_read('libJit.so',True) is not None:
-                raise RuntimeError('相机开始了另一项操作，本次声音替换尚未执行。')
-            for name,raw in actual.items():
-                current=(camera.read('/tmp/jiritsu/'+name,True) if name=='shutter.custom.lease'
-                         else camera.temp_read(name,True))
-                if current!=raw:raise RuntimeError('相机临时状态仍在变化，请等待当前操作结束。')
-            for name in actual:
-                camera.temp_remove(name)
-                current=(camera.read('/tmp/jiritsu/'+name,True) if name=='shutter.custom.lease'
-                         else camera.temp_read(name,True))
-                if current is not None:raise RuntimeError('当前声音临时文件替换未完成：'+name)
-        except BaseException:
-            camera.mark_unknown()
-            raise
+        prepare_current(self.camera,self.evidence,self.command)
         self.state.pop('replacement_stop',None)
         import sound_cli
         sound_cli.save(self.root,self.state)
+
+
+def prepare_current(camera,folder,command):
+    """Replace inert sound staging over current bytes, with no old-job gate."""
+    folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
+    # Keep the OS/process mutex and the actual loader occupancy check.
+    # Never run a second native plugin over an occupied execution entry.
+    if camera.temp_read('libJit.so',True) is not None:
+        camera.mark_unknown()
+        link=getattr(camera,'link',None)
+        if link is not None:link.mutating=True
+        raise RuntimeError('相机执行入口当前仍被占用，本次声音操作尚未开始。请等待正在执行的操作结束。')
+    names=('shutter.staged.so','shutter.probe.result','a7c2.probe.result',
+           'lut-runtime-staged.so','a7c2.runtime.result','lut-program-staged.so',
+           'a7c2.install.request','a7c2.install.result','a7c2.wbi.request','a7c2.wbi.result',
+           'checkpoint.staged.so','checkpoint.program.request','checkpoint.program.result',
+           'checkpoint.names.request','checkpoint.names.result')
+    actual={n:camera.read('/tmp/jiritsu/'+n,True) for n in names}
+    actual={n:raw for n,raw in actual.items() if raw is not None}
+    # Save never needs the old RAM audition marker. A new audition removes
+    # that fixed temporary marker and registers the CURRENT selected bytes;
+    # it does not release any old CP handle or replay a previous worker.
+    if command=='audition':
+        marker=camera.read('/tmp/jiritsu/shutter.custom.lease',True)
+        if marker is not None:actual['shutter.custom.lease']=marker
+    for name,raw in actual.items():
+        (folder/(name+'.before.private.bin')).write_bytes(raw)
+    try:
+        if camera.temp_read('libJit.so',True) is not None:
+            raise RuntimeError('相机开始了另一项操作，本次声音替换尚未执行。')
+        for name,raw in actual.items():
+            current=camera.read('/tmp/jiritsu/'+name,True)
+            if current!=raw:raise RuntimeError('相机临时状态仍在变化，请等待当前操作结束。')
+        for name in actual:
+            camera.temp_remove(name)
+            current=camera.read('/tmp/jiritsu/'+name,True)
+            if current is not None:raise RuntimeError('当前声音临时文件替换未完成：'+name)
+    except BaseException:
+        camera.mark_unknown()
+        raise
