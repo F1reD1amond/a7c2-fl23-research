@@ -88,7 +88,12 @@ class IntegratedSoundTests(unittest.TestCase):
             (audio / 'payload.private.bin').write_bytes(bytes(64))
             root, state = cli.workspace(base / 'workspace', True, base / 'backup2')
             cli.attach(root, state, native, audio)
-            check(base, root, state, native, audio)
+            def adopt(job,backup,zig=None,**kwargs):
+                value=dict(phase='written',identity=identity,complete_readback_and_settings_verified=True,
+                           adopted_existing_enabled=True,camera_firmware_written=False)
+                Path(job).mkdir(parents=True);trial.save(job,value);return value
+            with patch.object(trial,'preflight',side_effect=adopt):
+                check(base, root, state, native, audio)
 
     def test_off_uses_only_narrow_CP_inverse_not_global_audio_settings(self):
         def check(base, root, state, native, audio):
@@ -122,7 +127,9 @@ class IntegratedSoundTests(unittest.TestCase):
                 cli.install(root, state, 100)
                 args = install.call_args.args
                 self.assertEqual(args[4], bytes(64))
-                self.assertEqual(args[2:4], (native, audio))
+                self.assertNotEqual(args[2], native)
+                self.assertEqual(cli.load_job(args[2])['identity'],cli.load_job(native)['identity'])
+                self.assertEqual(args[3],audio)
                 self.assertEqual(args[5], 100)
         self.scenario(check)
 

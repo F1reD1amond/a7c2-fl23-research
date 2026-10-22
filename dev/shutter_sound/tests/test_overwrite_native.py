@@ -16,14 +16,18 @@ TMP=[DIRECTORY+'/.a7c2-sound-audio.tmp',DIRECTORY+'/.a7c2-sound-csv.tmp']
 @pytest.mark.parametrize('old_name,new_name',[
     ('custom-shutter.bin','custom-shutter-a.bin'),('custom-shutter-a.bin','custom-shutter-b.bin'),
     ('custom-shutter-b.bin','custom-shutter-a.bin')])
-@pytest.mark.parametrize('fault',['none','audio_write','csv_write','csv_rename','readonly'])
+@pytest.mark.parametrize('fault',['none','audio_write','csv_write','csv_rename','readonly','recorded_temp','changed_temp'])
 def test_atomic_sound_publication(tmp_path,old_name,new_name,fault):
     old_audio=bytes(64);audio=bytes([0,3])*64
     old_csv=boot_sound.CSV.replace(b'custom-shutter.bin',old_name.encode()).replace(b'0xEC0',b'0x40')
     csv=boot_sound.CSV.replace(b'custom-shutter.bin',new_name.encode()).replace(b'0xEC0',b'0x80')
     path=DIRECTORY+'/'+new_name;old_path=DIRECTORY+'/'+old_name
-    worker=files_worker.build(audio,csv,tmp_path/'worker',audio_path=path,previous_csv=old_csv)
+    temporary=[b'previous audio bytes',b'previous CSV bytes'] if fault in ('recorded_temp','changed_temp') else None
+    worker=files_worker.build(audio,csv,tmp_path/'worker',audio_path=path,previous_csv=old_csv,temporary_files=temporary)
     files={old_path:old_audio,CSV_PATH:old_csv,DIRECTORY+'/SysSound.bin':b'unrelated'}
+    if temporary is not None:
+        files.update(zip(TMP,temporary))
+        if fault=='changed_temp':files[TMP[0]]=b'changed after capture'
     handles={};readonly=True;events=[]
     def string(cpu,p):return bytes(cpu.mem_read(p,256)).split(b'\0',1)[0].decode()
     def syscall(cpu,no,a):
@@ -74,7 +78,7 @@ def test_atomic_sound_publication(tmp_path,old_name,new_name,fault):
     assert files[old_path]==old_audio and files[DIRECTORY+'/SysSound.bin']==b'unrelated'
     if files[CSV_PATH]==csv:assert files[path]==audio
     else:assert files[CSV_PATH]==old_csv and files[old_path]==old_audio
-    if fault=='none':
+    if fault in ('none','recorded_temp'):
         assert result['native_success'] and readonly and files[CSV_PATH]==csv
         assert events==[('rename',path),('rename',CSV_PATH)]
     else:assert not result['native_success']

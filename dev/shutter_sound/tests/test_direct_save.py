@@ -13,7 +13,7 @@ import trial
 
 
 @pytest.fixture
-def direct(tmp_path):
+def direct(tmp_path,monkeypatch):
     root,state=cli.workspace(tmp_path/'sound',True,tmp_path/'backup')
     native=root/'native';native.mkdir()
     trial.save(native,dict(phase='written',identity=dict(model='ILCE-7CM2',serial_sha256='synthetic'),
@@ -23,6 +23,11 @@ def direct(tmp_path):
     (converted/'custom-native.private.bin').write_bytes(bytes(64))
     state['conversion']=str(converted)
     cli.save(root,state)
+    def adopt(job,*args,**kwargs):
+        value=dict(phase='written',identity=dict(model='ILCE-7CM2',serial_sha256='synthetic'),
+                   complete_readback_and_settings_verified=True,adopted_existing_enabled=True)
+        Path(job).mkdir(parents=True);trial.save(job,value);return value
+    monkeypatch.setattr(trial,'preflight',adopt)
     return root,state
 
 
@@ -38,16 +43,17 @@ def test_direct_save_needs_no_audition_or_confirmations(direct):
 def test_missing_dependency_does_not_create_install_intent(direct):
     root,state=direct
     before=(root/'sound.private.json').read_bytes()
-    with patch.object(boot_trial,'require_dependencies',side_effect=ModuleNotFoundError('unicorn')), \
+    with patch.object(boot_trial,'require_dependencies',side_effect=ModuleNotFoundError('ziglang')), \
          patch.object(boot_trial,'install') as install:
         with pytest.raises(ModuleNotFoundError):cli.install(root,state,100)
         install.assert_not_called()
     assert state['pending'] is None and not state.get('boot_job')
-    assert (root/'sound.private.json').read_bytes()==before
+    assert not any(e.get('command')=='install' for e in state['history'])
+    assert not list(root.glob('jobs/persistent-*'))
 
 
 @pytest.mark.parametrize('native_intent',[False,True])
-def test_failed_preparation_can_restart_but_native_intent_never_replays(direct,native_intent):
+def test_new_current_request_archives_old_intent_without_replaying_it(direct,native_intent):
     root,state=direct
     failed=root/'jobs'/'failed';failed.mkdir(parents=True)
     value=dict(schema='a7c2-native-boot-sound-job/1',phase='needs_review',camera_firmware_written=False,
@@ -56,11 +62,8 @@ def test_failed_preparation_can_restart_but_native_intent_never_replays(direct,n
     state.update(boot_job=str(failed),pending=dict(command='install',job=str(failed)))
     cli.save(root,state);before=(failed/'job.private.json').read_bytes()
     with patch.object(boot_trial,'install',return_value={'phase':'installed_cold_test_pending'}) as install:
-        if native_intent:
-            with pytest.raises(ValueError,match='unresolved'):cli.install(root,state,100)
-            install.assert_not_called()
-        else:
-            assert cli.install(root,state,100)['phase']=='installed_cold_test_pending'
-            assert Path(install.call_args.args[0])!=failed
-            assert state['pending'] is None
+        assert cli.install(root,state,100)['phase']=='installed_cold_test_pending'
+        assert Path(install.call_args.args[0])!=failed
+        assert state['pending'] is None
+        install.assert_called_once()
     assert (failed/'job.private.json').read_bytes()==before

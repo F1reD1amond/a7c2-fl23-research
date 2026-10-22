@@ -123,7 +123,11 @@ def test_cli_uses_new_job_and_passes_completed_evidence_after_noop_failure(scena
     state['native_job']=str(native)
     converted=root/'converted';converted.mkdir()
     (converted/'custom-native.private.bin').write_bytes(bytes(64));state['conversion']=str(converted)
-    with patch.object(bt,'run',return_value=dict(phase='temporary_pcm_registered_cold_reload_required_after_test')) as run:
+    def adopt(job,*args,**kwargs):
+        value=dict(phase='written',identity=camera.identity,complete_readback_and_settings_verified=True,
+                   adopted_existing_enabled=True)
+        Path(job).mkdir(parents=True);trial.save(job,value);return value
+    with patch.object(trial,'preflight',side_effect=adopt),patch.object(bt,'run',return_value=dict(phase='temporary_pcm_registered_cold_reload_required_after_test')) as run:
         cli.audition(root,state)
     assert run.call_args.args[0]!=failed
     assert str(previous) in run.call_args.kwargs['replace_jobs']

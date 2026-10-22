@@ -48,21 +48,17 @@ def expected_windows():
     # The original generic reader reserves 30KiB for its CSV. Our fixed one-row
     # file needs <2KiB. Keep all x29-relative locals and remove the matching 7-page
     # prologue/epilogue adjustment; reduce memset/fread/limit consistently.
-    from keystone import Ks, KS_ARCH_ARM64, KS_MODE_LITTLE_ENDIAN
-    assembler = Ks(KS_ARCH_ARM64, KS_MODE_LITTLE_ENDIAN)
     for at, old, new in (
-        (0x2759ae8, 'sub sp,sp,#7,lsl #12', 'nop'),
-        (0x2759be4, 'add sp,sp,#7,lsl #12', 'nop'),
-        (0x2759af4, 'mov x2,#0x7800', 'mov x2,#0x800'),
-        (0x2759bfc, 'mov x2,#0x7800', 'mov x2,#0x800'),
-        (0x2759c0c, 'mov x0,#0x77ff', 'mov x0,#0x7ff')):
-        before = bytes(assembler.asm(old, at)[0])
-        after = bytes(assembler.asm(new, at)[0])
-        edits.append((at, before, after))
+        (0x2759ae8, 'ff1f40d1', '1f2003d5'),
+        (0x2759be4, 'ff1f4091', '1f2003d5'),
+        (0x2759af4, '02008fd2', '020081d2'),
+        (0x2759bfc, '02008fd2', '020081d2'),
+        (0x2759c0c, 'e0ff8ed2', 'e0ff80d2')):
+        edits.append((at,bytes.fromhex(old),bytes.fromhex(new)))
     # Oversized CSV: the original path has just fclose'd at c24. Return using
     # its clean epilogue, preserving the stock descriptor instead of asserting.
     too_large = 0x2759c28
-    before = bytes(assembler.asm('add x20,x20,#0xa66', too_large)[0])
+    before = bytes.fromhex('949a2991')
     edits.append((too_large, before, branch(too_large, 0x2759bc8)))
     edits.append((PATH, OLD_PATH, NEW_PATH.ljust(len(OLD_PATH), b'\0')))
     # Prepare the reader and private path before enabling the boot call. The
@@ -96,14 +92,29 @@ def patch(ap, edits, reverse=False):
     return bytes(result)
 
 
-def verify(ap, raw):
-    if not raw or len(raw) % 64 or any(raw[n] > 8 for n in range(0, len(raw), 32)):
+def plan(ap,raw,*,current=False):
+    """Pure byte planning; no native emulator/JIT is used by camera actions."""
+    if not raw or len(raw)>51200 or len(raw) % 64 or any(raw[n] > 8 for n in range(0, len(raw), 32)):
         raise ValueError('Use a complete filter0 native-codec research candidate')
     csv = CSV.replace(b'0xEC0', ('0x%X' % len(raw)).encode())
-    edits = windows(ap)
+    if current:
+        edits=[]
+        for at,old,new in expected_windows():
+            actual=ap[at:at+len(old)]
+            if actual not in (old,new):raise ValueError('Current sound-hook bytes conflict at '+hex(at))
+            if actual!=new:edits.append((at,actual,new))
+    else:edits=windows(ap)
     target = patch(ap, edits)
     if patch(target, edits, True) != ap:
         raise ValueError('Boot-sound inverse differs')
+    report=dict(schema='a7c2-native-boot-sound-plan/1',camera_io=False,
+        edited_bytes=sum(len(old) for _,old,_ in edits),inverse_byte_equal=True,
+        native_file_loader_reused=True,emulator_executed=False)
+    return target,csv,edits,report
+
+
+def verify(ap, raw):
+    target,csv,edits,_=plan(ap,raw)
     cases = []
     for scenario in ('valid', 'missing', 'oversized'):
         result = execute(target, csv if scenario != 'oversized' else csv.ljust(2048, b' '),

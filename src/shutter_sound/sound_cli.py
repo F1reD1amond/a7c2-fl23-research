@@ -13,8 +13,10 @@ import shutil
 import struct
 import sys
 import uuid
+from contextlib import nullcontext
 
 import trial
+from replacement import replace_request,optional_job,command_lock,ReconnectRequired
 
 SCHEMA = 'a7c2-sound-workspace/1'
 RELOAD = ('USB I/O ended. Shut down normally, wait for the access light, unplug '
@@ -33,7 +35,7 @@ def save(root, state):
     temp.replace(root / 'sound.private.json')
 
 
-def workspace(root, create=False, backup_copy=None):
+def workspace(root, create=False, backup_copy=None,*,replace_existing=False):
     root = Path(root).resolve()
     path = root / 'sound.private.json'
     if path.exists():
@@ -41,17 +43,29 @@ def workspace(root, create=False, backup_copy=None):
         if state.get('schema') != SCHEMA:
             raise ValueError('Not a sound workspace')
         if backup_copy and str(Path(backup_copy).resolve()) != state['backup_root']:
-            raise ValueError('Use the original backup root for this workspace')
+            if not replace_existing:raise ValueError('Use the original backup root for this workspace')
+            other=Path(backup_copy).resolve()
+            if other==root or root in other.parents or other in root.parents:
+                raise ValueError('Keep the backup outside the sound workspace')
+            state['backup_root']=str(other)
+            save(root,state)
     elif create:
         if not backup_copy:
             raise ValueError('A new workspace requires --backup-copy outside the workspace')
         other = Path(backup_copy).resolve()
         if other == root or root in other.parents or other in root.parents:
             raise ValueError('Keep the second backup outside the workspace, in a separate directory')
-        if (root/'sound.pending').exists() or any(root.glob('jobs/*/job.private.json')):
-            raise ValueError('Existing camera-job evidence needs review; keep this workspace')
+        existing=list(root.glob('jobs/*/job.private.json'))
+        if (root/'sound.pending').exists() or existing:
+            if not replace_existing:raise ValueError('Existing camera-job evidence needs review; keep this workspace')
+            pending=root/'sound.pending'
+            if pending.exists():
+                history=root/'workspace-history';history.mkdir(exist_ok=True)
+                shutil.copy2(pending,history/(uuid.uuid4().hex+'.private.json'))
         root.mkdir(parents=True, exist_ok=True)
         state = {'schema': SCHEMA, 'backup_root': str(other), 'history': [], 'pending': None}
+        if replace_existing:
+            state['history']=[dict(command='previous_sound_job',job=str(p.parent),phase='read_current_camera_before_replacement') for p in existing]
         save(root, state)
     else:
         raise ValueError('Create a workspace with on or attach first')
@@ -272,16 +286,15 @@ def volume_audio(root, *, decibels=0, reset=False):
     return select_conversion(root,folder,report,'volume_adjusted_offline')
 
 
+@replace_request('audition')
 def audition(root, state, zig=None):
     import buffer_trial
     require_idle(state, root)
-    if state.get('boot_job') and load_job(state['boot_job'])['phase'] != 'restored_cold_test_pending':
-        raise ValueError('Restore the persistent sound and cold-reload before a new audition')
     conversion=selected_conversion(root,state)
     if not conversion:
         raise ValueError('请先点「转换所选片段」，转换成功后再试听。')
-    previous=(Path(state['audio_job']) if state.get('audio_job') and
-              load_job(state['audio_job']).get('owner_cold_recovery_confirmed') else None)
+    # The current request reconciles the actual marker once, before adoption.
+    previous=None
     payload = (Path(conversion) / 'custom-native.private.bin').read_bytes()
     if not state.get('native_job'):
         # A temporary audition never enables the permanent CP branch silently.
@@ -292,6 +305,7 @@ def audition(root, state, zig=None):
             Path(state['backup_root']) / adoption.name, zig,
             expected=state.get('native_identity'), adopt_only=True))
     original, _ = native_job(state)
+    if previous and (optional_job(previous) or {}).get('identity')!=load_job(original).get('identity'):previous=None
     replace_jobs=audio_evidence(root,state)
     job = new_path(root, 'audition')
     state['audio_job'] = str(job)
@@ -321,6 +335,7 @@ def confirm_recovery(root, state):
     return buffer_trial.confirm_recovery(Path(state['audio_job']))
 
 
+@replace_request('install')
 def install(root, state, battery, zig=None, *, power_confirmed=False):
     import boot_trial
     require_idle(state,root)
@@ -328,7 +343,7 @@ def install(root, state, battery, zig=None, *, power_confirmed=False):
     audio=Path(state['audio_job']) if state.get('audio_job') else None
     if conversion:
         payload=(Path(conversion)/'custom-native.private.bin').read_bytes()
-        if audio and (audio/'payload.private.bin').read_bytes()!=payload:audio=None
+        if audio and (not (audio/'payload.private.bin').is_file() or (audio/'payload.private.bin').read_bytes()!=payload):audio=None
     elif audio:
         payload=(audio/'payload.private.bin').read_bytes()
     else:
@@ -336,13 +351,14 @@ def install(root, state, battery, zig=None, *, power_confirmed=False):
     # Conversion deliberately has no camera/workspace dependency. Saving its
     # output must prepare/adopt native support itself, including after a reset.
     boot_trial.require_dependencies()
-    previous_native=load_job(state['native_job']) if state.get('native_job') else None
+    previous_native=optional_job(state.get('native_job'))
     if previous_native and previous_native.get('phase')=='restored':
         state['native_identity']=previous_native['identity']
     if not previous_native or previous_native.get('phase')=='restored':
         print('自动准备电子快门声支援；已有开关直接接入，不要求先手动开启或关联旧任务。',flush=True)
         on(root,state,battery,zig,power_confirmed=power_confirmed,defer_reload=True)
     original, _ = native_job(state)
+    if audio and (optional_job(audio) or {}).get('identity')!=load_job(original).get('identity'):audio=None
     # Each Save derives the current hook/files from the camera. A previous
     # completed installation is not a restore/old-job prerequisite.
     from looktool.power import require_power
@@ -501,6 +517,28 @@ def parser():
     return p
 
 
+def workspace_command(args):
+    command=args.command
+    with (nullcontext() if command=='status' else command_lock(args.workspace)):
+        creates=command in ('on','attach','import','install','audition')
+        backup=getattr(args,'backup_copy',None)
+        if command in ('install','audition') and not backup and not (args.workspace/'sound.private.json').exists():
+            backup=args.workspace.with_name(args.workspace.name+'-backup')
+        root,state=workspace(args.workspace,creates,backup,replace_existing=command in ('install','audition'))
+        if command=='on':return on(root,state,args.battery_percent,args.zig,power_confirmed=args.power_confirmed)
+        if command=='off':return off(root,state,args.zig)
+        if command=='attach':return attach(root,state,args.native_job,args.audio_job)
+        if command=='audition':return audition(root,state,args.zig)
+        if command=='confirm':return confirm_audio(root,state,args.result)
+        if command=='confirm-recovery':return confirm_recovery(root,state)
+        if command=='install':return install(root,state,args.battery_percent,args.zig,power_confirmed=args.power_confirmed)
+        if command=='restore-sound':return restore_sound(root,state,args.zig)
+        if command=='verify':return verify(root,state,args.heard_correct)
+        if command=='check-connection':return check_connection(state)
+        if command=='prepare-audition':return prepare_audition(root,state)
+        return status(state,root)
+
+
 def main(argv=None, *, report=None, failure=None):
     args = parser().parse_args(argv)
     try:
@@ -518,24 +556,7 @@ def main(argv=None, *, report=None, failure=None):
         else:
             if sys.version_info < (3, 10) or struct.calcsize('P') != 8:
                 raise ValueError('Use 64-bit Python 3.10 or newer')
-            creates=args.command in ('on','attach','import','install','audition')
-            backup=getattr(args,'backup_copy',None)
-            if args.command in ('install','audition') and not backup and not (args.workspace/'sound.private.json').exists():
-                backup=args.workspace.with_name(args.workspace.name+'-backup')
-            root, state = workspace(args.workspace,creates,backup)
-            command = args.command
-            if command == 'on': result = on(root, state, args.battery_percent, args.zig, power_confirmed=args.power_confirmed)
-            elif command == 'off': result = off(root, state, args.zig)
-            elif command == 'attach': result = attach(root, state, args.native_job, args.audio_job)
-            elif command == 'audition': result = audition(root, state, args.zig)
-            elif command == 'confirm': result = confirm_audio(root, state, args.result)
-            elif command == 'confirm-recovery': result = confirm_recovery(root, state)
-            elif command == 'install': result = install(root, state, args.battery_percent, args.zig, power_confirmed=args.power_confirmed)
-            elif command == 'restore-sound': result = restore_sound(root, state, args.zig)
-            elif command == 'verify': result = verify(root, state, args.heard_correct)
-            elif command == 'check-connection': result = check_connection(state)
-            elif command == 'prepare-audition': result = prepare_audition(root,state)
-            else: result = status(state,root)
+            result=workspace_command(args)
         # The desktop needs the actual result phase, especially for cold reload
         # versus adoption/temporary audition. Do not infer it from command success.
         public = {key: result[key] for key in ('phase', 'camera_io', 'camera_firmware_written',
@@ -548,6 +569,12 @@ def main(argv=None, *, report=None, failure=None):
             report(public)
         # Never print body identity, raw native buffers or the complete private journal.
         print(json.dumps(public if args.command not in ('status', 'doctor') else result, indent=2))
+        return 0
+    except ReconnectRequired as exc:
+        result=dict(phase='sound_reconnect_required',camera_io=True,camera_firmware_written=False,
+                    user_action_required=True,next_action=args.command,reason=str(exc))
+        if report is not None:report(result)
+        print(json.dumps(result,ensure_ascii=False))
         return 0
     except (ValueError, OSError, ImportError, RuntimeError, KeyError) as exc:
         detail=('\n电脑端音频处理失败，本次没有相机读写；请修正输入后重试。' if args.command=='volume' else

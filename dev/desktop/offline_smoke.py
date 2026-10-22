@@ -164,18 +164,10 @@ def run():
     from capstone import Cs, CS_ARCH_ARM, CS_MODE_THUMB
     instruction=bytes(Ks(KS_ARCH_ARM,KS_MODE_THUMB).asm('bx lr')[0])
     assert next(Cs(CS_ARCH_ARM,CS_MODE_THUMB).disasm(instruction,0)).mnemonic=='bx'
-    from unicorn import Uc, UC_ARCH_ARM64, UC_MODE_ARM, UC_HOOK_CODE
-    from unicorn.arm64_const import UC_ARM64_REG_X0
-    cpu=Uc(UC_ARCH_ARM64,UC_MODE_ARM);cpu.mem_map(0x1000,4096)
-    cpu.mem_write(0x1000,bytes.fromhex('200080d21f2003d5'))
-    # Match the boot reader's code-hook stop path. The frozen Windows engine
-    # aborts on count=1 termination; stopping through the hook avoids that path.
-    def stop_emulator(engine,address,size,data):
-        if address==0x1004:engine.emu_stop()
-    cpu.hook_add(UC_HOOK_CODE,stop_emulator)
-    cpu.emu_start(0x1000,0x1008,count=1000000)
-    assert cpu.reg_read(UC_ARM64_REG_X0)==1
-    del cpu
+    # Emulator execution belongs in developer tests. A frozen macOS worker
+    # must not require writable/executable JIT memory merely to save a sound.
+    import boot_sound
+    assert boot_sound.expected_windows()[-1][0]==boot_sound.BOOT
     importlib.import_module('desktopapp.allinone')
     from desktopapp import allinone, presets, lookbatch, reviewnames, completion
     from looktool import bundle
@@ -300,4 +292,4 @@ def run():
             'bundled_six_looks':list(presets.NAMES),'fl23_pr6_movie_routes':'passed',
             'completion_summary':'passed','persistent_vertical_plan':'passed','portrait_frames_compile_and_inverse':'passed',
             'audio_conversion':audio_conversion,'standalone_dcp_conversion':dcp_conversion,
-            'sound_install_emulator':'passed','numpy': np.__version__}
+            'sound_install_byte_planner':'passed','numpy': np.__version__}

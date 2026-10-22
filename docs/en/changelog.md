@@ -4,6 +4,8 @@
 
 ## Unreleased
 
+- Sound Save and Audition now start a fresh replacement of the current selection, archive stale host task pointers, and read the current body rather than reuse old enable evidence. One request shares one USB session. Completed, owned sound reports and lease markers are reconciled without replaying old workers; unaccounted camera workers get detailed cold-reconnect guidance followed by retrying the same button. No restore-original or listening-confirmation prerequisite was added. Original jobs and backups remain available.
+- Persistent audio publication can replace captured stale temporary files and repair files-only interrupted installs. The inactive audio is read back before publishing its CSV; an already-installed boot hook stays unchanged for a resource replacement. Sound planning uses fixed byte windows without executing Unicorn/JIT, addressing the 3.0.0 macOS arm64 crash in `libunicorn.2.dylib` supplied in the October 23 sound-crash bundle. Developer emulation remains separate. Targeted offline regressions cover these changes; physical Mac/camera acceptance is still required.
 - Sound: an unresolved earlier sound operation is now explained in Chinese, naming the operation, and sound diagnostics bundles include a summary of the sound workspace (pending operation, recent history, job phase, event names and file names; no audio or camera buffers).
 - The old-backup section's verify button is now "Check loaded state after an old-backup restore". Clicked without an old-backup restore record (for example after a firmware-file restore), it offers the factory verification instead of failing with a raw "No such file" error; the worker also reports this case in plain words.
 

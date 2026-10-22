@@ -102,7 +102,22 @@ static i64 check_temporary(u32 i,int prefix) {
 static i64 replace_atomic(u32 i) {
     i64 fd=op(temporary[i],0x200c1);
     if(fd==-17) {
-        i64 v=check_temporary(i,1);if(v)return v;
+        i64 v;
+#ifdef REPLACE_RECORDED_TEMPORARIES
+        if(previous_temporary_sizes[i]>=0) {
+            i64 old=op(temporary[i],0x20000);if(old<0)return old;
+            u64 st[16];v=stat_file(old,st);
+            if(!v&&st[6]!=(u64)previous_temporary_sizes[i])v=-116;
+            if(!v&&sc(67,old,(i64)scratch,st[6],0,0,0)!=(i64)st[6])v=-5;
+            u64 hash=14695981039346656037UL;
+            if(!v)for(u32 k=0;k<st[6];k++)hash=(hash^scratch[k])*1099511628211UL;
+            if(!v&&hash!=previous_temporary_hashes[i])v=-116;
+            close_file(&old);
+        } else v=check_temporary(i,1);
+#else
+        v=check_temporary(i,1);
+#endif
+        if(v)return v;
         v=sc(35,-100,(i64)temporary[i],0,0,0,0);if(v)return v;
         fd=op(temporary[i],0x200c1);
     }

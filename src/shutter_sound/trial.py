@@ -43,6 +43,9 @@ def backup(root, copy, values):
 
 
 def factory(expected=None):
+    from replacement import active,BorrowedCamera
+    current=active()
+    if current is not None and not current.opening:return BorrowedCamera(current,expected)
     from looktool import devicesession
     class SoundCamera(devicesession.Camera):
         def _connect(self):
@@ -239,7 +242,8 @@ def change(root, *, restore=False, zig=None, camera_factory=factory):
             camera.programs_pinned = True
             probe = run_native(camera, root, state, root / 'build/probe.so', 'probe')
             candidate.require_registry(probe)
-            if not restore and probe['audio_signals'] != 0:
+            from replacement import active
+            if not restore and probe['audio_signals'] != 0 and active() is None:
                 raise ValueError('For the first sound trial select Audio Signals On, then make a new preflight job')
             if probe['image_mode'] == '2':
                 run_native(camera, root, state, root / 'build/wbi.so', 'wbi', 0)

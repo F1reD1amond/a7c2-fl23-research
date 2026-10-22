@@ -21,6 +21,29 @@ PATHS = ('/usr/share/avsystemsound/custom-shutter.bin',
          '/usr/share/avsystemsound/custom.txt')
 
 
+def update_plan(camera,root,components,payload,zig):
+    """Publish current selected bytes, including after a files-only old attempt."""
+    old_csv=camera.read(PATHS[1],True) or b''
+    if len(old_csv)>=4096:raise ValueError('旧自定义声音配置过大，无法作为本次替换的依据')
+    try:active=current_sound(old_csv) if old_csv else None
+    except ValueError:active=None
+    same=bool(active and camera.read(active[0],True)==payload)
+    names=['custom-shutter-a.bin','custom-shutter-b.bin','custom-shutter.bin']
+    filename=Path(active[0]).name if same else next((name for name in names if name.encode() not in old_csv),None)
+    if filename is None:raise ValueError('旧自定义声音配置包含冲突的文件引用，请保留诊断包')
+    name='/usr/share/avsystemsound/'+filename
+    csv=boot_sound.CSV.replace(b'custom-shutter.bin',Path(name).name.encode()).replace(b'0xEC0',('0x%X'%len(payload)).encode())
+    Path(components['csv']).write_bytes(csv)
+    components['files']=str(files_worker.build(payload,csv,root/'current-files',zig,audio_path=name))
+    components['files_already_current']=same and old_csv==csv
+    if not components['files_already_current']:
+        temporary=[camera.read('/usr/share/avsystemsound/'+part,True) for part in ('.a7c2-sound-audio.tmp','.a7c2-sound-csv.tmp')]
+        components['publish_files']=str(files_worker.build(payload,csv,root/'publish-files',zig,audio_path=name,
+            previous_csv=old_csv,temporary_files=temporary))
+    components['paths']=[name,PATHS[1]]
+    return components
+
+
 def current_sound(csv):
     """Read only this tool's fixed one-row format, with three private slots."""
     if not csv:return None
@@ -38,12 +61,14 @@ def replace_connected(camera,before,root,backup_copy,state,payload,zig):
     stock=boot_sound.patch(before['appFw.so'],edits,reverse=True)
     target,components=prepare(stock,before['cpapp-b.bin'],payload,root/'build',zig)
     if target['appFw.so']!=before['appFw.so']:raise ValueError('Existing sound hook differs; no resource update started')
-    old_csv=camera.read(PATHS[1],True) or b'';active=current_sound(old_csv)
-    prior_audio=camera.read(active[0]) if active else None
-    if active and len(prior_audio)!=active[1]:raise ValueError('Current sound length differs from its CSV')
+    old_csv=camera.read(PATHS[1],True) or b''
+    try:active=current_sound(old_csv)
+    except ValueError:active=None
+    prior_audio=camera.read(active[0],True) if active else None
     same=prior_audio==payload
-    name=(active[0] if same else '/usr/share/avsystemsound/custom-shutter-'+
-          ('b' if active and active[0].endswith('-a.bin') else 'a')+'.bin')
+    filename=next((name for name in ('custom-shutter-a.bin','custom-shutter-b.bin','custom-shutter.bin') if name.encode() not in old_csv),None)
+    if not same and filename is None:raise ValueError('旧自定义声音配置包含冲突的文件引用')
+    name=active[0] if same else '/usr/share/avsystemsound/'+filename
     csv=old_csv if same else boot_sound.CSV.replace(b'custom-shutter.bin',Path(name).name.encode()).replace(b'0xEC0',('0x%X'%len(payload)).encode())
     Path(components['csv']).write_bytes(csv)
     audio_path=None if name==PATHS[0] else name
@@ -56,7 +81,8 @@ def replace_connected(camera,before,root,backup_copy,state,payload,zig):
     trial.save(root,state);camera.programs_pinned=True
     runtime=probe(camera,root,state,components)
     if not same:
-        worker=files_worker.build(payload,csv,root/'update-files',zig,audio_path=name,previous_csv=old_csv)
+        temporary=[camera.read('/usr/share/avsystemsound/'+part,True) for part in ('.a7c2-sound-audio.tmp','.a7c2-sound-csv.tmp')]
+        worker=files_worker.build(payload,csv,root/'update-files',zig,audio_path=name,previous_csv=old_csv,temporary_files=temporary)
         state['phase']='preparing_resource_replacement';trial.save(root,state)
         invoke_files(camera,root,state,worker,0)
         state['phase']='writing_inactive_audio_then_publishing_csv';trial.save(root,state)
@@ -74,16 +100,15 @@ def replace_connected(camera,before,root,backup_copy,state,payload,zig):
 
 
 def require_dependencies():
-    # Resolve dynamically imported compiler/emulator dependencies before USB
-    # or a durable write intent is created.
-    from keystone import Ks
-    from unicorn import Uc
+    # Production does byte planning and native compilation, never host JIT.
+    from looktool.nativebuild import zig_command
+    zig_command()
 
 
 def prepare(ap, cp, payload, output, zig=None):
     from looktool import nativebuild
     candidate.guard(ap, cp, installed=True)
-    target, csv, edits, report = boot_sound.verify(ap, payload)
+    target, csv, edits, report = boot_sound.plan(ap, payload,current=True)
     root = Path(output)
     root.mkdir(parents=True, exist_ok=False)
     (root / 'custom-shutter.bin').write_bytes(payload)
@@ -112,6 +137,8 @@ def prepare(ap, cp, payload, output, zig=None):
     files = files_worker.build(payload, csv, root / 'files', zig)
     return {'appFw.so': target, 'cpapp-b.bin': cp}, {
         'windows': [{'offset': at, 'before_hex': old.hex(), 'after_hex': new.hex()} for at, old, new in edits],
+        'restore_windows':[{'offset':at,'before_hex':old.hex(),'after_hex':new.hex()}
+                           for at,old,new in boot_sound.expected_windows()],
         'program': program, 'files': str(files), 'probe': str(root / 'probe.so'),
         'post_probe': str(root / 'post-probe.so'),
         'wbi': str(root / 'wbi.so'), 'csv': str(root / 'custom.txt'),
@@ -195,21 +222,37 @@ def install(root, backup_copy, native_job, audio_job, payload, battery, zig=None
     try:
         with camera_factory(original['identity']) as camera:
             before = trial.capture(camera)
-            if len(before['appFw.so'])>boot_sound.PATH+len(boot_sound.OLD_PATH) and boot_sound.installed(before['appFw.so']):
+            # Inspect current disk state; a factory reset can invalidate an old
+            # host-side enable record. Re-enable through the existing bounded
+            # writer, using this request's shared camera session.
+            if before['cpapp-b.bin'][candidate.OFFSET:candidate.OFFSET+2]==candidate.BEFORE:
+                support=root/'native-support'
+                trial.preflight(support,Path(backup_copy)/'native-support',zig,camera_factory=camera_factory,expected=camera.identity)
+                trial.change(support,zig=zig,camera_factory=camera_factory)
+                state['current_native_support']=str(support)
+                before=trial.capture(camera)
+            installed=False
+            if len(before['appFw.so'])>boot_sound.PATH+len(boot_sound.OLD_PATH):
+                try:installed=boot_sound.installed(before['appFw.so'])
+                except ValueError:boot_sound.plan(before['appFw.so'],payload,current=True)
+            if installed:
                 return replace_connected(camera,before,root,backup_copy,state,payload,zig)
             target, components = prepare(before['appFw.so'], before['cpapp-b.bin'], payload, root / 'build', zig)
+            from replacement import active
+            if active() is not None:components=update_plan(camera,root,components,payload,zig)
             state['components'] = components
             state['backup_copy'] = trial.backup(root, backup_copy, before)
             trial.save(root, state)
             camera.programs_pinned = True
             runtime = probe(camera, root, state, components)
-            invoke_files(camera, root, state, components['files'], 0)
+            publish=components.get('publish_files',components['files'])
+            if not components.get('files_already_current'):invoke_files(camera, root, state, publish, 0)
             plan = components['program']
             trial.run_native(camera, root, state, plan['path'], 'program', 0, plan)
             state['phase'] = 'creating_audio_before_boot_hook'
             trial.save(root, state)
-            invoke_files(camera, root, state, components['files'], 1)
-            for path, local in zip(PATHS, (components['audio'], components['csv'])):
+            if not components.get('files_already_current'):invoke_files(camera, root, state, publish, 1)
+            for path, local in zip(components.get('paths',PATHS), (components['audio'], components['csv'])):
                 if camera.read(path) != Path(local).read_bytes():
                     raise ValueError('Sound-file complete readback differs; AP hook was not invoked')
             state['phase'] = 'audio_verified_installing_boot_hook'
@@ -251,7 +294,7 @@ def restore(root, zig=None, camera_factory=trial.factory):
             camera.programs_pinned = True
             runtime = probe(camera, root, state, components)
             reverse = [(w['offset'], bytes.fromhex(w['after_hex']), bytes.fromhex(w['before_hex']))
-                       for w in reversed(components['windows'])]
+                       for w in reversed(components.get('restore_windows',components['windows']))]
             plan = program_worker(before['appFw.so'], before['cpapp-b.bin'], reverse, root / 'restore-build', zig)
             expected = boot_sound.patch(before['appFw.so'], reverse)
             trial.run_native(camera, root, state, plan['path'], 'program', 0, plan)
