@@ -14,8 +14,13 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - uses: actions/checkout@v4
       - name: Check assets and publish
         run: |
+          # Notes committed on the publish branch replace the draft's notes.
+          if [ -f release-assets/notes.md ]; then
+            gh release edit "${GITHUB_REF_NAME#build/publish-}" --repo "$GITHUB_REPOSITORY" --notes-file release-assets/notes.md
+          fi
           tag="${GITHUB_REF_NAME#build/publish-}"
           gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
             --jq ".[] | select(.tag_name == \"$tag\") | .assets[].name" > assets.txt
