@@ -75,7 +75,9 @@ class Camera:
                 self.identity=dict(self.link.identity,identification_method='recorded-body-existing-service')
                 self.service_only=False
                 return self
-            raise ValueError('Normal Mass Storage USB serial is required for body binding; end I/O and reconnect USB')
+            raise ValueError('相机没有以普通“海量存储”身份连接（可能仍停在上次的服务模式 054C:0336）。'
+                             '请拔掉 USB、关机并取出电池约 1 分钟，再开机选择海量存储、接回 USB 后重试；本次没有写入相机。'
+                             '（Normal Mass Storage USB serial is required for body binding）')
         try:
             self.identity=dict(self.link.identity,usb_serial_sha256=usb_serial)
             if self.identity_pending and self.expected and self.expected.get('model')==self.core.MODEL:
@@ -126,9 +128,32 @@ class Camera:
         return self.link.call(self.link.camera.saveBackup,0x02cf)
     def mark_unknown(self):self.link.healthy=False;self.healthy=False
 
+def clear_stale_probe(camera,record):
+    """Remove a lone report of the read-only probe, which never changes the camera.
+
+    Only when it is the sole project temporary file: no worker, request, other
+    result or preload. Its bytes are recorded before removal. Anything else
+    still stops as an unaccounted operation.
+    """
+    from .checkpointjob import TEMPS
+    probe='a7c2.probe.result'
+    raw=camera.temp_read(probe,True)
+    if raw is None:return
+    # Every project worker namespace (direct, checkpoint, FL23/sound runtime).
+    others=(TEMP_NAMES|TEMPS|{'a7c2-preview-staged.so','shutter.staged.so','shutter.probe.result',
+                              'shutter.custom.lease'})-{probe}
+    if any(camera.link.read('/tmp/jiritsu/'+n,True) is not None for n in sorted(others)):return
+    if camera.read('/etc/ld.so.preload',True):return
+    record('stale_probe_result_removed',bytes=len(raw),sha256=firmware.sha(raw),contents_hex=raw[:4096].hex())
+    if camera.temp_read(probe,True)!=raw:raise ValueError('Temporary state changed during cleanup: '+probe)
+    camera.temp_remove(probe)
+    if camera.temp_read(probe,True) is not None:raise ValueError('Temporary cleanup incomplete: '+probe)
+    print('已清理上次只读检测留下的报告（不影响相机内容），继续本次操作。',flush=True)
+
 def invoke(camera,blob,*,stage,request,result,contents,mode,decode,record,save_raw,extras=()):
     """One invocation, never retries or cleans an unknown operation."""
     names=[n for n in [stage,request,'libJit.so',result,*extras] if n is not None]
+    clear_stale_probe(camera,record)
     for name in names:
         if camera.temp_read(name,True) is not None:raise ValueError('Existing temporary state needs recovery: '+name)
     if camera.read('/etc/ld.so.preload',True):raise ValueError('Existing preload configuration requires inspection')
