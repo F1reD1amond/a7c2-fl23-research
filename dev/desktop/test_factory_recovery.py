@@ -249,7 +249,7 @@ class FactoryRecoveryTests(unittest.TestCase):
             job.verify_direct.return_value = loaded
         result, jobs = self.dispatch(finished, verified)
         self.assertEqual(result['phase'], 'LOADED')
-        self.assertEqual(result['workspace'], str(self.failed))
+        self.assertEqual(result['workspace'], str(self.failed.resolve()))
         jobs[self.root / 'next'].run_direct.assert_not_called()
         def changed(root, job):
             job.verify_direct.side_effect = direct.ContentChanged('Full program readback differs: appFw.so')
@@ -257,7 +257,7 @@ class FactoryRecoveryTests(unittest.TestCase):
         fresh = jobs[self.root / 'next'].run_direct
         fresh.assert_called_once()
         self.assertIsNone(fresh.call_args.kwargs['recovery_identity'])
-        self.assertEqual(fresh.call_args.kwargs['recovery_source'], str(self.failed))
+        self.assertEqual(fresh.call_args.kwargs['recovery_source'], str(self.failed.resolve()))
         # Not yet power-cycled (or any other stop) is reported, never re-planned.
         def not_reloaded(root, job):
             job.verify_direct.side_effect = ValueError('尚未确认新的冷启动。')
