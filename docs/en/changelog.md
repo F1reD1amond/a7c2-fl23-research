@@ -2,6 +2,10 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/changelog.md)
 
+## Unreleased
+
+- Factory/FL23 CP parameter writes: send the WRITE41 control block in its own 512-byte USB transfer before the remaining data. A normal partial bulk-write return continues only its reported unsent tail under the original deadline; it neither discards that tail nor resends the command/header. Zero/invalid progress, USB exceptions, deadline exhaustion and missing replies still stop the session. This addresses the local `8216 expected / 512 reported` failure path; offline regressions exercise both full CP units, exact readback and failures after partial transfer or a lost acknowledgement. Physical acceptance on the affected camera remains pending; existing failed writes are not replayed automatically.
+
 ## 3.0.3 — important fixes, recommended for everyone — 2026-10-23
 
 Fixes important bugs: custom looks applied with the wrong base, extra shutter sounds on mechanical capture, USB read errors, and sound or restore actions blocked by old task records. Everyone should update.

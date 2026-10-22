@@ -125,8 +125,8 @@ def test_session_failure_marks_unhealthy_and_blocks_further_commands():
 
 
 @pytest.mark.parametrize('initial',[False,True])
-@pytest.mark.parametrize('written',[0,3])
-def test_short_usb_command_writes_fail_without_replay(initial,written):
+@pytest.mark.parametrize('written',[0,-1,None,8,True])
+def test_unusable_usb_write_counts_fail_without_replay(initial,written):
     class Device:
         default_timeout=0
         _ctx=type('Context',(),{'dispose':lambda self,device:None})()
@@ -134,7 +134,7 @@ def test_short_usb_command_writes_fail_without_replay(initial,written):
         def write(self,ep,data,**kw):self.calls.append((ep,data));return written
     device=Device()
     backend=transport._InitialBackend(device,None) if initial else transport.Bounded(device)
-    with pytest.raises(transport.GenericUsbException,match='Short.*USB command write'):
+    with pytest.raises(transport.GenericUsbException,match='Incomplete.*USB command write'):
         backend.write(2,b'command')
     assert device.calls==[(2,b'command')]
 
