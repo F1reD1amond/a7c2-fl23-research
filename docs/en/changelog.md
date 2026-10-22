@@ -2,6 +2,11 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/changelog.md)
 
+## Unreleased — FL23 after custom looks
+
+- Fix enabling/re-enabling FL23 after native custom looks were installed: update the active relocated gamma table as well as the original table. Preserve all six custom LUTs, native slot parameters and body calibration. Re-enabling also repairs the stale copied table left by earlier versions. This shared planner serves Windows and macOS.
+- Audit merged PRs #5 and #6: their color records, still/movie gamma curves and routing helper are used by the GUI and included in the published Windows 3.0.1 package. The missed integration was the second table used by native custom looks. Offline reproduction and regression tests do not establish physical output on the affected body.
+
 ## 3.0.1 — bug-fix release — 2026-10-22
 
 Fixes software bugs reported by users after 3.0.0. If 3.0.0 works for you, you don't need to update.

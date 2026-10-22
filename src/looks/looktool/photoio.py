@@ -14,6 +14,22 @@ def present(cp):
     return cp[photobuild.DATA_FILE:photobuild.DATA_FILE+4]==struct.pack('<I',photobuild.MAGIC)
 
 
+def refresh_gamma_table(cp):
+    """Keep the active native rows in sync after an independent FL23 update.
+
+    Native-photo hooks read this relocated table, not the original table
+    changed by FL23. Keep the twelve custom-slot rows and all slot data intact.
+    Reconstruction also accepts the stale table left by older FL23 installs.
+    """
+    original=0x1209480-photobuild.BASE
+    size=50*28
+    result=bytearray(cp)
+    result[photobuild.TABLE_FILE:photobuild.TABLE_FILE+size]=cp[original:original+size]
+    result=bytes(result)
+    inspect(result)
+    return result
+
+
 def neutral_bank(cp):
     def record(row,column):
         pointer=struct.unpack_from('<I',cp,0x1209480-photobuild.BASE+row*28+column*4)[0]

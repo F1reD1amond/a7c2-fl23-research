@@ -52,6 +52,31 @@ class PhotoIOTests(unittest.TestCase):
         target[photobuild.CODE_FILE+20]^=1
         with self.assertRaisesRegex(ValueError,'runtime bytes conflict'):photoio.inspect(bytes(target))
 
+    def test_fl23_refresh_updates_active_native_rows_and_preserves_custom_slots(self):
+        installed=self.install(self.source,{1:self.delta,6:self.delta})
+        changed=bytearray(installed)
+        original=0x1209480-photobuild.BASE
+        # An independent FL23 write changes the original rows while hooks
+        # still read the table copied when the custom looks were installed.
+        for row,pointer in ((46,0x1208dc0),(47,0x1209240),(48,0x1208b80),(49,0x1209000)):
+            struct.pack_into('<7I',changed,original+row*28,*([pointer]*7))
+        with self.assertRaisesRegex(ValueError,'runtime bytes conflict'):
+            photoio.inspect(bytes(changed))
+        refreshed=photoio.refresh_gamma_table(bytes(changed))
+        self.assertEqual(photoio.inspect(refreshed)['mask'],33)
+        expected=bytearray(changed)
+        expected[photobuild.TABLE_FILE:photobuild.TABLE_FILE+50*28]=changed[original:original+50*28]
+        self.assertEqual(refreshed,bytes(expected))
+        for slot in (1,6):
+            self.assertEqual(photoio.slot_bytes(refreshed,slot),photoio.slot_bytes(installed,slot))
+        self.assertEqual(photoio.refresh_gamma_table(refreshed),refreshed)
+
+    def test_fl23_refresh_does_not_accept_an_unrelated_code_change(self):
+        changed=bytearray(self.install(self.source,{1:self.delta}))
+        changed[photobuild.CODE_FILE+20]^=1
+        with self.assertRaisesRegex(ValueError,'runtime bytes conflict'):
+            photoio.refresh_gamma_table(bytes(changed))
+
     def test_empty_storage_without_reviewed_allocation_is_not_accepted(self):
         source=bytearray(self.source);source[0xb27490]^=1
         with self.assertRaisesRegex(ValueError,'allocation conflicts'):

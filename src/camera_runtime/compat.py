@@ -57,6 +57,13 @@ def plan(ap,cp,version=core.VERSION,*,transitions=True):
                     '若使用過舊版本，請先依 README 恢復原廠功能後再安裝；保留本次日誌。')
             result[at:at+len(new)]=new;changed=True
             for offset in range(0,len(new),4096):spans.append((at+offset,min(4096,len(new)-offset)))
+        if chip==1:
+            from looktool import photoio,photobuild
+            if photoio.present(source):
+                refreshed=photoio.refresh_gamma_table(bytes(result))
+                if refreshed!=result:
+                    result=bytearray(refreshed);changed=True
+                    spans.append((photobuild.TABLE_FILE,50*28))
         after[name]=bytes(result);regions[name]=spans
     identity={'kind':'lut' if lut else 'version-2.01','mask':mask,'provenance_checked':False,'firmware_version':version,'version_source':'user-camera-version-screen'}
     if not changed:return identity,True,before,None,None
