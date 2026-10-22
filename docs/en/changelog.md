@@ -2,7 +2,9 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/changelog.md)
 
-## Unreleased — FL23 after custom looks
+## 3.0.2 — bug-fix release — 2026-10-22
+
+Fixes software bugs reported after 3.0.1. If 3.0.1 works for you, you don't need to update.
 
 - One-click factory restore now first removes name backups that earlier project jobs left in `/usr/share/app` (`.a7c2-lut-<16 hex>-<resource>.original/.stage` and `.a7c2-checkpoint-...`). Unfinished jobs of older versions could leave whole sets of 68 resource copies, more than 60 MB on one field camera, so name writes and restores failed with ENOSPC. A separate mode-5 build of the names worker lists the folder, matches only exact project names (never this restore's own prefix, never non-regular files) and removes them before the name preflight; the normal restore build rejects that mode. Other tools' files are kept. Emulated only; actual camera cleanup awaits confirmation on an affected body.
 - A lone report left by the read-only camera probe (`a7c2.probe.result`) no longer blocks every later job with "Existing temporary state needs recovery". It is recorded and removed only when no other project worker file or preload exists. A camera still in service mode (`0336`) now gets a Chinese message asking for a battery-out power cycle.
