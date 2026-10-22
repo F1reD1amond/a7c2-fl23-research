@@ -9,7 +9,7 @@ A desktop tool for the **Sony A7C II (ILCE-7CM2) on firmware 2.01**. It adds FL2
 ## Supported cameras
 
 > [!IMPORTANT]
-> **This tool supports only the Sony A7C II (ILCE-7CM2) on firmware 2.01.** It does **not** work on any other model, including the A7 IV, A7CR, A7R V, A6700 and A7 V. The app refuses to connect to them; please don't try.
+> **This tool supports only the Sony A7C II (ILCE-7CM2) on firmware 2.01.** It does **not** work on any other model, including the original A7C, the A7 IV, A7CR, A7R V, A6700 and A7 V. The app refuses to connect to them; please don't try.
 
 For other models, these independent projects may help. They are not part of this project; check each one for its own scope and risks:
 
@@ -39,6 +39,7 @@ The interface is in Simplified Chinese. Button names below are given in Chinese 
 - [Step-by-step guide](#step-by-step-guide)
   - [Step 1: Install the drivers (Windows)](#step-1-install-the-drivers-windows)
   - [Driver errors: uninstall, then reinstall](#driver-errors-uninstall-then-reinstall)
+  - [Still failing: install with Zadig](#still-failing-install-with-zadig)
   - [Step 2: Installed an earlier version? Restore factory functions first](#step-2-installed-an-earlier-version-restore-factory-functions-first)
   - [Step 3: One-click install](#step-3-one-click-install)
   - [Step 4: Check on the camera](#step-4-check-on-the-camera)
@@ -163,6 +164,26 @@ In that case, **uninstall first, then reinstall with Step 1**:
 
 If it still fails, try another cable and a USB port on the back of the computer, and run **检测 USB 连接稳定性（只读）** to narrow it down. If that doesn't help, click **导出诊断包 (Export diagnostics)** at the bottom of the window and share the bundle in the community group.
 
+### Still failing: install with Zadig
+
+If the app's automatic driver install keeps failing, install the driver by hand with [Zadig](https://zadig.akeo.ie/). The camera shows up as two different USB identities at two stages, and **both need a driver**:
+
+| Stage | Name in Zadig | USB ID |
+| --- | --- | --- |
+| Normal connection | `ILCE-7CM2` | `054C` `0E8A` |
+| Service mode (appears only after the first authentication) | `Sony USB Device` | `054C` `0336` |
+
+1. Close this app. Switch the camera on, set USB connection to **Mass Storage**, and plug it in.
+2. Open Zadig and tick **Options → List All Devices**.
+3. Pick `ILCE-7CM2` in the drop-down and **check that the USB ID is `054C 0E8A`**. Choose **libusbK** on the right, click **Replace Driver** (or **Install Driver**) and wait for it to finish.
+   - Change only this device. Leave keyboards, mice, USB drives and everything else alone.
+   - After the swap, the camera's drive letter disappears and the camera shows "Please check the connected device". Both are normal.
+4. Open this app and click **准备两阶段驱动并测试连接 (Prepare drivers and test connection)** on the **连接与驱动 (Connection & drivers)** page. After authentication the camera becomes `Sony USB Device` (`054C 0336`).
+5. If the app says the `0336` driver is missing: in Zadig, click **Options → List All Devices** again to refresh, pick `Sony USB Device`, check that the USB ID is `054C 0336`, and install **libusbK** the same way.
+6. Fully power the camera off (remove the battery for about a minute), switch it on, select Mass Storage, plug it in, and click **准备两阶段驱动并测试连接** once more.
+
+The app keeps any WinUSB, libusbK or libusb0 driver that is already installed. To go back to the Windows default driver, click **卸载相机驱动，恢复 Windows 默认连接 (Uninstall camera driver)**; it also removes drivers installed with Zadig.
+
 ### Step 2: Installed an earlier version? Restore factory functions first
 
 **If this camera has ever used any version of this project, restore factory functions before installing 3.0.** That includes FL23 v1.0/v2.x, looks imported with `lut.py`, `shutter.py` or `vertical.py`, and earlier desktop previews. This clears leftovers from older versions so 3.0 starts from a clean stock 2.01 state.
@@ -268,7 +289,8 @@ See [Step 2](#step-2-installed-an-earlier-version-restore-factory-functions-firs
 | --- | --- |
 | Camera shows "Please check the connected device" | Normal. Follow the app's log. |
 | `054C:0E8A` not found | The camera isn't in Mass Storage mode, or the cable can't carry data. Fix it and replug. |
-| `0336` never appears | The app cools down and retries automatically, up to 3 times. If it still fails, see [Driver errors](#driver-errors-uninstall-then-reinstall). |
+| `0336` never appears | The app cools down and retries automatically, up to 3 times. If it still fails, see [Driver errors](#driver-errors-uninstall-then-reinstall) or [install with Zadig](#still-failing-install-with-zadig). |
+| After authentication the camera jumps to playback and `0336` never appears | Try a USB 2.0 port on the computer (or a USB 2.0 cable or hub). On some computers the camera won't enter service mode over a USB 3 high-speed link. |
 | `0336` appears but its interface can't be opened | A driver problem. Uninstall and reinstall the driver; don't keep clicking install. |
 | Install or restore was interrupted | Click **the same button** again. The app reads the current state and picks up where it stopped; finished parts aren't rewritten. |
 | App reports an unknown result or asks for review | **Don't retry the write.** Click **导出诊断包 (Export diagnostics)** and share it in the community group. |
