@@ -19,6 +19,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
+      PYTHONUTF8: '1'
       MACOSX_DEPLOYMENT_TARGET: '14.0'
       GH_TOKEN: ${{ github.token }}
     steps:

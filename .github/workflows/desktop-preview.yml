@@ -29,6 +29,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     env:
+      PYTHONUTF8: '1'
       MACOSX_DEPLOYMENT_TARGET: '14.0'
       A7C2_PRESET_ARCHIVE_URL: ${{ inputs.preset_archive_url }}
       GH_TOKEN: ${{ github.token }}
