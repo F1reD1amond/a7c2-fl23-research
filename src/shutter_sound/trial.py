@@ -165,8 +165,12 @@ def run_native(camera, root, state, blob, kind, mode=0, plan=None):
 
 
 def capture(camera):
-    return {'appFw.so': camera.read('/usr/lib/appFw.so'),
-            'cpapp-b.bin': camera.read('/cp/cpapp-b.bin'),
+    from replacement import active
+    request=active()
+    programs=request._fresh_programs if request is not None and request.camera is camera else None
+    if programs is not None:request._fresh_programs=None
+    else:programs={'appFw.so':camera.read('/usr/lib/appFw.so'),'cpapp-b.bin':camera.read('/cp/cpapp-b.bin')}
+    return {**programs,
             'settings-ram.bin': camera.snapshot(True),
             'settings-saved.bin': camera.snapshot(False)}
 

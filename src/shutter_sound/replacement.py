@@ -89,6 +89,7 @@ class CurrentRequest:
     def __init__(self,root,state,command,*,refresh=True):
         self.root,self.state,self.command,self.refresh=Path(root),state,command,refresh
         self.camera=None;self.opening=False;self.previous=None
+        self._fresh_programs=None
 
     def __enter__(self):
         import sound_cli
@@ -135,17 +136,56 @@ class CurrentRequest:
         return self.camera
 
     def jobs(self):
-        paths=[self.state.get(k) for k in ('native_job','audio_job','boot_job')]
-        paths+=self.state.get('legacy_audio_jobs',[])
-        paths+=[h.get('job') for h in self.state.get('history',[])]
-        paths+=[str(p.parent) for p in self.root.glob('jobs/*/job.private.json')]
+        # A factory reset changes the GUI's active sound directory. The old
+        # completed lease evidence remains in its earlier workspace/history.
+        roots=[self.root]
+        data=(self.root.parent.parent if self.root.parent.name=='work' else
+              self.root.parent if self.root.name=='sound' else None)
+        if data is not None:
+            roots+=[data/'sound',*sorted((data/'work').glob('*-sound-*'))]
+        paths=[]
+        for root in dict.fromkeys(roots):
+            try:workspace=json.loads((root/'sound.private.json').read_text(encoding='utf-8'))
+            except (OSError,ValueError):workspace={}
+            if root==self.root:workspace=self.state
+            paths+=[workspace.get(k) for k in ('native_job','audio_job','boot_job')]
+            paths+=workspace.get('legacy_audio_jobs',[])
+            paths+=[h.get('job') for h in workspace.get('history',[])]
+            paths+=[str(p.parent) for p in root.glob('jobs/*/job.private.json')]
         for path in dict.fromkeys(p for p in paths if p):
             value=optional_job(path)
             if value and all(value.get('identity',{}).get(k)==self.camera.identity.get(k) for k in ('model','serial_sha256')):
                 yield Path(path),value
 
+    def read_kernel_boot(self):
+        """Jiritsu's sized file reader returns empty for procfs boot_id.
+
+        Use the existing read-only runtime worker, which reads the virtual file
+        as a stream. Do not stage it over an unaccounted native operation.
+        """
+        from looktool import devicesession,nativebuild
+        from looktool.checkpointjob import TEMPS
+        names=devicesession.TEMP_NAMES|TEMPS|{'shutter.staged.so','shutter.probe.result'}
+        if any(self.camera.read('/tmp/jiritsu/'+n,True) is not None for n in sorted(names)):return ''
+        if self.camera.read('/etc/ld.so.preload',True):return ''
+        programs={name:self.camera.read(path) for name,path in
+                  (('appFw.so','/usr/lib/appFw.so'),('cpapp-b.bin','/cp/cpapp-b.bin'))}
+        self.camera.programs_pinned=True
+        job=dict(schema='a7c2-sound-boot-read/1',identity=self.camera.identity,journal=[])
+        import trial
+        def record(event,**fields):
+            job['journal'].append(dict(event=event,**fields));trial.save(self.evidence,job)
+        result=devicesession.invoke(self.camera,(nativebuild.ROOT/'src/fl23/assets/runtime.so').read_bytes(),
+            stage='lut-runtime-staged.so',request=None,result='a7c2.runtime.result',contents=None,mode=0,
+            decode=lambda raw:self.camera.core.parse_native('runtime',raw),record=record,
+            save_raw=lambda raw:(self.evidence/'boot-report.private.bin').write_bytes(raw),extras=('a7c2.probe.result',))
+        self._fresh_programs=programs
+        boot=result.get('boot_id','').strip()
+        return boot if re.fullmatch(r'[0-9a-fA-F-]{36}',boot) else ''
+
     def stop(self,reason,files):
         import sound_cli
+        if not re.fullmatch(r'[0-9a-fA-F-]{36}',self.boot):self.boot=self.read_kernel_boot()
         marker=self.camera.read('/tmp/jiritsu/shutter.custom.lease',True)
         if marker is not None:files=dict(files,**{'shutter.custom.lease':marker})
         self.state['replacement_stop']=dict(reason=reason,identity=self.camera.identity,boot_id=self.boot,
@@ -161,6 +201,8 @@ class CurrentRequest:
         boot=camera.read('/proc/sys/kernel/random/boot_id',True)
         self.boot=boot.decode('ascii',errors='replace').strip() if boot else ''
         old_stop=self.state.get('replacement_stop') or {}
+        if old_stop.get('boot_id') and not re.fullmatch(r'[0-9a-fA-F-]{36}',self.boot):
+            self.boot=self.read_kernel_boot()
         new_boot=(bool(re.fullmatch(r'[0-9a-fA-F-]{36}',self.boot)) and old_stop.get('boot_id')
             and self.boot!=old_stop['boot_id'] and all(old_stop.get('identity',{}).get(k)==camera.identity.get(k)
                 for k in ('model','serial_sha256')))
@@ -174,7 +216,7 @@ class CurrentRequest:
             if any(e.get('event')=='native_cleanup_verified' for e in tail):continue
             stage,request,result=intent.get('stage'),intent.get('request'),intent.get('result')
             if stage not in ('shutter.staged.so','lut-program-staged.so','lut-runtime-staged.so'):continue
-            if result not in ('shutter.probe.result','a7c2.install.result','a7c2.wbi.result'):continue
+            if result not in ('shutter.probe.result','a7c2.install.result','a7c2.wbi.result','a7c2.runtime.result'):continue
             names=list(dict.fromkeys(n for n in (stage,request,'libJit.so',result,'a7c2.probe.result') if n))
             actual={n:camera.temp_read(n,True) for n in names}
             if not any(v is not None for v in actual.values()):continue
@@ -257,6 +299,8 @@ def complete_report(raw,mode):
     magic,version=struct.unpack_from('<8sI',raw)
     if version!=1:return False
     sizes={b'A7SND001':1256,b'A7PCM001':208,b'A7DMA001':144,b'A7BUF001':112,b'A7SFILE1':88,b'A7WBR001':192}
+    if magic==b'A7RUN001':
+        return len(raw)==1832 and struct.unpack_from('<I',raw,12)[0]==6 and struct.unpack_from('<I',raw,48)[0]==16
     if magic in sizes:
         if len(raw)!=sizes[magic]:return False
         if magic==b'A7SND001':return struct.unpack_from('<I',raw,12)[0]==16

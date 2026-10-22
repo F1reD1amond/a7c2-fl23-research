@@ -102,6 +102,51 @@ def test_in_progress_owned_pcm_report_is_preserved(tmp_path):
     cam.temp_remove.assert_not_called()
 
 
+def test_factory_reset_new_workspace_finds_exact_completed_old_lease_without_another_reboot(tmp_path):
+    import buffer_trial
+    from test_marker_replace import successful_report
+    data=tmp_path/'data'
+    root,state=sound_cli.workspace(data/'work/20261023-034906-sound-new',True,data/'backup')
+    old,old_state=sound_cli.workspace(data/'sound',True,data/'old-backup')
+    proof=tmp_path/'older-completed-audition';proof.mkdir()
+    raw=successful_report()
+    value=dict(identity=IDENTITY,result=buffer_trial.parse(raw),lease_token_hex=bytes(range(16)).hex())
+    trial.save(proof,value);(proof/'report.private.bin').write_bytes(raw)
+    old_state['history']=[dict(command='audition',job=str(proof))];sound_cli.save(old,old_state)
+    marker=buffer_trial.initial_marker(value)
+    state['replacement_stop']=dict(identity=IDENTITY,boot_id='',files={'shutter.custom.lease':marker.hex()})
+    files={'/proc/sys/kernel/random/boot_id':b'','/tmp/jiritsu/shutter.custom.lease':marker}
+    cam=camera(files);before=(proof/'job.private.json').read_bytes()
+    with patch.object(trial,'factory',return_value=cam), \
+         patch.object(replacement.CurrentRequest,'read_kernel_boot',side_effect=AssertionError('Completed lease needs no reboot')):
+        with replacement.CurrentRequest(root,state,'install') as request:request.open(None)
+    assert '/tmp/jiritsu/shutter.custom.lease' not in files and 'replacement_stop' not in state
+    assert (proof/'job.private.json').read_bytes()==before
+    cam.temp_write.assert_not_called()
+
+
+def test_empty_procfs_file_uses_native_boot_witness_and_does_not_loop_after_new_boot(tmp_path):
+    from looktool import devicesession
+    root,state=sound_cli.workspace(tmp_path/'sound',True,tmp_path/'backup')
+    marker=b'unknown old lease'
+    files={'/proc/sys/kernel/random/boot_id':b'','/tmp/jiritsu/shutter.custom.lease':marker,
+           '/usr/lib/appFw.so':b'ap','/cp/cpapp-b.bin':b'cp'}
+    cam=camera(files)
+    with patch.object(trial,'factory',return_value=cam),patch.object(devicesession,'invoke',
+            side_effect=[dict(boot_id=BOOT1.decode()),dict(boot_id=BOOT2.decode())]) as invoke:
+        with pytest.raises(replacement.ReconnectRequired):
+            with replacement.CurrentRequest(root,state,'install') as request:request.open(None)
+        assert state['replacement_stop']['boot_id']==BOOT1.decode()
+        with replacement.CurrentRequest(root,state,'install') as request:
+            request.open(None)
+            assert trial.capture(cam)['appFw.so']==b'ap'
+            files['/usr/lib/appFw.so']=b'changed'
+            assert trial.capture(cam)['appFw.so']==b'changed'
+    assert invoke.call_count==2 and all(c.kwargs['mode']==0 for c in invoke.call_args_list)
+    assert '/tmp/jiritsu/shutter.custom.lease' not in files
+    assert 'replacement_stop' not in state
+
+
 def test_production_sound_planner_handles_stock_mixed_and_installed_without_jit():
     edits=boot_sound.expected_windows()
     source=bytearray(max(at+len(old) for at,old,new in edits)+4)

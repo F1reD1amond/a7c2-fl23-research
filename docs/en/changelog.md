@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Sound replacement after factory recovery now searches retained sound workspaces and their recorded job links for a same-body completed audition whose native report and exact lease token match. Changing the GUI's workspace no longer loses that proof. When a reboot witness is needed, an empty Jiritsu procfs read is replaced with the existing read-only runtime probe; the next preflight reuses its fresh program reads once. Unknown native namespaces are kept. Regressions cover an already-rebooted user with an empty boot ID and a matching completed report in the old workspace, and boot-witness recovery without an endless reconnect loop.
 - Limit the restored one-second end-packet read to direct CP unit READ40 requests, before a subsequent WRITE41. File and settings-snapshot reads retain the v2 no-eager-read path that completed all 72 reads in 9.75 s on the affected Windows camera. Nonempty CP lookahead is buffered. The captured v2 metadata trace also replays against this scoped implementation: 143 requests and 8,520 USB reads with matching lengths/order; payload contents were synthetic because raw camera bytes were not exported.
 - The owner confirmed factory recovery works with cp-restore.2; its local transaction reached LOADED after the fresh-boot check. This is one-body physical evidence for recovery. The experimental OUT-fragmentation change remains withdrawn. The recipient has not yet physically tested this scoped revision.
 
