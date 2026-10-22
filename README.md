@@ -264,6 +264,7 @@ To install your own looks instead, untick the built-in six, expand **改用自�
 ### Step 4: Check on the camera
 
 - Switch between ST and each custom slot. The live view should change immediately. Take a photo and play it back.
+- Keep each custom slot's base look set to ST; with another base look the custom look may not apply.
 - In the Creative Look list, check that FL2 and FL3 can be selected, shot and played back.
 - Take a shot with the electronic shutter and listen for the sound. If you hear nothing, check the camera's Audio Signals setting.
 - Hold the camera vertically and check that the shooting information rotates.
@@ -287,6 +288,9 @@ Every write follows the same pattern: write → full readback → dialog asking 
    - **恢复 ST 默认 (Restore ST)**: resets the slot to ST. New items default to this.
 2. Click **查看并应用这 N 项更改 (Review and apply N changes)**, check the list and confirm. All listed slots are written in one go; other slots are left alone.
 3. Cold-reload and it's ready to use. No separate verification needed.
+
+> [!NOTE]
+> Custom looks are written with **ST as their base look**. Just select the custom slot on the camera; you don't need to switch the Creative Look to ST. But don't change that custom slot's base look to anything other than ST in the camera menu, or the custom look may not apply or the colors may be wrong; switching it back to ST fixes it. The camera does not lock this option.
 
 Tools on the same page:
 - **打开内置 DCP／A7Look 配对库 (Open paired DCP/A7Look library)**: 15 pairs (11 Fujifilm, 4 Ricoh); each DCP sits next to its `.a7look` with the same name.
