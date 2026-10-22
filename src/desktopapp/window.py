@@ -272,22 +272,27 @@ class Window(W.QMainWindow):
         for box in (self.setup_presets,self.setup_fl23,self.setup_sound,self.setup_vertical,self.setup_plugin):
             box.setEnabled(not pending and self.process is None)
 
-    def clear_installation_state(self):
+    def clear_installation_state(self, verified=True):
         # Clear active navigation/resume pointers, not diagnostic evidence or
         # user source files. A verified factory reset invalidates these plans.
-        for key in ('setup_work','fl23_direct_work','look_direct_work',
-                    'look_resume_source','look_job_dir'):
-            self.settings.pop(key,None)
-        self._look_displayed_pending=None
-        self.look_editor.set_operations([])
-        for box in (self.fl23_accept,self.sound_accept):box.setChecked(False)
+        # Before verification only the sound records are retired: the restore
+        # has already returned every sound program window to stock.
+        if verified:
+            for key in ('setup_work','fl23_direct_work','look_direct_work',
+                        'look_resume_source','look_job_dir'):
+                self.settings.pop(key,None)
+            self._look_displayed_pending=None
+            self.look_editor.set_operations([])
+            self.fl23_accept.setChecked(False)
+        self.sound_accept.setChecked(False)
         # The old sound workspace describes the pre-reset camera installation.
         # Start fresh while retaining its files and the selected source clip.
         sound=self.work('sound')
         for key,value in (('sound_work',sound),('sound_backup',sound+'-backup')):
             self.fields[key].setText(value);self.settings[key]=value
         write_json(data_root()/'desktop.json',self.settings)
-        self.log.appendPlainText('原厂恢复已核对通过；已清除旧安装状态。历史诊断日志保留，新安装从头开始。')
+        self.log.appendPlainText('原厂恢复已核对通过；已清除旧安装状态。历史诊断日志保留，新安装从头开始。' if verified else
+                                 '原厂恢复写入已完成；旧的声音记录已停用（文件保留），之后的声音操作不再受它们影响。')
 
     def reload_controls(self, layout, checks):
         guide = W.QPushButton('如何断电重开？查看详细步骤')
@@ -889,6 +894,7 @@ class Window(W.QMainWindow):
         factory_wait=success and status.get('result',{}).get('mode')=='factory_reset' and status['result'].get('phase')=='AWAITING_RELOAD'
         factory_done=success and status.get('result',{}).get('mode')=='factory_reset' and status['result'].get('phase') in ('LOADED','COMPLETE')
         if factory_done:self.clear_installation_state()
+        elif factory_wait:self.clear_installation_state(verified=False)
         resource_wait=status.get('result',{}).get('phase') in ('WAIT_RESOURCE_RELOAD','AWAITING_RESOURCE_RELOAD')
         resource_ready=success and status.get('result',{}).get('phase')=='RESOURCE_RELOAD_VERIFIED'
         setup_wait=waiting and status.get('action')=='setup_all'

@@ -173,3 +173,14 @@ def test_temporary_conflict_guidance_requires_restart_then_retry_not_verify():
     text=reloadguide.text(mode='factory_prewrite_temporary')
     for phrase in ('尚未开始写入','至少等待 1 分钟','接回 USB','断电后重试恢复','不需要旧 LUT 任务'):
         assert phrase in text
+
+
+def test_finished_restore_writes_retire_old_sound_records_before_verification(pending_window):
+    window,work,state=pending_window
+    window.settings['setup_work']='old-setup'
+    old=window.fields['sound_work'].text()
+    with patch.object(window,'show_reload_guide'):
+        finish(window,work,'AWAITING_RELOAD')
+    assert window.settings['setup_work']=='old-setup'
+    assert window.fields['sound_work'].text()!=old
+    assert window.settings['sound_work']==window.fields['sound_work'].text()

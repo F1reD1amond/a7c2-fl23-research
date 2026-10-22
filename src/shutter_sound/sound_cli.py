@@ -401,13 +401,42 @@ def compile_install(ap,cp,payload,output,zig=None):
                 program_windows=len(parts['windows']))
 
 
+RESTORABLE = ('installed_cold_test_pending', 'loaded_owner_confirmation_pending', 'owner_confirmed_working')
+
+
+def restorable_install(root, state):
+    """Newest installation that a restore can start from.
+
+    Restore plans its program inverse from the current camera bytes; the
+    record supplies the body identity and its built components. An earlier
+    failed or superseded record therefore does not block a restore.
+    """
+    paths = [state.get('boot_job')]
+    paths += [h.get('job') for h in reversed(state.get('history', []))]
+    paths += [str(p.parent) for p in sorted(Path(root).glob('jobs/*/job.private.json'),
+                                            key=lambda p: p.stat().st_mtime_ns, reverse=True)]
+    for path in dict.fromkeys(p for p in paths if p):
+        value = optional_job(path)
+        if value and value.get('phase') in RESTORABLE and value.get('components'):
+            return Path(path)
+    return None
+
+
 @replace_request('restore-sound',refresh=False)
 def restore_sound(root, state, zig=None):
     import boot_trial
     require_idle(state,root)
-    if not state.get('boot_job'):
-        raise ValueError('No persistent sound is recorded; RAM auditions clear by cold power-off')
-    job = Path(state['boot_job'])
+    job = restorable_install(root, state)
+    if job is None:
+        raise ValueError('这个声音工作目录里没有可用的永久声音安装记录，本次没有连接相机。'
+                         '要还原相机的原厂快门音效，请点“恢复原厂功能”：它按相机当前字节还原全部声音程序，不依赖旧记录。')
+    if str(job) != state.get('boot_job'):
+        # The latest record stopped part-way; it is archived, never repeated.
+        if state.get('boot_job'):
+            state.setdefault('history', []).append(dict(command='previous_installation', job=state['boot_job'],
+                phase='superseded_by_restorable_installation'))
+        state['boot_job'] = str(job)
+        print('最近的声音安装记录不可直接恢复；改用同一机身最近一次完成的安装记录，从相机当前字节规划恢复。', flush=True)
     result = operate(root, state, 'restore-sound', job, lambda: boot_trial.restore(job, zig))
     print(RELOAD)
     return result
