@@ -10,6 +10,20 @@ from .backupstore import write_json
 TEMPS={'checkpoint.staged.so','checkpoint.program.request','checkpoint.program.result',
        'checkpoint.names.request','checkpoint.names.result'}
 
+
+def program_difference(expected, actual):
+    """Describe a byte mismatch without exporting programs or body data."""
+    if expected == actual:return None
+    common=min(len(expected),len(actual))
+    first=common
+    for start in range(0,common,4096):
+        end=min(start+4096,common)
+        if expected[start:end]!=actual[start:end]:
+            first=next(at for at in range(start,end) if expected[at]!=actual[at])
+            break
+    return dict(expected_bytes=len(expected),actual_bytes=len(actual),first_difference=hex(first))
+
+
 class CheckpointCamera(Camera):
     """Same body-bound service session, narrow checkpoint temporary namespace."""
     def _connect(self):
@@ -79,7 +93,14 @@ class Rollback:
         return values
     def readback(self,camera,target):
         for name,path in checkpoint.PROGRAM_PATHS.items():
-            if camera.read(path)!=target[name]:raise ValueError('Full program readback differs: '+name)
+            actual=camera.read(path)
+            difference=program_difference(target[name],actual)
+            if difference:
+                self.record('program_readback_mismatch',result=dict(program=name,**difference))
+                raise ValueError('Full program readback differs: '+name+
+                    '; first difference='+difference['first_difference']+
+                    '; expected bytes='+str(difference['expected_bytes'])+
+                    '; actual bytes='+str(difference['actual_bytes']))
         for name in nameworker.filenames():
             if camera.read('/usr/share/app/'+name)!=target['resources/'+name]:raise ValueError('Full name readback differs: '+name)
         self.record('complete_program_and_name_bytes_verified')

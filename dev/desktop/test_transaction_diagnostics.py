@@ -35,3 +35,18 @@ def test_vertical_export_selects_the_actual_persistent_child(tmp_path,monkeypatc
     assert summary['journal'][0]['result']['status']==-28
     assert summary['journal'][0]['result']['progress_bytes']==4096
     assert 'UNRELATED-LATER-RUN' not in json.dumps(summary)
+
+
+def test_program_mismatch_export_keeps_offsets_without_program_bytes(tmp_path,monkeypatch):
+    monkeypatch.setenv('A7C2_DESKTOP_DATA',str(tmp_path/'app'))
+    root=tmp_path/'direct';root.mkdir()
+    result=dict(program='appFw.so',expected_bytes=10000,actual_bytes=9999,
+        first_difference='0x270f',raw_program='PRIVATE-PROGRAM',serial='PRIVATE-SERIAL')
+    (root/'direct.private.json').write_text(json.dumps(dict(phase='LOADED',journal=[
+        dict(event='verification_plan_diff',result=result),
+        dict(event='program_readback_mismatch',result=result)])))
+    job=jobs.new_job('direct_verify',dict(workspace=str(root)))
+    summary=jobs.transaction_summaries(job)['direct-summary-0.json']
+    for event in summary['journal']:
+        assert event['result']=={k:v for k,v in result.items() if k not in ('raw_program','serial')}
+    assert 'PRIVATE-' not in json.dumps(summary)

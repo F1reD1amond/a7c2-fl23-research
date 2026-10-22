@@ -14,7 +14,7 @@ import uuid
 import zlib
 from . import checkpoint, checkpointworker, device_layout, devicesettings, nameworker, resources
 from . import nativebuild, photoformat, photoio, six
-from .checkpointjob import CheckpointCamera, Rollback
+from .checkpointjob import CheckpointCamera, Rollback, program_difference
 from .devicesession import invoke, modules
 from .power import require_power
 from .backupstore import write_json
@@ -627,6 +627,10 @@ class DirectJob(Rollback):
             else:
                 target, wanted, _ = plan(current, camera.records(current['settings-ram.bin']), self.state['mode'],
                     factory=factory_values, slot=self.state['slot'], look=look, name=self.state['name'])
+            for program in checkpoint.PROGRAM_PATHS:
+                difference=program_difference(target[program],current[program])
+                if difference:
+                    self.record('verification_plan_diff',result=dict(program=program,**difference))
             try:
                 self.readback(camera, target)
             except ValueError as exc:

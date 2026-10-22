@@ -67,7 +67,8 @@ def transaction_summaries(job):
                 row['result']={k:event['result'][k] for k in ('phase','status','windows','mode',
                     'staged','linked','committed','restored','rollback','remount','readonly','cleanup',
                     'failure_group','failure_step','progress_bytes','available_bytes','required_bytes',
-                    'created','removed','source_sizes') if k in event['result']}
+                    'created','removed','source_sizes',
+                    'program','expected_bytes','actual_bytes','first_difference') if k in event['result']}
             summary['journal'].append(row)
         result['direct-summary-%d.json'%i]=summary
     return result
