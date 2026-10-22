@@ -646,6 +646,14 @@ class Window(W.QMainWindow):
                 arguments=dict(arguments,operations=chosen['slot_operations'])
             except (ValueError,OSError,KeyError,TypeError) as exc:
                 W.QMessageBox.warning(self,'请检查操作清单',str(exc));return
+        if action == 'sound_audition':
+            from .actions.sound import has_conversion
+            try:
+                ready = has_conversion(arguments['workspace'])
+            except (ValueError, OSError, KeyError) as exc:
+                W.QMessageBox.warning(self, '声音工作区需要核对', str(exc));return
+            if not ready:
+                W.QMessageBox.information(self, '请先转换片段', '还没有转换好的声音。请先选择声音文件、设置起点和长度，点「转换所选片段」，成功后再试听。');return
         if action == 'direct_factory_reset':
             # A failed fresh attempt must not hide the original interrupted
             # transaction. Resolve the explicitly selected evidence locally,

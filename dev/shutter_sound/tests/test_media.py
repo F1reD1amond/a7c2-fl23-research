@@ -40,5 +40,17 @@ class AudioSelectionTests(unittest.TestCase):
                 with self.assertRaises(ValueError): media.convert(source, output, **options)
                 self.assertFalse((output / 'custom-native.private.bin').exists())
 
+    def test_silent_lead_in_names_the_selection_and_later_sound_converts(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); source = root / 'lead.wav'
+            # 10 ms of near-silence (dither), then a tone: a typical file opening.
+            native_codec.write_wav(source, [(-1) ** i for i in range(240)] +
+                                   [round(8000 * math.sin(i * .1)) for i in range(2400)], 24000)
+            with self.assertRaisesRegex(ValueError, '几乎没有声音.*起点'):
+                media.convert(source, root / 'silent', start=0, duration=.01)
+            self.assertFalse((root / 'silent').exists())
+            media.convert(source, root / 'tone', start=.01, duration=.05)
+            self.assertTrue((root / 'tone/custom-native.private.bin').is_file())
+
 
 if __name__ == '__main__': unittest.main()

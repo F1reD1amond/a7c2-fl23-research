@@ -276,7 +276,7 @@ def audition(root, state, zig=None):
         raise ValueError('Restore the persistent sound and cold-reload before a new audition')
     conversion=selected_conversion(root,state)
     if not conversion:
-        raise ValueError('Convert a source with import first')
+        raise ValueError('请先点「转换所选片段」，转换成功后再试听。')
     previous=(Path(state['audio_job']) if state.get('audio_job') and
               load_job(state['audio_job']).get('owner_cold_recovery_confirmed') else None)
     payload = (Path(conversion) / 'custom-native.private.bin').read_bytes()
@@ -498,7 +498,7 @@ def parser():
     return p
 
 
-def main(argv=None, *, report=None):
+def main(argv=None, *, report=None, failure=None):
     args = parser().parse_args(argv)
     try:
         if args.command == 'doctor':
@@ -551,6 +551,8 @@ def main(argv=None, *, report=None):
                 '\n电脑端转换失败，本次没有相机读写；请修正输入后重新转换。' if args.command=='import' else
                 '\nKeep the workspace and backup; do not repeat unknown writes.')
         print('Stopped: ' + str(exc) + detail, file=sys.stderr)
+        if failure is not None:
+            failure(str(exc) + detail)
         return 2
     except KeyboardInterrupt:
         print('Interrupted. Preserve the workspace; inspect status before further device operations.', file=sys.stderr)

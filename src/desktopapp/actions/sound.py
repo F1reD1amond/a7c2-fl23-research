@@ -1,4 +1,6 @@
 """Shared sound CLI adapter; conversion/volume remain host-only actions."""
+import json
+from pathlib import Path
 import sys
 from ..paths import ROOT
 
@@ -28,8 +30,20 @@ def run(action,args):
         argv += ['--result', args.get('result', 'correct')]
     elif command == 'verify' and args.get('accepted'):
         argv += ['--heard-correct']
-    outcome = {}
-    code = main(argv, report=outcome.update)
+    outcome, stopped = {}, []
+    code = main(argv, report=outcome.update, failure=stopped.append)
     if code:
-        raise RuntimeError('Sound operation stopped; see the complete backend log above.')
+        # Show the backend's own reason; the generic text hid e.g. a silent clip.
+        raise RuntimeError(stopped[-1] if stopped else 'Sound operation stopped; see the complete backend log above.')
     return dict(outcome, workspace=args['workspace'], command=command, exit_code=code)
+
+
+def has_conversion(workspace):
+    """Whether a converted clip is selected; read locally before any USB access."""
+    sys.path.insert(0, str(ROOT / 'src/shutter_sound'))
+    from sound_cli import selected_conversion
+    root = Path(workspace)
+    state_file = root / 'sound.private.json'
+    state = json.loads(state_file.read_text(encoding='utf-8')) if state_file.is_file() else {}
+    conversion = selected_conversion(root, state)
+    return bool(conversion) and (Path(conversion) / 'custom-native.private.bin').is_file()

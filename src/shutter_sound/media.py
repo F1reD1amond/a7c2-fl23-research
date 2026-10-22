@@ -10,6 +10,7 @@ import wave
 import native_codec
 
 MAX_SECONDS = 2.0
+SILENT = 8  # PCM16 peak at or below about -72 dBFS
 
 
 def ffmpeg_path(explicit=None):
@@ -86,6 +87,10 @@ def _convert(source, root, *, start, duration, peak, ffmpeg):
     rate, frames = extract(source, wav, start=start, duration=duration, ffmpeg=ffmpeg)
     # A short edge fade avoids adding hard cut discontinuities; no source edit.
     samples, _ = native_codec.read_wav(wav)
+    if max(map(abs, samples)) <= SILENT:
+        # Many files open with silence; normalizing it would only amplify noise.
+        raise ValueError('所选片段（起点 %.3f 秒，长度 %.3f 秒）几乎没有声音。很多音频开头是一段静音，'
+                         '请把起点移到声音出现的位置，或加长片段后重新转换。' % (start, frames / rate))
     fade = min(round(rate * 0.002), len(samples) // 2)
     for i in range(fade):
         scale = i / fade
