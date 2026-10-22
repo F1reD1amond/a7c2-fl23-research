@@ -14,24 +14,52 @@ from pmca.usb.sony import SonySenserAuthDevice,SonySenserCamera,SonyExtCmdCamera
 from pmca.usb.sony import SonySenserDevice as PmcaSenserDevice
 from pmca.usb import MscDevice
 
-class SonySenserDevice(PmcaSenserDevice):
-    """pmca's senser exchange with a bounded wait for chunk end packets.
+class SenserProtocolError(RuntimeError):
+    """The reply cannot be associated with the current request."""
 
-    After every chunk whose length is a multiple of 512, pmca reads one more
-    time for the zero-length end packet. Field log 31: after a final
-    20992-byte chunk that packet never arrived and the read blocked for the
-    whole 180 s budget. Wait briefly; if it stays absent, the chunk is done.
-    A late packet would reach the next header read and fail it loudly.
+
+class SonySenserDevice(PmcaSenserDevice):
+    """Receive exactly the declared payload, ignoring empty USB transfers.
+
+    A zero-length USB packet is a transfer boundary, not application data.
+    Do not issue a separate read just to consume it: that read can time out
+    after a complete final chunk, or consume and discard the next data.
+    Empty transfers are consumed by the next header/payload read instead.
+    The existing backend deadline bounds every wait; no timeout is swallowed.
     """
-    END_PACKET_MS=1000
+    RESPONSE_FRAMING='length-delimited-zlp/1'
+    END_PACKET_MS=None
+
+    def __init__(self,driver):
+        super().__init__(driver)
+        self._failed=False
 
     def _end_packet(self):
-        try:self.driver.read(self.SenserMinSize,timeout=self.END_PACKET_MS)
-        except GenericUsbException as exc:
-            if not isinstance(exc.__context__,usb.core.USBTimeoutError):raise
+        # Compatibility with read-only diagnostic wrappers. No eager I/O.
+        pass
+
+    def _read_nonempty(self,length):
+        while True:
+            data=self.driver.read(length)
+            if data:return data
+
+    def _readAll(self,length):
+        chunks=[];done=0
+        while done<length:
+            data=self._read_nonempty(length-done)
+            if len(data)>length-done:
+                raise SenserProtocolError('Senser payload exceeds requested length')
+            chunks.append(data);done+=len(data)
+        return b''.join(chunks)
 
     def sendSenserPacket(self,pFunc,data,oData=None):
-        # Same as pmca, except _end_packet replaces the unbounded end read.
+        if self._failed:raise SenserProtocolError('Senser channel is unusable after a failed exchange; no request sent')
+        try:return self._exchange(pFunc,data,oData)
+        except BaseException:
+            self._failed=True
+            raise
+
+    def _exchange(self,pFunc,data,oData):
         while data!=b'':
             header=self.SenserPacketHeader.pack(size=len(data),pFunc=pFunc,sequence=self._sequence,
                                                 version=0,miconType=0,offsetType=0,response=0)
@@ -41,9 +69,15 @@ class SonySenserDevice(PmcaSenserDevice):
         minSize=0 if self.driver.getId()[1]==0x0336 else self.SenserMinSize
         while True:
             l=max(minSize-self.SenserPacketHeader.size,0)
-            d=self.driver.read(self.SenserPacketHeader.size+l)
+            d=self._read_nonempty(self.SenserPacketHeader.size+l)
+            if len(d)<self.SenserPacketHeader.size:
+                raise SenserProtocolError('Short senser header: expected_bytes=%d actual_bytes=%d expected_sequence=%d'%(
+                    self.SenserPacketHeader.size,len(d),self._sequence))
             header=self.SenserPacketHeader.unpack(d)
-            if header.sequence!=self._sequence:raise Exception('Wrong senser sequence')
+            if header.sequence!=self._sequence or header.pFunc!=pFunc:
+                raise SenserProtocolError('Wrong senser sequence or function: expected_sequence=%d actual_sequence=%d '
+                    'expected_pfunc=%#x actual_pfunc=%#x declared_bytes=%d'%(
+                    self._sequence,header.sequence,pFunc,header.pFunc,header.size))
             outData.write(d[self.SenserPacketHeader.size:])
             done=l
             dataLen=min(header.size,self.SenserMaxSize)
@@ -52,7 +86,6 @@ class SonySenserDevice(PmcaSenserDevice):
                 l=min(dataLen-done,chunkLen)
                 outData.write(self._readAll(l))
                 done+=l
-                if not (l&(self.SenserMinSize-1)):self._end_packet()
                 chunkLen=self.SenserChunkSize
             if header.size<=self.SenserMaxSize:break
         self._sequence+=1
@@ -68,7 +101,12 @@ class Bounded(UsbBackend):
         if left<=0:raise TimeoutError('相機操作超出有界等待時間')
         return max(1,min(left,t or self.budget*1000))
     def read(self,ep,length,timeout=None):return super().read(ep,length,self.timeout(timeout))
-    def write(self,ep,data):self.dev.default_timeout=self.timeout();return super().write(ep,data)
+    def write(self,ep,data):
+        self.dev.default_timeout=self.timeout()
+        try:written=self.dev.write(ep,data)
+        except usb.core.USBError as exc:raise GenericUsbException('USB command write failed') from exc
+        if written!=len(data):
+            raise GenericUsbException('Short USB command write: expected_bytes=%d actual_bytes=%s'%(len(data),written))
 
 def get_device(pid):
     backend=usb.backend.libusb1.get_backend(find_library=libusb_package.find_library)
@@ -112,11 +150,13 @@ class _InitialBackend(Bounded):
             raise
     def write(self,ep,data):
         try:
-            self.dev.write(ep,data,timeout=self.timeout(5000))
+            written=self.dev.write(ep,data,timeout=self.timeout(5000))
         except usb.core.USBError as exc:
             if getattr(exc,'backend_error_code',None)==-9:
                 raise GenericUsbException('Initial USB endpoint stalled') from exc
             raise
+        if written!=len(data):
+            raise GenericUsbException('Short initial USB command write: expected_bytes=%d actual_bytes=%s'%(len(data),written))
 
 def _query_initial_ready(device):
     report=_InitialProgress()

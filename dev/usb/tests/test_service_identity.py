@@ -33,6 +33,8 @@ class SessionTests(unittest.TestCase):
                 if owner.failure==self.driver.device.pid:raise TimeoutError('unknown auth')
             def stop(self):owner.events.append(('stop',self.driver.device.pid))
         patches=[patch.object(t,'get_device',side_effect=self.device),
+            patch.object(t,'_sony_pids',side_effect=lambda:['0e8a'] if self.missing_service else ['0336']),
+            patch.object(t,'_service_exit',None),
             patch.object(t.usb.util,'get_string',side_effect=lambda *args:self.product),
             patch.object(t.usb.util,'dispose_resources',side_effect=lambda d:self.events.append(('dispose',d.pid))),
             patch.object(t,'Bounded',Backend),patch.object(t,'GenericUsbDriver',side_effect=lambda b:b),
