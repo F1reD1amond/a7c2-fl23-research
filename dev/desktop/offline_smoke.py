@@ -166,6 +166,8 @@ def run():
     assert next(Cs(CS_ARCH_ARM,CS_MODE_THUMB).disasm(instruction,0)).mnemonic=='bx'
     # Emulator execution belongs in developer tests. A frozen macOS worker
     # must not require writable/executable JIT memory merely to save a sound.
+    import sys
+    if str(ROOT / 'src/shutter_sound') not in sys.path:sys.path.insert(0,str(ROOT / 'src/shutter_sound'))
     import boot_sound
     assert boot_sound.expected_windows()[-1][0]==boot_sound.BOOT
     importlib.import_module('desktopapp.allinone')
