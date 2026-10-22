@@ -12,7 +12,7 @@ def lua_string(value):
     return '"'+str(value).replace('\\','\\\\').replace('"','\\"').replace('\n','\\n').replace('\r','\\r')+'"'
 
 
-def install(exiftool, *, root=None, modules=None, interval=5):
+def install(exiftool, *, root=None, modules=None, interval=5, copy_exiftool=True):
     source=Path(__file__).resolve().parents[3]
     root=Path(root) if root else Path.home()/'.a7look/auto-profile'
     runtime=root/'runtime';(runtime/'src/looks/looktool').mkdir(parents=True,exist_ok=True)
@@ -21,7 +21,7 @@ def install(exiftool, *, root=None, modules=None, interval=5):
     shutil.copy2(source/'raw_auto.py',runtime/'raw_auto.py')
     exiftool=Path(exiftool).resolve()
     if not exiftool.is_file():raise ValueError('ExifTool executable not found')
-    if sys.platform=='win32' and (exiftool.parent/'exiftool_files').is_dir():
+    if copy_exiftool and sys.platform=='win32' and (exiftool.parent/'exiftool_files').is_dir():
         local=runtime/'exiftool';local.mkdir(exist_ok=True)
         shutil.copy2(exiftool,local/exiftool.name)
         shutil.copytree(exiftool.parent/'exiftool_files',local/'exiftool_files',dirs_exist_ok=True)

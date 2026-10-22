@@ -57,6 +57,18 @@ def run(arguments, *, dispatch):
     options = state['options']
     common = dict(firmware='2.01', power_confirmed=True)
     install = Path(state.get('install_workspace') or root / 'install')
+    if state['phase']=='NEEDS_REVIEW' and state.get('verify_result',{}).get('phase') in ('LOADED','COMPLETE'):
+        # Older packages called a computer-only plugin failure NEEDS_REVIEW.
+        # Once camera work was verified, resume only the remaining host steps.
+        done=state.get('completed_steps',[])
+        child=install/'direct.private.json'
+        verified=state['verify_result'].get('workspace')
+        if ('persistent_features' in done and (not options.get('sound',True) or 'sound' in done)
+                and (not options.get('vertical',True) or options.get('vertical_persistent'))
+                and verified and Path(verified).resolve()==install.resolve() and child.is_file()
+                and json.loads(child.read_text(encoding='utf-8')).get('phase') in ('LOADED','COMPLETE')):
+            print('相机安装与重启核对已通过；只继续电脑端插件步骤。',flush=True)
+            save('FINALIZING')
     if state['phase']=='PREPARING_VERTICAL' or (state['phase']=='NEEDS_REVIEW' and state.get('failed_step')=='portrait_frames'):
         print('重新读取当前竖屏与线框状态，续接本次安装；相同内容不重复写入。',flush=True)
         save('PREPARED')
@@ -110,6 +122,7 @@ def run(arguments, *, dispatch):
                 state.setdefault('failed_install_workspaces',[]).append(str(install))
                 install=root/('install-retry-'+uuid.uuid4().hex[:8])
                 save('PREPARED',install_workspace=str(install),last_name_failure_review=reviewed)
+    host_step=False
     try:
         if state['phase'] in ('WAIT_RESOURCE_RELOAD','RESOURCE_REVIEW_REQUIRED'):
             print('名称已经写好；核对／准备资源重新加载，不重写名称，不重装驱动。',flush=True)
@@ -197,6 +210,7 @@ def run(arguments, *, dispatch):
                 state['completed_steps'].append('sound')
                 save('FINALIZING')
             if options.get('plugin') and 'plugin' not in state['completed_steps']:
+                host_step=True
                 state['plugin_result'] = call('plugin_install', {'exiftool': options.get('exiftool')}, 'plugin')
                 child = json.loads((install / 'direct.private.json').read_text(encoding='utf-8'))
                 _, rows = bundle.documents(child['bundle_options'])
@@ -207,6 +221,7 @@ def run(arguments, *, dispatch):
                         child['job_id'], child['raw_profile_effective_since'])
                 state['completed_steps'].append('plugin')
                 save('FINALIZING')
+                host_step=False
             if options.get('vertical', True) and 'vertical' not in state['completed_steps']:
                 if options.get('vertical_persistent'):
                     result = state.get('verify_result', state.get('install_result', {})).get('vertical_result', {})
@@ -226,7 +241,9 @@ def run(arguments, *, dispatch):
             print(state['message'], flush=True)
         return state
     except BaseException as exc:
-        if state['phase'] not in ('DRIVERS', 'WAIT_RELOAD'):
+        if state['phase']=='FINALIZING' and host_step:
+            save('FINALIZING',error=str(exc))
+        elif state['phase'] not in ('DRIVERS', 'WAIT_RELOAD'):
             save('NEEDS_REVIEW', error=str(exc))
         else:
             save(state['phase'], error=str(exc))

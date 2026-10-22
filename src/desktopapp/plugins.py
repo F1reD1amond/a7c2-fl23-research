@@ -9,21 +9,14 @@ from .paths import ROOT, data_root, write_json
 
 
 def install(arguments):
-    from .exiftool import ensure
+    from .exiftool import ensure,persist_windows
     tool = ensure(arguments.get('exiftool'))
     if sys.platform == 'win32':
-        source = Path(tool).resolve()
-        local = data_root() / 'helpers/exiftool'
-        local.mkdir(parents=True, exist_ok=True)
-        target = local / 'exiftool.exe'
-        if source != target:
-            shutil.copy2(source, target)
-        if (source.parent / 'exiftool_files').is_dir() and source.parent != local:
-            shutil.copytree(source.parent / 'exiftool_files', local / 'exiftool_files', dirs_exist_ok=True)
-        tool = str(target)
+        tool = persist_windows(tool)
     if not getattr(sys, 'frozen', False):
         from looktool.rawauto import install as original_install
-        return original_install(tool, root=Path(arguments.get('data_root') or data_root() / 'raw-profiles'))
+        return original_install(tool, root=Path(arguments.get('data_root') or data_root() / 'raw-profiles'),
+                                copy_exiftool=False)
     modules = (Path(os.environ['APPDATA']) / 'Adobe/Lightroom/Modules' if sys.platform == 'win32'
                else Path.home() / 'Library/Application Support/Adobe/Lightroom/Modules')
     plugin = modules / 'A7LookAuto.lrplugin'

@@ -9,6 +9,41 @@ from desktopapp import allinone
 
 
 class AllInOneTests(unittest.TestCase):
+    def test_plugin_failure_retries_host_step_without_opening_camera(self):
+        root=self.root/'host-only';install=root/'install';install.mkdir(parents=True)
+        (install/'direct.private.json').write_text(json.dumps(dict(phase='LOADED',bundle_options=dict(looks=[]))))
+        state=dict(schema='a7c2-one-click/1',phase='FINALIZING',workspace=str(root),
+            options=dict(plugin=True,sound=True,vertical=False,looks=[]),
+            completed_steps=['drivers','persistent_features','sound'],install_workspace=str(install),
+            verify_result=dict(phase='LOADED',workspace=str(install)))
+        (root/'setup.private.json').write_text(json.dumps(state))
+        calls=[]
+        def dispatch(action,args,folder):
+            calls.append(action);self.assertEqual(action,'plugin_install')
+            if len(calls)==1:raise PermissionError('locked ExifTool')
+            return dict(plugin='installed')
+        arguments=dict(self.args,workspace=str(root))
+        with self.assertRaises(PermissionError):allinone.run(arguments,dispatch=dispatch)
+        failed=json.loads((root/'setup.private.json').read_text())
+        self.assertEqual(failed['phase'],'FINALIZING')
+        self.assertEqual(allinone.run(arguments,dispatch=dispatch)['phase'],'COMPLETE')
+        self.assertEqual(calls,['plugin_install','plugin_install'])
+
+    def test_legacy_plugin_failure_uses_saved_loaded_proof_without_camera_recheck(self):
+        root=self.root/'legacy-host';install=root/'install';install.mkdir(parents=True)
+        (install/'direct.private.json').write_text(json.dumps(dict(phase='LOADED',bundle_options=dict(looks=[]))))
+        state=dict(schema='a7c2-one-click/1',phase='NEEDS_REVIEW',workspace=str(root),
+            options=dict(plugin=True,sound=True,vertical=False,looks=[]),
+            completed_steps=['drivers','persistent_features','sound'],install_workspace=str(install),
+            verify_result=dict(phase='LOADED',workspace=str(install)),error='Permission denied: exiftool.exe')
+        (root/'setup.private.json').write_text(json.dumps(state))
+        calls=[]
+        def dispatch(action,args,folder):
+            calls.append(action);self.assertEqual(action,'plugin_install');return dict(plugin='installed')
+        result=allinone.run(dict(self.args,workspace=str(root)),dispatch=dispatch)
+        self.assertEqual(result['phase'],'COMPLETE')
+        self.assertEqual(calls,['plugin_install'])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()

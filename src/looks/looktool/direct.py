@@ -261,15 +261,26 @@ class DirectJob(Rollback):
         restoration steps. A later name-space failure can then be resumed
         without leaving a saved FL23 recipe on stock programs.
         """
+        return self.prepare_ap_settings(camera,prepared,prepared[0],'factory_look_settings_safe')
+
+    def prepare_look_settings(self, camera, prepared):
+        from .verticalpersist import SETTING
+        keys=[key for key in prepared[0] if key not in (*checkpoint.AP_KEYS,SETTING)]
+        if not keys:return prepared
+        result=self.prepare_ap_settings(camera,prepared,keys,'look_slots_st')
+        print('所选槽位已保存为 ST。',flush=True)
+        return result
+
+    def prepare_ap_settings(self, camera, prepared, selected, event):
         keys,ram,saved,before_ram,before_saved=prepared
         ready_ram,ready_saved=copy.deepcopy(before_ram),copy.deepcopy(before_saved)
-        for key in keys:
+        for key in selected:
             ready_ram[0][key]=ram[0][key]
             ready_saved[0][key]=saved[0][key]
         if ready_ram!=before_ram or ready_saved!=before_saved:
             # Do not run vertical_stage.finish() before the program/name steps.
             Rollback.restore_settings(self,camera,(keys,ready_ram,ready_saved,before_ram,before_saved))
-        self.record('factory_look_settings_safe')
+        self.record(event)
         return keys,ram,saved,ready_ram,ready_saved
 
     def forward_names(self, camera, build, mode):
@@ -451,6 +462,8 @@ class DirectJob(Rollback):
                             self.native(camera,'wbi',0);self.native(camera,'wbi',1)
                         resource_pause=True
                 if not resource_pause:
+                    if mode in ('look_import','install_all'):
+                        prepared=self.prepare_look_settings(camera,prepared)
                     for index, build in enumerate(programs):
                         print('正在写入程序窗口批次 %d/%d' % (index + 1, len(programs)), flush=True)
                         self.native(camera, 'program', 1, build)

@@ -1,5 +1,6 @@
 """Resolve or prepare the official ExifTool helper without camera access."""
 import io
+import filecmp
 from pathlib import Path,PurePosixPath
 import os
 import shutil
@@ -9,6 +10,7 @@ import tarfile
 import tempfile
 import urllib.request
 import zipfile
+import uuid
 from .paths import ROOT,data_root
 
 VERSION='13.59'
@@ -97,3 +99,35 @@ def ensure(preferred=None):
         if path.is_file():return str(path.resolve())
     print('正在准备 Lightroom 的 ExifTool 辅助程序（仅电脑端，不连接相机）。',flush=True)
     return str(install(cache).resolve())
+
+
+def persist_windows(tool):
+    """Reuse identical helpers; publish updates without replacing running files."""
+    source=Path(tool).resolve()
+    helpers=data_root()/'helpers';helpers.mkdir(parents=True,exist_ok=True)
+    def payload(folder):
+        result={'exiftool.exe':folder/'exiftool.exe'}
+        companion=folder/'exiftool_files'
+        if companion.is_dir():
+            result.update({str(p.relative_to(folder)):p for p in companion.rglob('*') if p.is_file()})
+        return result
+    original=payload(source.parent);original['exiftool.exe']=source
+    candidates=[helpers/'exiftool',*sorted(helpers.glob('exiftool-local-*'),reverse=True)]
+    for folder in candidates:
+        try:
+            existing=payload(folder)
+            if set(existing)==set(original) and all(filecmp.cmp(original[n],existing[n],shallow=False) for n in original):
+                return str((folder/'exiftool.exe').resolve())
+        except OSError:
+            # A protected/running older copy is left in place.
+            continue
+    destination=helpers/('exiftool-local-'+uuid.uuid4().hex[:12])
+    with tempfile.TemporaryDirectory(prefix='.exiftool-stage-',dir=helpers) as staging:
+        stage=Path(staging)
+        shutil.copy2(source,stage/'exiftool.exe')
+        if (source.parent/'exiftool_files').is_dir():
+            shutil.copytree(source.parent/'exiftool_files',stage/'exiftool_files')
+        for name in ('SOURCE.txt','installed.txt'):
+            if (source.parent/name).is_file():shutil.copy2(source.parent/name,stage/name)
+        stage.replace(destination)
+    return str((destination/'exiftool.exe').resolve())
