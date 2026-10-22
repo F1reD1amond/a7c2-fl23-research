@@ -2,6 +2,10 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/changelog.md)
 
+## Unreleased
+
+- Restore the 3.0.2 ordering that finishes an aligned Senser IN response before sending the next command. Removing its end-packet read in `197a4e4` left a CP read's completion pending before the immediate WRITE41 in recovery. Keep a one-second bounded finish read, but buffer any nonempty continuation bytes instead of discarding them. The new regression exercises actual CP read → changed-unit write → full readback, including a receiver that blocks a long OUT command while its preceding IN response remains unfinished. The experimental CP OUT fragmentation/partial-send change was withdrawn after its physical test still timed out. No old transaction is replayed; physical acceptance of this correction remains pending.
+
 ## 3.0.3 — important fixes, recommended for everyone — 2026-10-23
 
 Fixes important bugs: custom looks applied with the wrong base, extra shutter sounds on mechanical capture, USB read errors, and sound or restore actions blocked by old task records. Everyone should update.

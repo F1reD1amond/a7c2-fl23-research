@@ -19,26 +19,35 @@ class SenserProtocolError(RuntimeError):
 
 
 class SonySenserDevice(PmcaSenserDevice):
-    """Receive exactly the declared payload, ignoring empty USB transfers.
+    """Finish aligned IN transfers before sending the next command.
 
-    A zero-length USB packet is a transfer boundary, not application data.
-    Do not issue a separate read just to consume it: that read can time out
-    after a complete final chunk, or consume and discard the next data.
-    Empty transfers are consumed by the next header/payload read instead.
-    The existing backend deadline bounds every wait; no timeout is swallowed.
+    Keep 3.0.2's bounded end-packet read: the camera can still own its previous
+    response until that packet is received. Preserve nonempty lookahead bytes
+    rather than discarding them as the old end-packet reader did.
     """
-    RESPONSE_FRAMING='length-delimited-zlp/1'
-    END_PACKET_MS=None
+    RESPONSE_FRAMING='length-delimited-zlp/2'
+    END_PACKET_MS=1000
 
     def __init__(self,driver):
         super().__init__(driver)
         self._failed=False
+        self._pending=bytearray()
 
     def _end_packet(self):
-        # Compatibility with read-only diagnostic wrappers. No eager I/O.
-        pass
+        if self._pending:return
+        try:data=self.driver.read(self.SenserMinSize,timeout=self.END_PACKET_MS)
+        except usb.core.USBTimeoutError:return
+        except GenericUsbException as exc:
+            if not isinstance(exc.__cause__ or exc.__context__,usb.core.USBTimeoutError):raise
+            return
+        # Some firmware omits the empty transfer. The read may have returned
+        # real continuation data instead; it belongs to the next normal read.
+        if data:self._pending.extend(data)
 
     def _read_nonempty(self,length):
+        if self._pending:
+            data=bytes(self._pending[:length]);del self._pending[:length]
+            return data
         while True:
             data=self.driver.read(length)
             if data:return data
@@ -86,6 +95,7 @@ class SonySenserDevice(PmcaSenserDevice):
                 l=min(dataLen-done,chunkLen)
                 outData.write(self._readAll(l))
                 done+=l
+                if not (l&(self.SenserMinSize-1)):self._end_packet()
                 chunkLen=self.SenserChunkSize
             if header.size<=self.SenserMaxSize:break
         self._sequence+=1
