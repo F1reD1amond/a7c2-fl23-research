@@ -102,7 +102,12 @@ def chain(folder):
 
 
 def pending(work_root, preferred=None):
-    """Find the latest meaningful transaction per body, ignoring read-only failures."""
+    """Find the latest meaningful transaction per body, ignoring read-only failures.
+
+    Old records are evidence for a restore, never a precondition: one that
+    cannot be read or attributed is skipped (and kept), so the restore button
+    re-plans from the connected camera instead of stopping on stale state.
+    """
     paths = set(Path(work_root).glob('*/direct.private.json'))
     if preferred and Path(preferred, 'direct.private.json').is_file():
         paths.add(Path(preferred, 'direct.private.json'))
@@ -110,10 +115,10 @@ def pending(work_root, preferred=None):
     for path in paths:
         try:
             state = json.loads(path.read_text(encoding='utf-8'))
-        except (OSError, ValueError) as exc:
-            if preferred and path.parent.resolve() == Path(preferred).resolve():
-                raise ValueError('无法读取所选恢复记录，请保留并检查：' + str(path)) from exc
+        except (OSError, ValueError):
             print('本地记录无法读取，未用于自动续接（记录保留）：' + str(path), flush=True)
+            continue
+        if not isinstance(state, dict):
             continue
         if state.get('mode') != 'factory_reset' or not state.get('identity'):
             continue
@@ -127,7 +132,8 @@ def pending(work_root, preferred=None):
         identity = state['identity']
         key = (identity.get('model'), identity.get('serial_sha256') or identity.get('usb_serial_sha256'))
         if not all(key):
-            raise ValueError('恢复记录缺少机身身份：' + str(path))
+            print('恢复记录缺少机身身份，未用于自动续接（记录保留）：' + str(path), flush=True)
+            continue
         rows.append((path.stat().st_mtime_ns, str(path), key, path.parent.resolve(), state))
     latest = {}
     for row in sorted(rows):
@@ -141,10 +147,18 @@ def pending(work_root, preferred=None):
     if preferred:
         selected = Path(preferred).resolve()
         for row in active:
-            if selected in [root for root, _ in chain(row[3])]:
+            try:
+                ancestry = [root for root, _ in chain(row[3])]
+            except (OSError, ValueError):
+                ancestry = [row[3]]
+            if selected in ancestry:
                 return row[3], row[4]
     if len(active) > 1:
-        raise ValueError('有多台机身的未完成恢复，请选择对应的事务目录：' + '; '.join(str(r[3]) for r in active))
+        # Which body is connected is unknown until USB opens; a fresh restore
+        # binds to the connected body and re-plans from its current bytes.
+        print('有多台机身的未完成恢复记录（均保留）；本次按当前连接的相机重新生成恢复计划：' +
+              '; '.join(str(r[3]) for r in active), flush=True)
+        return None
     return (active[0][3], active[0][4]) if active else None
 
 

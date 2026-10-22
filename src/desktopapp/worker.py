@@ -126,21 +126,44 @@ def run(action, args, job):
             else:
                 result = obj.verify_direct(factory_values=reference, accepted=bool(args.get('accepted')))
         elif mode == 'resume_factory':
+            from looktool.direct import ContentChanged
             from looktool.factoryrecover import FINISHED
+            from looktool.usbidentity import BodyMismatch
             from .official import load
-            prior_root=Path(args['failed_workspace']).resolve()
-            prior=json.loads((prior_root/'direct.private.json').read_text(encoding='utf-8'))
-            if prior.get('mode')!='factory_reset':raise ValueError('所选目录不是恢复任务')
             reference = load(reference_path)
-            if prior['phase'] in FINISHED:
-                print('恢复写入已结束；仅核对加载状态，不重复写入。', flush=True)
-                obj = DirectJob(prior_root)
-                result = obj.verify_direct(factory_values=reference, accepted=bool(args.get('accepted')))
+            fresh = lambda job, identity=None, source=None: job.run_direct('factory_reset', version=args['firmware'],
+                power_confirmed=args.get('power_confirmed', False), factory_values=reference,
+                factory_path=reference_path, recovery_identity=identity, recovery_source=source)
+            prior_root=Path(args['failed_workspace']).resolve()
+            try:
+                prior=json.loads((prior_root/'direct.private.json').read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                prior = {}
+            if prior.get('mode')!='factory_reset' or not isinstance(prior.get('identity'), dict):
+                # Old records are evidence only; never let one block a restore.
+                print('所选恢复记录不可用（保留原样）；按当前连接的相机重新生成内建原厂恢复计划。', flush=True)
+                result = fresh(obj)
+            elif prior['phase'] in FINISHED:
+                print('上次恢复写入已结束；先核对，不重复写入。', flush=True)
+                try:
+                    verifier = DirectJob(prior_root)
+                    result = verifier.verify_direct(factory_values=reference, accepted=bool(args.get('accepted')))
+                    obj = verifier
+                except ContentChanged as exc:
+                    # Read-only verification found other bytes, e.g. features
+                    # installed again after that restore: re-plan, don't loop.
+                    print('相机内容已与上次恢复结果不同（%s），通常是之后又安装或修改过功能。旧记录保留；'
+                          '按当前相机字节重新生成原厂恢复计划。' % exc, flush=True)
+                    result = fresh(obj, source=str(prior_root))
             else:
                 print('保留旧恢复记录，从当前相机重新生成内建原厂恢复计划；不重放旧任务。', flush=True)
-                result = obj.run_direct('factory_reset',version=args['firmware'],
-                    power_confirmed=args.get('power_confirmed', False),factory_values=reference,
-                    factory_path=reference_path,recovery_identity=prior.get('identity'),recovery_source=str(prior_root))
+                try:
+                    result = fresh(obj, prior.get('identity'), str(prior_root))
+                except BodyMismatch:
+                    # Rejected from the USB serial before any authentication.
+                    print('当前连接的是另一台机身；该机身的旧记录保留不动。按当前相机重新生成恢复计划。', flush=True)
+                    obj = DirectJob(obj.root.with_name(obj.root.name + '-current-body'))
+                    result = fresh(obj, source=str(prior_root))
         else:
             if mode == 'factory_reset':
                 from .official import load

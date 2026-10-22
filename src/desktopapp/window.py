@@ -635,6 +635,7 @@ class Window(W.QMainWindow):
     def launch(self, action, arguments):
         if self.process is not None:
             return
+        factory_finished = False
         if action=='direct_looks_import' and arguments.get('failed_workspace'):
             action='direct_resume_looks'
         if action=='direct_looks_import':
@@ -663,18 +664,15 @@ class Window(W.QMainWindow):
             from looktool.factoryrecover import pending, FINISHED
             try:
                 found = pending(data_root() / 'work', self.text('factory_failed_work'))
-            except (ValueError, OSError) as exc:
-                W.QMessageBox.warning(self, '恢复记录需要核对', str(exc))
-                return
+            except (ValueError, OSError):
+                found = None  # Records are evidence only; the worker re-plans.
             if found:
+                # A finished restore is verified first; the worker re-plans
+                # from current bytes if the camera changed since then.
                 original, prior = found
-                if prior['phase'] in FINISHED:
-                    action = 'direct_verify'
-                    arguments = dict(workspace=str(original), accepted=self.factory_accept.isChecked())
-                    self.settings['factory_direct_work'] = str(original)
-                else:
-                    action = 'direct_resume_factory'
-                    arguments = dict(arguments, failed_workspace=str(original))
+                factory_finished = prior['phase'] in FINISHED
+                action = 'direct_resume_factory'
+                arguments = dict(arguments, failed_workspace=str(original), accepted=self.factory_accept.isChecked())
         if action == 'driver_uninstall':
             answer = W.QMessageBox.question(self, '卸载相机驱动',
                 '将备份并卸载 Sony 054C:0E8A／0336 的第三方驱动，让 Windows 重新识别相机。\n'
@@ -691,7 +689,8 @@ class Window(W.QMainWindow):
                 target = ('；'.join('自订 %s → %s' % (r['slot'], '恢复 ST 默认' if r['action']=='restore' else '写入 '+r['name']) for r in arguments.get('operations', []))
                           if action == 'direct_looks_import' else
                           '继续已写好名称的外观安装：'+arguments.get('failed_workspace','') if action=='direct_resume_looks' else
-                          '继续完成名称／设置恢复：' + arguments.get('failed_workspace', '') if action == 'direct_resume_factory' else
+                          ('核对上次恢复；相机内容若已改变，则按当前字节重新恢复：' if factory_finished else
+                           '继续完成名称／设置恢复：') + arguments.get('failed_workspace', '') if action == 'direct_resume_factory' else
                           '竖屏显示＋Fn／子菜单线框修正' if action=='vertical_enable' else
                           '关闭竖屏显示并撤销线框修正' if action=='vertical_disable' else
                           '原厂 2.01 功能' if action == 'direct_factory_reset' else
@@ -701,6 +700,7 @@ class Window(W.QMainWindow):
                                            else arguments.get('name') or Path(arguments.get('look', '')).stem))
             scope = ('一次应用清单内的写入和恢复，未添加的槽位保持原样；保留 FL23、声音和竖屏。写入读回完成后统一提示断电重开。\n' if action=='direct_looks_import' else
                      '自动准备驱动并安装首页勾选的功能。断电重开必须由你按提示完成；结果不明时停止，不自动重复刷写。\n' if action == 'setup_all' else
+                     '先只读核对；只有相机内容已改变时才按当前字节写入，已符合原厂的内容不重复写入。\n' if action == 'direct_resume_factory' and factory_finished else
                      '根据当前字节继续未完成阶段，已恢复的内容不重复写入；原失败事务保留，结果不明时先读取报告核对。\n' if action == 'direct_resume_factory' else
                      '将移除项目程序修改、将六个自订栏位设为 ST 默认；旧配方不找回。请先在相机选择 ST。\n' if action == 'direct_factory_reset' else
                      '只关闭 FL2／FL3 列表入口，保留 LUT 与共用代码。请先在相机选择 ST。\n' if action == 'direct_fl23_disable' else

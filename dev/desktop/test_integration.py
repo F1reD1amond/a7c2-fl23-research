@@ -234,7 +234,7 @@ class IntegrationTests(unittest.TestCase):
 
     def test_sound_save_forwards_backup_for_automatic_workspace_creation(self):
         sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'dev/shutter_sound'))
-        def success(argv,*,report):
+        def success(argv,*,report,failure=None):
             self.assertIn('--backup-copy',argv)
             self.assertEqual(argv[argv.index('--backup-copy')+1],str(self.root/'backup'))
             report(dict(phase='installed_cold_test_pending'));return 0

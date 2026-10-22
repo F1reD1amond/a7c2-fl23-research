@@ -23,6 +23,10 @@ MENU_FLAGS = (0x59892ca, 0x5989382)
 ST_ADJUSTMENTS = (0, 0, 0, 0, 0, 4, 3, 1)
 
 
+class ContentChanged(ValueError):
+    """The camera bytes no longer match a finished transaction's target."""
+
+
 def recipe_defaults(ap, slots):
     result = {}
     def key(attribute):
@@ -388,6 +392,9 @@ class DirectJob(Rollback):
                     if mode=='factory_reset':
                         allowed.add(target['appFw.so'][span['offset']:span['offset'] + span['length']].hex())
                     if span['memory'] not in allowed or span['disk'] != expected:
+                        if mode == 'factory_reset':
+                            raise ValueError('相机仍在运行上次写入前加载的程序，本次没有写入。请先拔 USB、关机，取下电池至少一分钟，'
+                                             '再开机接回 USB，点击“重启后核对并完成恢复”或再次点击恢复。')
                         raise ValueError('Finish the previous cold reload before changing another feature')
                 for build in programs:
                     self.native(camera, 'program', 0, build)
@@ -620,7 +627,11 @@ class DirectJob(Rollback):
             else:
                 target, wanted, _ = plan(current, camera.records(current['settings-ram.bin']), self.state['mode'],
                     factory=factory_values, slot=self.state['slot'], look=look, name=self.state['name'])
-            self.readback(camera, target)
+            try:
+                self.readback(camera, target)
+            except ValueError as exc:
+                if 'readback differs' not in str(exc):raise
+                raise ContentChanged(str(exc)) from exc
             for memory in (False, True):
                 records = camera.records(camera.snapshot(memory))
                 for chip in (0, 1):
@@ -629,7 +640,7 @@ class DirectJob(Rollback):
                         differs = (any(actual[at:at + size] != value[at:at + size] for at, size in color_regions()[key])
                                    if chip == 1 else actual != value)
                         if differs:
-                            raise ValueError('Reloaded default setting differs')
+                            raise ContentChanged('Reloaded default setting differs')
             from . import verticalpersist
             if verticalpersist.SETTING in wanted[0]:
                 verticalpersist.Stage(camera, self, wanted[0][verticalpersist.SETTING] == b'\0').verify_loaded()

@@ -216,7 +216,7 @@ class PowerProgressTests(unittest.TestCase):
         new_job.assert_not_called()
         self.assertEqual(window.settings['factory_direct_work'], str(failed))
 
-    def test_completed_continuation_is_not_started_again_from_old_failure(self):
+    def test_completed_continuation_is_verified_first_with_rewrite_fallback(self):
         window = self.window()
         failed, completed = self.root / 'old-failure', self.root / 'completed'
         failed.mkdir(); completed.mkdir()
@@ -226,13 +226,16 @@ class PowerProgressTests(unittest.TestCase):
         window.settings['factory_direct_work'] = str(completed)
         window.fields['factory_failed_work'].setText(str(failed))
         with patch('looktool.factoryrecover.pending', return_value=(completed.resolve(), {'phase': 'AWAITING_RELOAD'})), \
-             patch.object(W.QMessageBox, 'question') as question, \
+             patch.object(W.QMessageBox, 'question', return_value=W.QMessageBox.Yes) as question, \
              patch('desktopapp.window.QtCore.QProcess'):
             window.launch('direct_factory_reset', {'workspace': 'not-started'})
-        question.assert_not_called()
+        # The worker verifies the finished restore first and writes only if
+        # the camera changed since, so the power confirmation is required.
+        self.assertIn('先只读核对', question.call_args.args[2])
         request = json.loads((window.current_job / 'request.private.json').read_text())
-        self.assertEqual(request['action'], 'direct_verify')
-        self.assertEqual(request['arguments']['workspace'], str(completed.resolve()))
+        self.assertEqual(request['action'], 'direct_resume_factory')
+        self.assertEqual(request['arguments']['failed_workspace'], str(completed.resolve()))
+        self.assertTrue(request['arguments']['power_confirmed'])
 
     def test_restore_after_loaded_recovery_starts_fresh_write_not_old_verification(self):
         from desktopapp.paths import data_root,write_json
