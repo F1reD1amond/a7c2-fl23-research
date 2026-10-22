@@ -177,3 +177,18 @@ def test_one_click_can_retry_when_settings_dispatch_never_created_its_child(tmp_
         return dict(workspace=arguments['workspace'],phase='AWAITING_RELOAD')
     assert allinone.run(args,dispatch=dispatch)['phase']=='WAIT_RELOAD'
     assert calls==['direct_resume_settings']
+
+
+def test_changed_body_in_settings_continuation_never_falls_back_to_reinstall(tmp_path):
+    from desktopapp import allinone
+    root=tmp_path/'setup';child=root/'install-settings-1';child.mkdir(parents=True)
+    (child/'direct.private.json').write_text(json.dumps(dict(schema='a7c2-direct-job/1',mode='install_all',
+        phase='NEEDS_REVIEW',failed_during='READING',settings_resume_from=str(root/'install'),
+        error='Saved install programs changed',journal=[])))
+    (root/'setup.private.json').write_text(json.dumps(dict(schema='a7c2-one-click/1',phase='NEEDS_REVIEW',
+        options={},install_workspace=str(child),resume_settings_from=str(root/'install'),completed_steps=['drivers'])))
+    calls=[]
+    with pytest.raises(ValueError):
+        allinone.run(dict(workspace=str(root),firmware='2.01',power_confirmed=True),
+            dispatch=lambda *args:calls.append(args))
+    assert calls==[]

@@ -99,6 +99,7 @@ def run(arguments, *, dispatch):
             # parent saved its result. LOADED children need no further reboot.
             save('WAIT_RELOAD')
         elif (child_state.get('schema')=='a7c2-direct-job/1' and child_state.get('mode')=='install_all'
+              and not child_state.get('settings_resume_from')
               and isinstance(child_state.get('journal'),list)
               and lookbatch.read_only_failure(child_state)):
             # A version/window conflict can occur while building the host plan,
