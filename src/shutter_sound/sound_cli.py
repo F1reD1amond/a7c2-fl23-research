@@ -67,7 +67,10 @@ def require_idle(state, root=None):
     if root is not None:
         retire_readonly_failure(root, state)
     if state.get('pending'):
-        raise ValueError('Previous operation is unresolved. Use status and keep its job; do not replay it.')
+        pending=state['pending']
+        raise ValueError('上一次声音操作（%s）中途停止，结果还没确认，所以没有开始新的操作，也没有连接相机。'
+                         '请点窗口底部“导出诊断包”发给作者核对；不要删除声音工作目录。'
+                         '（Previous operation is unresolved: %s）'%(pending.get('command','?'),pending.get('job','')))
 
 
 def retire_readonly_failure(root, state):

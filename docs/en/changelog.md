@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Sound: an unresolved earlier sound operation is now explained in Chinese, naming the operation, and sound diagnostics bundles include a summary of the sound workspace (pending operation, recent history, job phase, event names and file names; no audio or camera buffers).
 - The old-backup section's verify button is now "Check loaded state after an old-backup restore". Clicked without an old-backup restore record (for example after a firmware-file restore), it offers the factory verification instead of failing with a raw "No such file" error; the worker also reports this case in plain words.
 
 ## 3.0.2 — bug-fix release — 2026-10-22

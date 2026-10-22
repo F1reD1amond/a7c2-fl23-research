@@ -31,6 +31,31 @@ def worker_command(request):
     return [sys.executable, '-u', str(ROOT / 'desktop.py'), '--worker', str(request)]
 
 
+def sound_summary(root):
+    """Which sound operation is unresolved, without audio or camera buffers."""
+    path=root/'sound.private.json'
+    if not path.is_file():return {}
+    state=json.loads(path.read_text(encoding='utf-8'))
+    def plain(values):
+        return {k:v for k,v in values.items() if v is None or isinstance(v,(bool,int,float))
+                or (isinstance(v,str) and len(v)<=600)}
+    summary=plain(state)
+    summary.update(pending=state.get('pending'),history=[plain(h) for h in state.get('history',[])[-10:]])
+    jobs={}
+    for key in ('pending_job','audio_job','native_job','boot_job'):
+        folder=(state.get('pending') or {}).get('job') if key=='pending_job' else state.get(key)
+        record=Path(folder or '','job.private.json')
+        if not folder or not record.is_file():continue
+        value=json.loads(record.read_text(encoding='utf-8'))
+        row=plain(value)
+        events=value.get('journal') or value.get('events') or []
+        row['events']=[e.get('event') for e in events[-30:] if isinstance(e,dict)]
+        row['files']=sorted(p.name for p in Path(folder).iterdir())[:50]
+        jobs[key]=row
+    summary['jobs']=jobs
+    return {'sound-summary.json':summary}
+
+
 def transaction_summaries(job):
     """Include original failure stages, never program/settings snapshots."""
     request_path=Path(job)/'request.private.json'
@@ -38,6 +63,8 @@ def transaction_summaries(job):
     request=json.loads(request_path.read_text(encoding='utf-8'))
     folder=request.get('arguments',{}).get('workspace')
     if not folder:return {}
+    if request.get('action','').startswith('sound_'):
+        return sound_summary(Path(folder))
     root=Path(folder);result={};children=[root]
     pointer=Path(job)/'backend-workspace.private.json'
     if pointer.is_file():

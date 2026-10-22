@@ -50,3 +50,23 @@ def test_program_mismatch_export_keeps_offsets_without_program_bytes(tmp_path,mo
     for event in summary['journal']:
         assert event['result']=={k:v for k,v in result.items() if k not in ('raw_program','serial')}
     assert 'PRIVATE-' not in json.dumps(summary)
+
+
+def test_sound_export_names_the_unresolved_operation_without_buffers(tmp_path,monkeypatch):
+    monkeypatch.setenv('A7C2_DESKTOP_DATA',str(tmp_path/'app'))
+    root=tmp_path/'sound';job=root/'jobs/audition-1';job.mkdir(parents=True)
+    (job/'job.private.json').write_text(json.dumps(dict(schema='a7c2-empty-sound-buffer-trial/1',phase='needs_review',
+        camera_firmware_written=False,payload='PRIVATE-AUDIO'*100,journal=[dict(event='native_stage_intent'),dict(event='native_intent')])))
+    (job/'payload.private.bin').write_bytes(b'PRIVATE-NATIVE-BUFFER')
+    (root/'sound.private.json').write_text(json.dumps(dict(schema='a7c2-sound-workspace/1',
+        pending=dict(command='audition',job=str(job)),audio_job=str(job),history=[dict(command='install',phase='done')])))
+    request=jobs.new_job('sound_audition',dict(workspace=str(root)))
+    output=tmp_path/'diagnostics.zip';jobs.export_support(request,output)
+    with zipfile.ZipFile(output) as z:
+        summary=json.loads(z.read('diagnostics/transactions/sound-summary.json'))
+        assert summary['pending']['command']=='audition'
+        row=summary['jobs']['pending_job']
+        assert row['phase']=='needs_review' and row['events']==['native_stage_intent','native_intent']
+        assert 'payload.private.bin' in row['files']
+        contents=b'\n'.join(z.read(n) for n in z.namelist())
+        assert b'PRIVATE-AUDIO' not in contents and b'PRIVATE-NATIVE-BUFFER' not in contents
