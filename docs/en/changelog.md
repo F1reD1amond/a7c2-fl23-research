@@ -4,6 +4,7 @@
 
 ## Unreleased
 
+- Sound candidate: replace the shared mechanical/electronic capture-sound routing with a per-capture electronic-flag gate. Mechanical and electronic-front-curtain selector paths choose the native silent mode; ordinary electronic captures keep Sony's counter/skip/defer policy. Re-enabling upgrades the old sound patch, Save prepares missing support automatically, and the desktop Off switch keeps mechanical playback muted while custom audio remains installed. Factory recovery includes the exact stock inverse. Windows/macOS share the implementation. Native-fragment and installer fault tests are offline evidence; physical playback/boot acceptance is pending, and no package has been replaced.
 - Sound: an unresolved earlier sound operation is now explained in Chinese, naming the operation, and sound diagnostics bundles include a summary of the sound workspace (pending operation, recent history, job phase, event names and file names; no audio or camera buffers).
 - The old-backup section's verify button is now "Check loaded state after an old-backup restore". Clicked without an old-backup restore record (for example after a firmware-file restore), it offers the factory verification instead of failing with a raw "No such file" error; the worker also reports this case in plain words.
 

@@ -57,7 +57,7 @@ def test_existing_hook_is_kept_and_audio_publication_precedes_csv(tmp_path,same)
 
 def test_second_save_does_not_require_restoring_previous_persistent_sound(tmp_path):
     root,state=sound_cli.workspace(tmp_path/'sound',True,tmp_path/'backup')
-    native=root/'native';native.mkdir();trial.save(native,dict(phase='written',identity={},complete_readback_and_settings_verified=True))
+    native=root/'native';native.mkdir();trial.save(native,dict(phase='written',identity={},complete_readback_and_settings_verified=True,electronic_only_gate=True))
     old=root/'old';old.mkdir();trial.save(old,dict(phase='installed_cold_test_pending'))
     converted=root/'converted';converted.mkdir();(converted/'custom-native.private.bin').write_bytes(bytes(64))
     state.update(native_job=str(native),boot_job=str(old),conversion=str(converted))
@@ -71,7 +71,8 @@ def test_sound_switch_plan_is_repeatable_and_preserves_other_bytes(enabled):
     from looktool import direct
     import candidate
     ap=b'unchanged-app';cp=bytearray(candidate.OFFSET+32)
-    cp[candidate.OFFSET:candidate.OFFSET+2]=candidate.AFTER if enabled else candidate.BEFORE
+    cp[candidate.SELECTOR_TABLE:candidate.SELECTOR_TABLE+5]=candidate.TABLE_BEFORE
+    cp[candidate.GATE:candidate.GATE+20]=candidate.LEGACY_GATE if enabled else candidate.CONTEXT
     before={'appFw.so':ap,'cpapp-b.bin':bytes(cp)}
     with patch.object(candidate,'guard'):
         target,settings,_=direct.plan(before,[{},{}],'sound_enable')
@@ -81,5 +82,6 @@ def test_sound_switch_plan_is_repeatable_and_preserves_other_bytes(enabled):
     assert target==repeated and off==off_again
     assert all(v=={} for v in settings)
     assert target['appFw.so']==off['appFw.so']==ap
-    assert target['cpapp-b.bin'][:candidate.OFFSET]==before['cpapp-b.bin'][:candidate.OFFSET]
-    assert target['cpapp-b.bin'][candidate.OFFSET+2:]==before['cpapp-b.bin'][candidate.OFFSET+2:]
+    allowed={at+i for at,old,_ in candidate.WINDOWS for i in range(len(old))}
+    assert all(a==b or i in allowed for i,(a,b) in enumerate(zip(target['cpapp-b.bin'],before['cpapp-b.bin'])))
+    assert candidate.sound_state(off['cpapp-b.bin'])=='muted'

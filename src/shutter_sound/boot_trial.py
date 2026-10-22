@@ -83,6 +83,8 @@ def require_dependencies():
 def prepare(ap, cp, payload, output, zig=None):
     from looktool import nativebuild
     candidate.guard(ap, cp, installed=True)
+    if not candidate.is_current(cp):
+        raise ValueError('请重新开启电子快门声以更新机械快门过滤，再保存声音；本次未写入声音。')
     target, csv, edits, report = boot_sound.verify(ap, payload)
     root = Path(output)
     root.mkdir(parents=True, exist_ok=False)

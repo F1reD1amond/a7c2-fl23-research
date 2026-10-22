@@ -18,18 +18,60 @@ CONTEXT = bytes.fromhex('dbf33afc0321002845f61c4018bf002121502044')
 # The context is read from the actual stock instructions when authored below;
 # this explicit literal is checked independently, not a firmware SHA gate.
 
+# Keep only selector 1 and check the per-capture electronic flag written by
+# 8b8004..8b8014. Reuse the original mode-0/mode-3 blocks, without a code cave.
+SELECTOR_TABLE = 0x393570
+TABLE_BEFORE = bytes.fromhex('1b26034403')
+TABLE_AFTER = bytes.fromhex('4426444444')
+GATE = START
+GATE_AFTER = bytes.fromhex('dcf3a1fa41f21901415c012916d1e0e700bf00bf')
+GATE_MUTED = GATE_AFTER[:14] + bytes.fromhex('15e0') + GATE_AFTER[16:]
+LEGACY_GATE = CONTEXT[:OFFSET - START] + AFTER + CONTEXT[OFFSET - START + 2:]
+WINDOWS = ((SELECTOR_TABLE, TABLE_BEFORE, TABLE_AFTER), (GATE, CONTEXT, GATE_AFTER))
+CP_GUARDS = (
+    (0x39356c, bytes.fromhex('dfe801f0')),
+    (0x39358e, bytes.fromhex('45f61c4003210fe0')),
+    (0x3935b6, bytes.fromhex('215020440ae0')),
+    (0x3935d0, bytes.fromhex('b1b1')),
+    (0x3935f8, bytes.fromhex('45f61c4000212150')),
+    (0x76fb02, bytes.fromhex('4af6d070c0f201207047')),
+    (0x7b0004, bytes.fromhex('d0f8c85441f21901012d18bf0025049c6554')),
+)
+
+
+def sound_state(cp):
+    table = cp[SELECTOR_TABLE:SELECTOR_TABLE + len(TABLE_BEFORE)]
+    gate = cp[GATE:GATE + len(CONTEXT)]
+    if table == TABLE_BEFORE and gate == CONTEXT:
+        return 'off'
+    if table == TABLE_BEFORE and gate == LEGACY_GATE:
+        return 'legacy'
+    if table == TABLE_AFTER and gate == GATE_AFTER:
+        return 'electronic_only'
+    if table == TABLE_AFTER and gate == GATE_MUTED:
+        return 'muted'
+    if table in (TABLE_BEFORE, TABLE_AFTER) and gate in (CONTEXT, LEGACY_GATE, GATE_AFTER, GATE_MUTED):
+        return 'partial'
+    raise ValueError('Sound-selector context differs from supported 2.01 instructions')
+
+
+def is_enabled(cp):
+    return sound_state(cp) not in ('off', 'muted')
+
+
+def is_current(cp):
+    return sound_state(cp) == 'electronic_only'
+
 
 def guard(ap, cp, *, installed=False):
     if ap[:4] != b'\x7fELF' or len(ap) < 0x288549c:
         raise ValueError('Expected the A7C II 2.01 AArch64 AP')
-    expected = AFTER if installed else BEFORE
-    if cp[OFFSET:OFFSET + 2] != expected:
+    state = sound_state(cp)
+    if (state not in ('off', 'muted')) != installed:
         raise ValueError('Sound trial instruction conflicts; no write planned')
-    # Preserve branch/query/register/store boundaries around the only edit.
-    original = bytearray(cp[START:START + len(CONTEXT)])
-    original[OFFSET - START:OFFSET - START + 2] = BEFORE
-    if bytes(original) != CONTEXT:
-        raise ValueError('CP sound-selector context differs from 2.01')
+    for at, code in CP_GUARDS:
+        if cp[at:at + len(code)] != code:
+            raise ValueError('CP per-capture electronic-flag source differs from 2.01')
     getters = ((0x286cde8, bytes.fromhex('20af029000601391008c409100800391c0035fd6')),
                (0x2885488, bytes.fromhex('40ae02f0006013910004429100002f91c0035fd6')))
     for at, code in getters:
@@ -38,10 +80,22 @@ def guard(ap, cp, *, installed=False):
 
 
 def patch(ap, cp, *, restore=False):
-    guard(ap, cp, installed=restore)
+    guard(ap, cp, installed=is_enabled(cp))
     out = bytearray(cp)
-    out[OFFSET:OFFSET + 2] = BEFORE if restore else AFTER
+    for at, before, after in WINDOWS:
+        out[at:at + len(before)] = before if restore else after
     return {'appFw.so': ap, 'cpapp-b.bin': bytes(out)}
+
+
+def disable(ap, cp):
+    # Closing the electronic switch must not re-enable mechanical requests
+    # while an installed custom kind3 registration is still present. Factory
+    # recovery and the explicit legacy inverse continue to restore stock bytes.
+    target = patch(ap, cp)
+    out = bytearray(target['cpapp-b.bin'])
+    out[GATE:GATE + len(GATE_MUTED)] = GATE_MUTED
+    target['cpapp-b.bin'] = bytes(out)
+    return target
 
 
 def build(ap, cp, out, zig=None, *, restore=False):
@@ -49,20 +103,23 @@ def build(ap, cp, out, zig=None, *, restore=False):
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     target = patch(ap, cp, restore=restore)
-    old, new = (AFTER, BEFORE) if restore else (BEFORE, AFTER)
     cbytes = lambda b: '{' + ','.join(map(str, b)) + '}'
     program_header = out / 'program.private.h'
-    program_header.write_text('\n'.join([
-        '#define BYTE_WINDOWS_ONLY 1',
-        'static const u8 old_0[]=' + cbytes(old) + ';',
-        'static const u8 new_0[]=' + cbytes(new) + ';',
-        'static const struct Window windows[]={{' + str(OFFSET) + 'UL,2,1,old_0,new_0}};',
-        'static const u32 window_count=1;',
+    lines = ['#define BYTE_WINDOWS_ONLY 1']
+    rows = []
+    for i, (at, before, after) in enumerate(WINDOWS):
+        old, new = cp[at:at + len(before)], target['cpapp-b.bin'][at:at + len(before)]
+        lines += ['static const u8 old_' + str(i) + '[]=' + cbytes(old) + ';',
+                  'static const u8 new_' + str(i) + '[]=' + cbytes(new) + ';']
+        rows.append('{%dUL,%d,1,old_%d,new_%d}' % (at, len(old), i, i))
+    program_header.write_text('\n'.join(lines + [
+        'static const struct Window windows[]={' + ','.join(rows) + '};',
+        'static const u32 window_count=' + str(len(rows)) + ';',
         'static const u64 file_sizes[]={' + str(len(ap)) + 'UL,' + str(len(cp)) + 'UL};',
     ]) + '\n', encoding='ascii')
     nativebuild.compile_worker(ROOT / 'src/fl23/native/installer.c', program_header,
                                out / 'program.so', zig, fingerprints=False)
-    program = {'path': str(out / 'program.so'), 'windows': 1, 'sizes': [len(ap), len(cp)]}
+    program = {'path': str(out / 'program.so'), 'windows': len(rows), 'sizes': [len(ap), len(cp)]}
     lines = []
     for name, at in (('audio_getter', 0x286cde8), ('table_getter', 0x2885488)):
         lines.append('static const u8 ' + name + '[]={' + ','.join(map(str, ap[at:at + 20])) + '};')
@@ -73,8 +130,13 @@ def build(ap, cp, out, zig=None, *, restore=False):
     nativebuild.compile_worker(ROOT / 'src/fl23/native/wbi.c', header,
                                out / 'wbi.so', zig, fingerprints=False)
     plan = {'schema': 'a7c2-shutter-trial/1', 'model': 'ILCE-7CM2', 'firmware': '2.01',
-            'offset': OFFSET, 'before': (AFTER if restore else BEFORE).hex(),
-            'after': (BEFORE if restore else AFTER).hex(), 'bytes': 2,
+            'offset': OFFSET, 'before': cp[OFFSET:OFFSET+2].hex(),
+            'after': target['cpapp-b.bin'][OFFSET:OFFSET+2].hex(),
+            'windows': [dict(offset=at,before_hex=cp[at:at+len(old)].hex(),
+                             after_hex=target['cpapp-b.bin'][at:at+len(old)].hex())
+                        for at,old,_ in WINDOWS],
+            'bytes': sum(len(before) for _, before, _ in WINDOWS),
+            'electronic_only_gate': not restore,
             'native_program': program, 'restore': restore,
             'camera_io': False, 'physical_sound_verified': False,
             'native_registry_preflight_required': True}

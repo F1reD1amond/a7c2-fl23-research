@@ -194,7 +194,8 @@ class ReferencePlanningTests(unittest.TestCase):
         for chip in (0, 1):
             for key, data in wanted[chip].items():self.props[chip][key] = self.props[chip][key]._replace(data=data)
         self.assertEqual(device_layout.structural(target['appFw.so'], target['cpapp-b.bin'])['mask'], 18)
-        self.assertEqual(target['cpapp-b.bin'][0x3935ca:0x3935cc], bytes.fromhex('0321'))
+        import candidate
+        self.assertTrue(candidate.is_current(target['cpapp-b.bin']))
         for filename in nameworker.filenames():
             key = 'resources/' + filename
             ids = device_layout.structural(target['appFw.so'], target['cpapp-b.bin'])['label_ids']
@@ -220,7 +221,8 @@ class ReferencePlanningTests(unittest.TestCase):
         self.assertEqual(titles[0], dict(enumerate(presets.NAMES, 1)))
         self.assertEqual(device_layout.tables(target['cpapp-b.bin']),
             [lookfile.writer_document(r['document']) for r in rows])
-        self.assertEqual(target['cpapp-b.bin'][0x3935ca:0x3935cc], bytes.fromhex('0321'))
+        import candidate
+        self.assertTrue(candidate.is_current(target['cpapp-b.bin']))
         for at in direct.MENU_FLAGS:self.assertEqual(target['appFw.so'][at:at+2], b'\1\0')
         for filename in nameworker.filenames():
             entries = resources.decode(target['resources/' + filename])['entries']

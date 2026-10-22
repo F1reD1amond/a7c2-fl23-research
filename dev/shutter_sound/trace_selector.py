@@ -19,7 +19,8 @@ CONTEXT = 0x30000000
 
 
 def execute(cp, selector, descriptor_word, *, trial=False, skip_policy=False,
-            skip_pending=False, defer_dispatch=False, counter_limit=0, capture_count=0):
+            skip_pending=False, defer_dispatch=False, counter_limit=0, capture_count=0,
+            patched_cp=None, capture_request=None):
     from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_HOOK_CODE
     from unicorn.arm_const import UC_ARM_REG_SP, UC_ARM_REG_LR, UC_ARM_REG_R0
     cpu = Uc(UC_ARCH_ARM, UC_MODE_THUMB)
@@ -34,10 +35,12 @@ def execute(cp, selector, descriptor_word, *, trial=False, skip_policy=False,
     if cp[TRIAL_OFFSET:TRIAL_OFFSET + 2] != BEFORE:
         raise ValueError('Original selector instruction differs')
     segments = [(0x49b538, 0xda), (0x876e34, 16), (0x8c6c4e, 4),
-                (0x8b8054, 24), (0xa765c2, 24), (0x8cb9e4, 12)]
+                (0x8b8054, 24), (0xa765c2, 24), (0x8cb9e4, 12),
+                (0x877b02, 10), (0x8b8004, 18)]
+    image=cp if patched_cp is None else patched_cp
     for va, size in segments:
         mapped(va, size)
-        cpu.mem_write(va, cp[va - 0x108000:va - 0x108000 + size])
+        cpu.mem_write(va, image[va - 0x108000:va - 0x108000 + size])
     if trial:
         cpu.mem_write(TRIAL_OFFSET + 0x108000, AFTER)
     mapped(CONTEXT, 0x7000)
@@ -46,6 +49,7 @@ def execute(cp, selector, descriptor_word, *, trial=False, skip_policy=False,
     mapped(0x19f9250, 4)
     mapped(0x1ac5644, 0x100)
     mapped(0xb19e5c, 4)
+    mapped(0x201a000, 0x3000)
     stop = 0x50000000
     mapped(stop, 4096)
     # Object passed by the original constructor, copied by its actual LDM/STM.
@@ -63,6 +67,21 @@ def execute(cp, selector, descriptor_word, *, trial=False, skip_policy=False,
         cpu.mem_write(CONTEXT + 0x66ec, struct.pack('<I', 0xffffffff))
     if defer_dispatch:
         cpu.mem_write(CONTEXT + 0x886, struct.pack('<H', 1))
+    if capture_request is not None:
+        # Execute the real producer of the per-capture flag, not a UI setting or
+        # a mocked getter. Async propagation into this function is not emulated.
+        from unicorn.arm_const import UC_ARM_REG_R5
+        cpu.mem_write(0x10000400+0x4c8, struct.pack('<I', capture_request))
+        cpu.mem_write(0x20003010, struct.pack('<I', 0x201afd0))
+        cpu.reg_write(UC_ARM_REG_R0,0x10000400)
+        cpu.reg_write(UC_ARM_REG_SP,0x20003000)
+        def producer_end(uc,va,size,user):
+            if va==0x8b8016:uc.emu_stop()
+        hook=cpu.hook_add(UC_HOOK_CODE,producer_end)
+        cpu.emu_start(0x8b8005,0x8b8018,count=16)
+        cpu.hook_del(hook)
+        if cpu.mem_read(0x201bfe9,1)[0]!=int(capture_request==1):
+            raise ValueError('Per-capture electronic flag producer differs')
     cpu.reg_write(UC_ARM_REG_R0, 0x10000000)
     cpu.reg_write(UC_ARM_REG_SP, 0x20003000)
     cpu.reg_write(UC_ARM_REG_LR, stop | 1)

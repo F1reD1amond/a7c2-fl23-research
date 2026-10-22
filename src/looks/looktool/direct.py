@@ -118,10 +118,8 @@ def plan(current, records, mode, *, factory=None, slot=None, look=None, name=Non
         import sys
         sys.path.insert(0,str(nativebuild.ROOT/'src/shutter_sound'))
         import candidate
-        enabled=cp[candidate.OFFSET:candidate.OFFSET+2]==candidate.AFTER
-        candidate.guard(ap,cp,installed=enabled)
         desired=mode=='sound_enable'
-        if enabled!=desired:target.update(candidate.patch(ap,cp,restore=not desired))
+        target.update(candidate.patch(ap,cp) if desired else candidate.disable(ap,cp))
     elif mode == 'fl23_enable':
         import compat
         target.update(compat.plan(ap, cp, '2.01', transitions=False)[2])

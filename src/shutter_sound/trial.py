@@ -176,25 +176,28 @@ def preflight(root, copy, zig=None, camera_factory=factory, *, expected=None, ad
     try:
         with (camera_factory(expected) if expected else camera_factory()) as camera:
             values = capture(camera)
-            enabled=values['cpapp-b.bin'][candidate.OFFSET:candidate.OFFSET+2]==candidate.AFTER
+            enabled=candidate.is_enabled(values['cpapp-b.bin'])
+            current=candidate.is_current(values['cpapp-b.bin'])
             candidate.guard(values['appFw.so'], values['cpapp-b.bin'], installed=enabled)
             state['identity'] = camera.identity
             if adopt_only and not enabled:
                 raise ValueError('电子快门声尚未开启。请先点击“开启电子快门声”，完成断电重开后再试听；本次没有写入固件或注册试听。')
+            if adopt_only and not current:
+                raise ValueError('旧版快门声音尚未限制机械快门。请重新点击“开启电子快门声”更新后再试听；本次未注册声音。')
             evidence=values
-            if enabled:
+            if current:
                 # Adoption performs no firmware write; keep small exact
                 # branch/getter evidence rather than another complete image.
-                evidence={'native-sound-branch.bin':values['cpapp-b.bin'][candidate.OFFSET:candidate.OFFSET+2],
+                evidence={'native-sound-branch.bin':b''.join(values['cpapp-b.bin'][at:at+len(old)]
+                              for at,old,_ in candidate.WINDOWS),
                           'ap-sound-getters.bin':values['appFw.so'][0x286cde8:0x286cdfc]+values['appFw.so'][0x2885488:0x288549c]}
             state['backup_copy'] = backup(root, copy, evidence)
-            source_cp=(candidate.patch(values['appFw.so'], values['cpapp-b.bin'], restore=True)['cpapp-b.bin'] if enabled else values['cpapp-b.bin'])
-            plan, _ = candidate.build(values['appFw.so'], source_cp, root / 'build', zig)
+            plan, _ = candidate.build(values['appFw.so'], values['cpapp-b.bin'], root / 'build', zig)
             camera.programs_pinned = True
             probe = run_native(camera, root, state, root / 'build/probe.so', 'probe')
             state['probe'] = probe
             candidate.require_registry(probe)
-            if enabled:
+            if current:
                 for name,path in (('appFw.so','/usr/lib/appFw.so'),('cpapp-b.bin','/cp/cpapp-b.bin')):
                     if camera.read(path)!=values[name]:raise ValueError('Existing sound program changed during adoption')
                 from looktool import devicesettings
@@ -202,7 +205,8 @@ def preflight(root, copy, zig=None, camera_factory=factory, *, expected=None, ad
                     devicesettings.compare(camera.records(values[key]),camera.records(camera.snapshot(memory)),{},camera.core)
                 state.update(phase='written',adopted_existing_enabled=True,
                     complete_readback_and_settings_verified=True,camera_firmware_written=False,
-                    backup_scope='existing native sound branch/getters; OFF uses a fresh two-byte inverse')
+                    electronic_only_gate=True,
+                    backup_scope='existing native sound selector/getters; OFF uses a fresh inverse')
                 save(root,state)
                 return state
             if probe['image_mode'] == '2':
@@ -261,6 +265,7 @@ def change(root, *, restore=False, zig=None, camera_factory=factory):
             if probe['image_mode'] == '2':
                 run_native(camera, root, state, root / 'build/wbi.so', 'wbi', 1)
             state['phase'] = 'restored' if restore else 'written'
+            state['electronic_only_gate'] = not restore
             state['physical_sound_verified'] = False
             save(root, state)
     except BaseException:

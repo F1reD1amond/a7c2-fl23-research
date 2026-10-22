@@ -241,6 +241,8 @@ def run(root, original_job, zig=None, *, payload=None, register=False, wire_form
             ap = camera.read('/usr/lib/appFw.so')
             cp = camera.read('/cp/cpapp-b.bin')
             candidate.guard(ap, cp, installed=True)
+            if register and not candidate.is_current(cp):
+                raise ValueError('请重新开启电子快门声以更新机械快门过滤，再进行试听；本次未注册声音。')
             worker = build(ap, root / 'build', zig, payload=payload, register=register, wire_format=wire_format, lease_token=token)
             camera.programs_pinned = True
             if register and replace_jobs and recovered_job is None:

@@ -1,15 +1,15 @@
-"""Execute the compiled two-byte installer ELF with fault-injected syscalls.
+"""Execute the compiled sound installer ELF with fault-injected syscalls.
 
 The filesystem, mount and power environment is synthetic. This validates the
 actual compiled transaction code, not camera boot safety or audible playback.
-Firmware I/O is restricted to the one proposed CP instruction window.
+Firmware I/O is restricted to the proposed CP instruction windows.
 """
 import argparse
 import json
 from pathlib import Path
 import struct
 
-from candidate import BEFORE, AFTER, OFFSET
+from candidate import BEFORE, AFTER, OFFSET, WINDOWS
 
 AP = '/usr/lib/appFw.so'
 CP = '/cp/cpapp-b.bin'
@@ -174,13 +174,14 @@ def execute(worker, sizes, mode=1, fault='none', byte_windows=None):
                 pwrite_calls=len(writes), pwrite_offsets=[at for at, count in writes])
 
 
-def verify(worker, sizes):
-    rows = [execute(worker, sizes, mode) for mode in (0, 1, 2)]
-    rows += [execute(worker, sizes, 1, fault) for fault in
+def verify(worker, sizes, byte_windows=None):
+    spans=byte_windows or [(CP,at,old,new) for at,old,new in WINDOWS]
+    rows = [execute(worker, sizes, mode,byte_windows=spans) for mode in (0, 1, 2)]
+    rows += [execute(worker, sizes, 1, fault,byte_windows=spans) for fault in
              ('short', 'conflict', 'size', 'missing', 'request', 'nonroot', 'read',
               'write', 'partial_write', 'rollback_write', 'fsync', 'readback', 'mount', 'mount_readback', 'readonly')]
     return {'compiled_worker_cases': len(rows), 'camera_io': False,
-            'firmware_io_limited_to_two_byte_cp_window': True,
+            'firmware_io_limited_to_sound_cp_windows': True,
             'camera_boot_or_playback_tested': False, 'cases': rows}
 
 
@@ -189,8 +190,11 @@ def main():
     p.add_argument('--plan', required=True, type=Path)
     p.add_argument('--output', required=True, type=Path)
     a = p.parse_args()
-    plan = json.loads(a.plan.read_text(encoding='utf-8'))['native_program']
-    result = verify(plan['path'], plan['sizes'])
+    document = json.loads(a.plan.read_text(encoding='utf-8'))
+    plan = document['native_program']
+    spans=([(CP,w['offset'],bytes.fromhex(w['before_hex']),bytes.fromhex(w['after_hex']))
+            for w in document['windows']] if 'windows' in document else [(CP,OFFSET,BEFORE,AFTER)])
+    result = verify(plan['path'], plan['sizes'],spans)
     with a.output.open('x', encoding='utf-8') as f:
         json.dump(result, f, indent=2); f.write('\n')
     print('Compiled native worker:', result['compiled_worker_cases'], 'offline cases passed')

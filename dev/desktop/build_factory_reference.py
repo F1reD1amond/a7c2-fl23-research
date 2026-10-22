@@ -43,7 +43,9 @@ def main():
     for spec in runtime['cp_sources']:
         regions['cpapp-b.bin'].extend((w['offset'], len(bytes.fromhex(w['before']))) for w in spec['windows'])
     regions['cpapp-b.bin'] += [(six.TABLE_FILE, 32 + 6 * six.TABLE_BYTES),
-        (photobuild.TABLE_FILE, 0xb27f0e - photobuild.TABLE_FILE), (photobuild.DATA_FILE, 1216), (0x3935ca, 2)]
+        (photobuild.TABLE_FILE, 0xb27f0e - photobuild.TABLE_FILE), (photobuild.DATA_FILE, 1216)]
+    import candidate
+    regions['cpapp-b.bin'].extend((at, len(old)) for at, old, _ in candidate.WINDOWS)
     regions['cpapp-b.bin'].extend((w['offset'], len(bytes.fromhex(w['before']))) for w in photoio.template()['hooks'])
     # Derive every reader/path/call edit from the actual sound implementation.
     import boot_sound

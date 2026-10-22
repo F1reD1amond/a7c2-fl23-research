@@ -17,7 +17,7 @@ def direct(tmp_path):
     root,state=cli.workspace(tmp_path/'sound',True,tmp_path/'backup')
     native=root/'native';native.mkdir()
     trial.save(native,dict(phase='written',identity=dict(model='ILCE-7CM2',serial_sha256='synthetic'),
-                          complete_readback_and_settings_verified=True))
+                          complete_readback_and_settings_verified=True,electronic_only_gate=True))
     state['native_job']=str(native)
     converted=root/'converted';converted.mkdir()
     (converted/'custom-native.private.bin').write_bytes(bytes(64))

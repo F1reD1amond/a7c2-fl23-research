@@ -27,7 +27,7 @@ class IntegratedSoundTests(unittest.TestCase):
             def adopt(job,backup,zig=None,**kwargs):
                 calls.append('adopt')
                 job.mkdir(parents=True)
-                value=dict(phase='written',identity=identity,complete_readback_and_settings_verified=True,
+                value=dict(phase='written',identity=identity,complete_readback_and_settings_verified=True,electronic_only_gate=True,
                     adopted_existing_enabled=True,camera_firmware_written=False)
                 trial.save(job,value);return value
             def install(job,backup,native,audio,actual,*args,**kwargs):
@@ -57,7 +57,7 @@ class IntegratedSoundTests(unittest.TestCase):
                 job.mkdir(parents=True);calls.append('prepare');return dict(phase='ready')
             def change(job,**kwargs):
                 calls.append('enable')
-                value=dict(phase='written',identity=dict(model='ILCE-7CM2'),complete_readback_and_settings_verified=True)
+                value=dict(phase='written',identity=dict(model='ILCE-7CM2'),complete_readback_and_settings_verified=True,electronic_only_gate=True)
                 trial.save(job,value);return value
             with patch.object(trial,'preflight',side_effect=prepare),patch.object(trial,'change',side_effect=change), \
                  patch.object(boot_trial,'install',side_effect=lambda *a,**k:calls.append('install') or dict(phase='installed_cold_test_pending')):
@@ -81,7 +81,7 @@ class IntegratedSoundTests(unittest.TestCase):
             native.mkdir(); audio.mkdir()
             identity = {'model': 'ILCE-7CM2', 'serial_sha256': 'synthetic'}
             trial.save(native, {'phase': 'written', 'identity': identity,
-                               'complete_readback_and_settings_verified': True})
+                               'complete_readback_and_settings_verified': True, 'electronic_only_gate': True})
             trial.save(audio, {'phase': 'temporary_pcm_registered_cold_reload_required_after_test',
                               'identity': identity, 'wire_format': 0,
                               'result': {'temporary_pcm_registered': True}})

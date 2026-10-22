@@ -283,14 +283,16 @@ def audition(root, state, zig=None):
     previous=(Path(state['audio_job']) if state.get('audio_job') and
               load_job(state['audio_job']).get('owner_cold_recovery_confirmed') else None)
     payload = (Path(conversion) / 'custom-native.private.bin').read_bytes()
-    if not state.get('native_job'):
+    previous_native=load_job(state['native_job']) if state.get('native_job') else None
+    if not previous_native or not previous_native.get('electronic_only_gate'):
         # A temporary audition never enables the permanent CP branch silently.
         # Adopt an already-enabled branch through fresh read-only evidence.
         adoption = new_path(root, 'native-adopt')
+        expected=(previous_native or {}).get('identity') or state.get('native_identity')
         state['native_job'] = str(adoption)
         operate(root, state, 'adopt', adoption, lambda: trial.preflight(adoption,
             Path(state['backup_root']) / adoption.name, zig,
-            expected=state.get('native_identity'), adopt_only=True))
+            expected=expected, adopt_only=True))
     original, _ = native_job(state)
     replace_jobs=audio_evidence(root,state)
     job = new_path(root, 'audition')
@@ -337,9 +339,10 @@ def install(root, state, battery, zig=None, *, power_confirmed=False):
     # output must prepare/adopt native support itself, including after a reset.
     boot_trial.require_dependencies()
     previous_native=load_job(state['native_job']) if state.get('native_job') else None
-    if previous_native and previous_native.get('phase')=='restored':
+    if previous_native and previous_native.get('identity'):
         state['native_identity']=previous_native['identity']
-    if not previous_native or previous_native.get('phase')=='restored':
+    if (not previous_native or previous_native.get('phase')=='restored'
+            or not previous_native.get('electronic_only_gate')):
         print('自动准备电子快门声支援；已有开关直接接入，不要求先手动开启或关联旧任务。',flush=True)
         on(root,state,battery,zig,power_confirmed=power_confirmed,defer_reload=True)
     original, _ = native_job(state)
@@ -414,7 +417,7 @@ def check_connection(state):
     with trial.factory(expected) as camera:
         ap=camera.read('/usr/lib/appFw.so')
         cp=camera.read('/cp/cpapp-b.bin')
-        enabled=cp[candidate.OFFSET:candidate.OFFSET+2]==candidate.AFTER
+        enabled=candidate.is_enabled(cp)
         candidate.guard(ap,cp,installed=enabled)
     return dict(phase='sound_connection_checked',camera_io=True,camera_firmware_written=False,
                 sound_support_enabled_on_disk=enabled)

@@ -25,15 +25,20 @@ class CandidateTests(unittest.TestCase):
         ap[:4] = b'\x7fELF'
         ap[0x286cde8:0x286cdfc] = bytes.fromhex('20af029000601391008c409100800391c0035fd6')
         ap[0x2885488:0x288549c] = bytes.fromhex('40ae02f0006013910004429100002f91c0035fd6')
-        cp = bytearray(candidate.START + len(candidate.CONTEXT) + 100)
+        cp = bytearray(max(at+len(raw) for at,raw in candidate.CP_GUARDS)+100)
+        cp[candidate.SELECTOR_TABLE:candidate.SELECTOR_TABLE+5] = candidate.TABLE_BEFORE
+        for at, raw in candidate.CP_GUARDS:cp[at:at+len(raw)] = raw
         cp[candidate.START:candidate.START + len(candidate.CONTEXT)] = candidate.CONTEXT
         cls.ap, cls.cp = bytes(ap), bytes(cp)
 
-    def test_only_two_byte_window_and_preserves_later_edits_on_inverse(self):
+    def test_only_sound_windows_change_and_inverse_preserves_later_edits(self):
         out = candidate.patch(self.ap, self.cp)
         self.assertEqual(out['appFw.so'], self.ap)
         changes = [i for i, (a, b) in enumerate(zip(self.cp, out['cpapp-b.bin'])) if a != b]
-        self.assertEqual(changes, [candidate.OFFSET])  # instruction width2, immediate byte changes1
+        self.assertTrue(changes)
+        allowed={at+i for at,old,_ in candidate.WINDOWS for i in range(len(old))}
+        self.assertTrue(set(changes)<=allowed)
+        self.assertTrue(candidate.is_current(out['cpapp-b.bin']))
         later = bytearray(out['cpapp-b.bin']); later[100] = 91
         restored = candidate.patch(self.ap, bytes(later), restore=True)['cpapp-b.bin']
         expected = bytearray(self.cp); expected[100] = 91
@@ -78,6 +83,10 @@ class CandidateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / 'job'
             cp=candidate.patch(self.ap,self.cp)['cpapp-b.bin'] if enabled else self.cp
+            if enabled=='legacy':
+                legacy=bytearray(self.cp)
+                legacy[candidate.OFFSET:candidate.OFFSET+2]=candidate.AFTER
+                cp=bytes(legacy)
             state = {'files': {'/usr/lib/appFw.so': self.ap, '/cp/cpapp-b.bin': cp},
                      'mode': '2', 'calls': [], 'audio': 0}
             class Camera:
@@ -148,6 +157,22 @@ class CandidateTests(unittest.TestCase):
             self.assertTrue(trial.completed_readonly_failure(json.loads((path/'job.private.json').read_text())))
         self._workflow(check)
 
+    def test_legacy_enable_prepares_a_real_upgrade_instead_of_adopting(self):
+        def check(root,state,camera):
+            saved=json.loads((root/'job.private.json').read_text())
+            self.assertEqual(saved['phase'],'ready')
+            self.assertFalse(saved.get('adopted_existing_enabled',False))
+            self.assertNotIn(('program',1),state['calls'])
+            self.assertEqual(candidate.sound_state(state['files']['/cp/cpapp-b.bin']),'legacy')
+            adoption=root.parent/'no-silent-rom-write'
+            with self.assertRaisesRegex(ValueError,'旧版快门声音'):
+                trial.preflight(adoption,root.parent/'second-backup',camera_factory=camera,adopt_only=True)
+            self.assertNotIn(('program',1),state['calls'])
+            trial.change(root,camera_factory=camera)
+            self.assertTrue(candidate.is_current(state['files']['/cp/cpapp-b.bin']))
+            self.assertTrue(json.loads((root/'job.private.json').read_text())['electronic_only_gate'])
+        self._workflow(check,enabled='legacy')
+
     def test_apply_restore_preserve_new_unrelated_changes(self):
         def check(root, state, camera):
             trial.change(root, camera_factory=camera)
@@ -173,7 +198,7 @@ class CandidateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'known writable'):
                 trial.change(root, camera_factory=camera)
             self.assertEqual(state['calls'], calls)
-            self.assertEqual(state['files']['/cp/cpapp-b.bin'][candidate.OFFSET:candidate.OFFSET + 2], candidate.AFTER)
+            self.assertTrue(candidate.is_current(state['files']['/cp/cpapp-b.bin']))
             self.assertNotIn(('wbi', 1), calls)
         self._workflow(check)
 

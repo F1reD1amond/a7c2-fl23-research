@@ -43,7 +43,7 @@ def test_failed_on_adopts_fresh_enabled_support_then_auditions(failed_on):
         assert options==dict(expected=old['identity'],adopt_only=True)
         path.mkdir(parents=True)
         result=dict(phase='written',identity=old['identity'],adopted_existing_enabled=True,
-                    complete_readback_and_settings_verified=True,camera_firmware_written=False)
+                    complete_readback_and_settings_verified=True,electronic_only_gate=True,camera_firmware_written=False)
         trial.save(path,result)
         return result
     def audition(path,original,*args,**options):
@@ -189,7 +189,9 @@ def test_readonly_connection_check_preserves_unresolved_workspace(failed_on):
     camera=Mock()
     camera.__enter__=Mock(return_value=camera)
     camera.__exit__=Mock(return_value=False)
-    cp=bytearray(candidate.OFFSET+2);cp[-2:]=candidate.AFTER
+    cp=bytearray(candidate.OFFSET+2)
+    cp[candidate.SELECTOR_TABLE:candidate.SELECTOR_TABLE+5]=candidate.TABLE_BEFORE
+    cp[candidate.GATE:candidate.GATE+20]=candidate.LEGACY_GATE
     camera.read.side_effect=[b'AP',bytes(cp)]
     with patch.object(trial,'factory',return_value=camera) as factory, \
          patch.object(candidate,'guard') as guard:

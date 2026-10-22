@@ -119,7 +119,7 @@ def test_absent_marker_needs_no_previous_job(scenario):
 def test_cli_uses_new_job_and_passes_completed_evidence_after_noop_failure(scenario):
     root,state,previous,failed,record,raw,camera,memory=scenario
     native=root/'native';native.mkdir()
-    trial.save(native,dict(phase='written',identity=camera.identity,complete_readback_and_settings_verified=True))
+    trial.save(native,dict(phase='written',identity=camera.identity,complete_readback_and_settings_verified=True,electronic_only_gate=True))
     state['native_job']=str(native)
     converted=root/'converted';converted.mkdir()
     (converted/'custom-native.private.bin').write_bytes(bytes(64));state['conversion']=str(converted)

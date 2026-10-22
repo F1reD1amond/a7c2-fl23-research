@@ -249,9 +249,14 @@
           "zlib_base64": "eNrz+MYTcOCTgAAAEOADbQ=="
         },
         {
-          "offset": 3749322,
-          "bytes": 2,
-          "zlib_base64": "eNpjUAQAACMAIg=="
+          "offset": 3749232,
+          "bytes": 5,
+          "zlib_base64": "eNqTVmN2YQYAAbgAjA=="
+        },
+        {
+          "offset": 3749308,
+          "bytes": 20,
+          "zlib_base64": "eNq7/dnqD7Mig4brNxkHif0MiooBCi4AVewGtQ=="
         },
         {
           "offset": 6587244,
