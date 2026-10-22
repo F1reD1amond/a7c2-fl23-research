@@ -63,17 +63,7 @@ class SonySenserDevice(PmcaSenserDevice):
         while data!=b'':
             header=self.SenserPacketHeader.pack(size=len(data),pFunc=pFunc,sequence=self._sequence,
                                                 version=0,miconType=0,offsetType=0,response=0)
-            packet=header+data[:self.SenserMaxSize]
-            if (pFunc==SonySenserCamera.SONY_PFUNC_AdjustControl and data[:4]==struct.pack('<HH',0x603,0x41)
-                    and len(packet)>self.SenserMinSize):
-                # Large Backup WRITE41 requests have a control phase before
-                # the camera allocates/notifies its long-data receive buffer.
-                # Finish the first 512-byte transfer separately, then continue
-                # the SAME frame; never repeat its header or sequence number.
-                self.driver.write(packet[:self.SenserMinSize])
-                for at in range(self.SenserMinSize,len(packet),self.SenserChunkSize):
-                    self.driver.write(packet[at:at+self.SenserChunkSize])
-            else:self.driver.write(packet)
+            self.driver.write(header+data[:self.SenserMaxSize])
             data=data[self.SenserMaxSize:]
         outData=BytesIO() if oData is None else oData
         minSize=0 if self.driver.getId()[1]==0x0336 else self.SenserMinSize
@@ -102,25 +92,6 @@ class SonySenserDevice(PmcaSenserDevice):
         return header.response,outData.getvalue() if oData is None else None
 
 
-def _write_complete(data,write,*,label='USB command write'):
-    """Complete a successful partial bulk transfer using only its unsent tail.
-
-    A normal return supplies the exact transferred prefix length. An exception
-    supplies no usable progress and propagates immediately; neither the whole
-    command nor any prefix is replayed. The caller keeps one shared deadline.
-    """
-    sent=0
-    while sent<len(data):
-        remaining=data[sent:]
-        written=write(remaining)
-        if type(written) is not int or not 0<written<=len(remaining):
-            raise GenericUsbException('Incomplete %s: expected_bytes=%d completed_bytes=%d last_count=%s'%(
-                label,len(data),sent,written))
-        sent+=written
-        if sent<len(data):
-            print('USB 分段发送进度 %d/%d 字节；继续发送未传输的尾部，不重发命令。'%(sent,len(data)),flush=True)
-
-
 class Bounded(UsbBackend):
     def __init__(self,device,budget=180):
         super().__init__(device);self.budget=budget;self.reset()
@@ -131,11 +102,11 @@ class Bounded(UsbBackend):
         return max(1,min(left,t or self.budget*1000))
     def read(self,ep,length,timeout=None):return super().read(ep,length,self.timeout(timeout))
     def write(self,ep,data):
-        def transfer(remaining):
-            self.dev.default_timeout=self.timeout()
-            try:return self.dev.write(ep,remaining)
-            except usb.core.USBError as exc:raise GenericUsbException('USB command write failed') from exc
-        _write_complete(data,transfer)
+        self.dev.default_timeout=self.timeout()
+        try:written=self.dev.write(ep,data)
+        except usb.core.USBError as exc:raise GenericUsbException('USB command write failed') from exc
+        if written!=len(data):
+            raise GenericUsbException('Short USB command write: expected_bytes=%d actual_bytes=%s'%(len(data),written))
 
 def get_device(pid):
     backend=usb.backend.libusb1.get_backend(find_library=libusb_package.find_library)
@@ -178,13 +149,14 @@ class _InitialBackend(Bounded):
                 raise GenericUsbException('Initial USB endpoint stalled') from exc
             raise
     def write(self,ep,data):
-        def transfer(remaining):
-            try:return self.dev.write(ep,remaining,timeout=self.timeout(5000))
-            except usb.core.USBError as exc:
-                if getattr(exc,'backend_error_code',None)==-9:
-                    raise GenericUsbException('Initial USB endpoint stalled') from exc
-                raise
-        _write_complete(data,transfer,label='initial USB command write')
+        try:
+            written=self.dev.write(ep,data,timeout=self.timeout(5000))
+        except usb.core.USBError as exc:
+            if getattr(exc,'backend_error_code',None)==-9:
+                raise GenericUsbException('Initial USB endpoint stalled') from exc
+            raise
+        if written!=len(data):
+            raise GenericUsbException('Short initial USB command write: expected_bytes=%d actual_bytes=%s'%(len(data),written))
 
 def _query_initial_ready(device):
     report=_InitialProgress()
@@ -444,7 +416,6 @@ class Session:
     def cp_write(self,key,data):
         if key not in core.CP_KEYS or len(data)!={core.CP_KEYS[0]:8192,core.CP_KEYS[1]:28672}[key]:raise ValueError('CP 寫入目標或長度不符')
         self.mutating=True
-        print('发送 CP 参数 %#010x（%d 字节），随后读回核对。'%(key,len(data)),flush=True)
         return self.call(self.camera._sendAdjustControlPacket,0x603,0x41,struct.pack('<II',key,1)+data)
     def ap_write(self,key,data):
         if key not in core.AP_KEYS or len(data)!=1:raise ValueError('AP 綁定目標或長度不符')
