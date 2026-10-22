@@ -11,7 +11,7 @@ from . import presets
 from . import reloadguide
 
 DRIVER_HINT = ('\n驱动或连接没有成功：先在“连接与驱动”页卸载驱动后重装；仍不行，'
-               '可按 README 的“驱动还是装不上：用 Zadig 手动安装”给 0E8A 和 0336 两个身份分别装 libusbK。')
+               '可点该页的“用 Zadig 手动安装驱动”，按说明给 0E8A 和 0336 两个身份分别装 libusbK。')
 from . import connectionguide
 from .paths import ROOT, data_root, load_settings, write_json
 from .theme import WINDOW as STYLE
@@ -222,7 +222,7 @@ class Window(W.QMainWindow):
         box.setText('这台电脑还没有成功连接过相机。建议先到“连接与驱动”页，点“准备两阶段驱动并测试连接”，'
                     '看到连接成功后再回来一键安装。')
         box.setInformativeText('一键安装也会自动尝试安装驱动，但驱动失败时排查更麻烦。'
-                               '驱动反复装不上，可按 README 的“驱动还是装不上：用 Zadig 手动安装”操作。')
+                               '驱动反复装不上，可点该页的“用 Zadig 手动安装驱动”，按说明操作。')
         go = box.addButton('先去安装驱动', W.QMessageBox.AcceptRole)
         box.addButton('直接一键安装', W.QMessageBox.DestructiveRole)
         cancel = box.addButton(W.QMessageBox.Cancel)
@@ -360,7 +360,20 @@ class Window(W.QMainWindow):
         if sys.platform == 'darwin':
             self.field(form, 'mac_volume', 'macOS 相机存储卷', kind='folder', value='/Volumes/')
         self.button(layout, '检测相机与驱动', 'driver_scan', primary=True)
-        self.button(layout, '准备两阶段驱动并测试连接' if sys.platform == 'win32' else '准备 USB 服务连接', 'usb_prepare', primary=True)
+        if sys.platform == 'win32':
+            # Manual Zadig installation sits beside the automatic one: many
+            # computers where the automatic install fails succeed with it.
+            drivers = W.QHBoxLayout()
+            layout.addLayout(drivers)
+            self.button(drivers, '准备两阶段驱动并测试连接（自动）', 'usb_prepare', primary=True)
+            zadig = W.QPushButton('用 Zadig 手动安装驱动（自动失败时）')
+            zadig.setObjectName('zadig_guide')
+            zadig.setProperty('primary', True)
+            zadig.clicked.connect(self.show_zadig_guide)
+            drivers.addWidget(zadig)
+            self.buttons.append(zadig)
+        else:
+            self.button(layout, '准备 USB 服务连接', 'usb_prepare', primary=True)
         self.button(layout, '单独安装所选身份的驱动（高级）' if sys.platform == 'win32'
                     else '检查 USB 访问（macOS 无需 Zadig）', 'driver_install',
                     lambda: {'pid': ['0e8a', '0336'][self.driver_identity.currentIndex()]})
@@ -626,6 +639,18 @@ class Window(W.QMainWindow):
         self.button(layout, '重开后核对声音', 'sound_verify', lambda: dict(args(), accepted=self.sound_accept.isChecked()))
         self.button(layout, '恢复原厂音效', 'sound_restore_sound', args)
         layout.addStretch()
+
+    def show_zadig_guide(self):
+        from .zadigguide import TITLE, TEXT, URL
+        dialog = W.QDialog(self); dialog.setWindowTitle(TITLE); dialog.resize(820, 680)
+        layout = W.QVBoxLayout(dialog)
+        content = W.QTextBrowser(); content.setPlainText(TEXT); layout.addWidget(content)
+        row = W.QHBoxLayout(); layout.addLayout(row)
+        download = W.QPushButton('打开 Zadig 下载页'); download.setProperty('primary', True)
+        download.clicked.connect(lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl(URL)))
+        close = W.QPushButton('关闭'); close.clicked.connect(dialog.accept)
+        row.addWidget(download); row.addWidget(close)
+        dialog.exec()
 
     def show_look_format_guide(self):
         from .lookguide import TITLE,TEXT

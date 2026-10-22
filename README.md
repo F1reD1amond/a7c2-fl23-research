@@ -168,6 +168,8 @@ If it still fails, try another cable and a USB port on the back of the computer,
 
 On computers where the app's automatic driver install fails, installing the driver by hand with [Zadig](https://zadig.akeo.ie/) usually works. Nothing is written to the camera; this only changes which driver this computer uses for the camera's two USB identities.
 
+On the app's **连接与驱动 (Connection & drivers)** page, the **用 Zadig 手动安装驱动（自动失败时） (Install with Zadig)** button sits next to **准备两阶段驱动并测试连接（自动） (automatic)** and opens these same steps with a Zadig download link.
+
 **First: the camera has two USB identities, and both need a driver**
 
 | Stage | Name in Zadig | USB ID | When it appears |

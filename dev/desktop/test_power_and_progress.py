@@ -239,6 +239,21 @@ class PowerProgressTests(unittest.TestCase):
             self.assertTrue(window.drivers_first({'workspace': str(self.root / 'mac')}))
             ask.assert_not_called()
 
+    def test_zadig_guide_sits_beside_automatic_driver_install_on_windows(self):
+        from desktopapp import zadigguide
+        with patch('desktopapp.window.sys.platform', 'win32'):
+            window = self.window()
+        zadig = window.findChild(W.QPushButton, 'zadig_guide')
+        automatic = window.findChild(W.QPushButton, 'action_usb_prepare')
+        self.assertTrue(zadig.property('primary'))
+        self.assertIs(zadig.parentWidget(), automatic.parentWidget())
+        self.assertIn('0336', zadigguide.TEXT); self.assertIn('libusbK', zadigguide.TEXT)
+        with patch.object(W.QDialog, 'exec', return_value=0) as shown:
+            zadig.click()
+        shown.assert_called_once()
+        with patch('desktopapp.window.sys.platform', 'darwin'):
+            self.assertIsNone(self.window().findChild(W.QPushButton, 'zadig_guide'))
+
     def test_completed_continuation_is_verified_first_with_rewrite_fallback(self):
         window = self.window()
         failed, completed = self.root / 'old-failure', self.root / 'completed'
