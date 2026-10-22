@@ -125,8 +125,8 @@ def test_session_failure_marks_unhealthy_and_blocks_further_commands():
 
 
 @pytest.mark.parametrize('initial',[False,True])
-@pytest.mark.parametrize('written',[0])
-def test_unsent_usb_command_writes_fail_without_replay(initial,written):
+@pytest.mark.parametrize('written',[0,3])
+def test_short_usb_command_writes_fail_without_replay(initial,written):
     class Device:
         default_timeout=0
         _ctx=type('Context',(),{'dispose':lambda self,device:None})()
@@ -134,25 +134,9 @@ def test_unsent_usb_command_writes_fail_without_replay(initial,written):
         def write(self,ep,data,**kw):self.calls.append((ep,data));return written
     device=Device()
     backend=transport._InitialBackend(device,None) if initial else transport.Bounded(device)
-    with pytest.raises(transport.GenericUsbException,match='No bytes sent'):
+    with pytest.raises(transport.GenericUsbException,match='Short.*USB command write'):
         backend.write(2,b'command')
     assert device.calls==[(2,b'command')]
-
-
-@pytest.mark.parametrize('initial',[False,True])
-def test_partial_write_count_is_logged_and_left_to_the_reply(initial,capsys):
-    # Field: an 8216-byte CP write was reported as 512 by libusbK although the
-    # same write always succeeded before the count was checked.
-    class Device:
-        default_timeout=0
-        _ctx=type('Context',(),{'dispose':lambda self,device:None})()
-        def __init__(self):self.calls=[]
-        def write(self,ep,data,**kw):self.calls.append((ep,data));return 3
-    device=Device()
-    backend=transport._InitialBackend(device,None) if initial else transport.Bounded(device)
-    backend.write(2,b'command')
-    assert device.calls==[(2,b'command')]
-    assert '写入计数不一致' in capsys.readouterr().out
 
 
 def test_empty_transfers_still_obey_the_existing_backend_deadline(monkeypatch):

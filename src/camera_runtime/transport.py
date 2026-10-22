@@ -92,20 +92,6 @@ class SonySenserDevice(PmcaSenserDevice):
         return header.response,outData.getvalue() if oData is None else None
 
 
-def _check_written(data,written,label):
-    """Nothing sent stops; a partial count is logged, not trusted alone.
-
-    Windows libusbK can report fewer bytes than a bulk OUT transfer delivered
-    (a field 8216-byte CP write reported 512 after the same write had always
-    succeeded). A truly partial command is never acted on by the camera and
-    fails the reply read that follows, so the reply decides the outcome.
-    """
-    if not written:
-        raise GenericUsbException('No bytes sent for %s: expected_bytes=%d'%(label,len(data)))
-    if written!=len(data):
-        print('USB 写入计数不一致（%s：应为 %d 字节，驱动报告 %s 字节）；以相机回复判断是否成功。'%(label,len(data),written),flush=True)
-
-
 class Bounded(UsbBackend):
     def __init__(self,device,budget=180):
         super().__init__(device);self.budget=budget;self.reset()
@@ -119,7 +105,8 @@ class Bounded(UsbBackend):
         self.dev.default_timeout=self.timeout()
         try:written=self.dev.write(ep,data)
         except usb.core.USBError as exc:raise GenericUsbException('USB command write failed') from exc
-        _check_written(data,written,'USB command write')
+        if written!=len(data):
+            raise GenericUsbException('Short USB command write: expected_bytes=%d actual_bytes=%s'%(len(data),written))
 
 def get_device(pid):
     backend=usb.backend.libusb1.get_backend(find_library=libusb_package.find_library)
@@ -168,7 +155,8 @@ class _InitialBackend(Bounded):
             if getattr(exc,'backend_error_code',None)==-9:
                 raise GenericUsbException('Initial USB endpoint stalled') from exc
             raise
-        _check_written(data,written,'initial USB command write')
+        if written!=len(data):
+            raise GenericUsbException('Short initial USB command write: expected_bytes=%d actual_bytes=%s'%(len(data),written))
 
 def _query_initial_ready(device):
     report=_InitialProgress()
