@@ -136,6 +136,7 @@ class Rollback:
             for key in selected:
                 value=ram[chip][key].data
                 if read(key)!=value:write(key,value)
+        self.after_settings_write(camera,plan)
         actual_ram,actual_saved=camera.records(camera.snapshot(True)),camera.records(camera.snapshot(False))
         for previous,actual,wanted in [(before_ram,actual_ram,ram),(before_saved,actual_saved,saved)]:
             expected={(0,k):wanted[0][k].data for k in keys}
@@ -145,6 +146,9 @@ class Rollback:
                             {k:v for k,v in r[1].items() if k>>16==0x02a4}]
             camera.core.verify_preservation(scope(previous),scope(actual),expected)
         self.record('saved_and_live_look_settings_restored')
+    def after_settings_write(self,camera,plan):
+        """Direct jobs synchronize the native model before the final snapshots."""
+        pass
     def run(self,archive,battery,firmware_version,*,power_confirmed=False):
         if firmware_version!='2.01':raise ValueError('Read the camera version page: rollback supports 2.01 only')
         from .power import require_power

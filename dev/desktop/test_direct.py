@@ -17,6 +17,14 @@ from looktool import direct, checkpointworker, checkpoint, nameworker, resources
 
 
 class SimDirect(direct.DirectJob, SimRollback):
+    def sync_look_bases(self, camera, prepared, selected=None):
+        keys,ram,_,_,_=prepared
+        # A separate runtime model is essential: Backup writes do not update it.
+        live=getattr(camera,'live_look_bases',{})
+        for key in (keys if selected is None else selected):live[key]=ram[0][key].data
+        camera.live_look_bases=live
+        self.record('simulated_native_look_bases_synchronized')
+
     def native(self, camera, kind, mode, build=None):
         result = super().native(camera, kind, mode, build)
         if kind == 'runtime':

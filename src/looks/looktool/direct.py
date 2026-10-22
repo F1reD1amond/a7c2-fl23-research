@@ -191,6 +191,21 @@ class DirectJob(Rollback):
         self.state_path = self.root / 'direct.private.json'
         self.vertical_stage = None
 
+    def capture(self, camera):
+        current=super().capture(camera)
+        self._runtime_binding_ap=current['appFw.so']
+        self._synced_look_bases={}
+        return current
+
+    def sync_look_bases(self, camera, prepared, selected=None):
+        from . import runtimebindings
+        keys,ram,saved,_,_=prepared
+        fields={key:ram[0][key].data for key in (keys if selected is None else selected)}
+        return runtimebindings.sync(camera,self,fields,expected=(ram,saved))
+
+    def after_settings_write(self,camera,prepared):
+        self.sync_look_bases(camera,prepared)
+
     def save(self, phase, **values):
         if phase=='NEEDS_REVIEW' and self.state.get('phase')!='NEEDS_REVIEW':
             values.setdefault('failed_during',self.state.get('phase'))
@@ -252,6 +267,7 @@ class DirectJob(Rollback):
         # must remain represented; no factory unit replaces calibration data.
         if keys or ram != old_ram or saved != old_saved:
             super().restore_settings(camera, (keys, ram, saved, old_ram, old_saved))
+        self.sync_look_bases(camera,prepared)
         if getattr(self, 'vertical_stage', None):self.vertical_stage.finish()
 
     def purge_stale_backups(self, camera):
@@ -295,7 +311,12 @@ class DirectJob(Rollback):
             ready_saved[0][key]=saved[0][key]
         if ready_ram!=before_ram or ready_saved!=before_saved:
             # Do not run vertical_stage.finish() before the program/name steps.
-            Rollback.restore_settings(self,camera,(keys,ready_ram,ready_saved,before_ram,before_saved))
+            # Only the early AP targets are ready here; FL23 is applied later.
+            ready=(list(selected),ready_ram,ready_saved,before_ram,before_saved)
+            Rollback.restore_settings(self,camera,ready)
+        # Backup readback alone does not update the AP menu/preview model.
+        # Synchronize even when the backup already said ST but the model is stale.
+        self.sync_look_bases(camera,(keys,ready_ram,ready_saved,before_ram,before_saved),selected)
         self.record(event)
         return keys,ram,saved,ready_ram,ready_saved
 
@@ -481,7 +502,7 @@ class DirectJob(Rollback):
                             self.native(camera,'wbi',0);self.native(camera,'wbi',1)
                         resource_pause=True
                 if not resource_pause:
-                    if mode in ('look_import','install_all'):
+                    if mode in ('look_import','install_all','slot_default'):
                         prepared=self.prepare_look_settings(camera,prepared)
                     for index, build in enumerate(programs):
                         print('正在写入程序窗口批次 %d/%d' % (index + 1, len(programs)), flush=True)

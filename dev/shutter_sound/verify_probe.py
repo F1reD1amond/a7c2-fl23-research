@@ -14,7 +14,7 @@ from verify_worker import load
 
 def execute(worker, ap, fault='none', *, extra_headers=None, setup_native=None,
             decode=None, extra_syscall=None, allow_device_mapping=False,
-            extra_outputs=None):
+            extra_outputs=None, result_path='/tmp/jiritsu/shutter.probe.result'):
     from unicorn import UC_HOOK_INTR
     from unicorn.arm64_const import UC_ARM64_REG_X0, UC_ARM64_REG_X1, UC_ARM64_REG_X2, UC_ARM64_REG_X3, UC_ARM64_REG_X8, UC_ARM64_REG_PC
     cpu, start, end = load(worker)
@@ -92,7 +92,7 @@ def execute(worker, ap, fault='none', *, extra_headers=None, setup_native=None,
     cpu.emu_start(start, end, count=4000000)
     assert cpu.reg_read(UC_ARM64_REG_PC) == end
     assert all(h[2] for h in handles.values())
-    raw = bytes(files[outputs[1]])
+    raw = bytes(files[result_path])
     if decode:
         return decode(raw)
     if fault in ('none', 'kind'):
