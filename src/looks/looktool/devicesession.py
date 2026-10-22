@@ -98,7 +98,12 @@ class Camera:
         try:
             self.healthy=self.link.healthy;return self.link.__exit__(*args)
         finally:self.lock.__exit__(*args)
-    def read(self,path,missing=False):return self.link.read('/tmp/jiritsu/../../'+path.lstrip('/'),missing)
+    def read(self,path,missing=False):
+        try:return self.link.read('/tmp/jiritsu/../../'+path.lstrip('/'),missing)
+        except BaseException:
+            # Name the file; a channel error is otherwise reported generically.
+            print('读取相机文件时 USB 通信出错：'+path,flush=True)
+            raise
     def temp_read(self,name,missing=False):
         if name not in TEMP_NAMES:raise ValueError('Unowned temporary name')
         return self.link.read('/tmp/jiritsu/'+name,missing)

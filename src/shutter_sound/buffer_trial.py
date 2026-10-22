@@ -103,13 +103,23 @@ def initial_marker(state):
     result = state['result']
     if not result.get('temporary_pcm_registered'):
         raise ValueError('Prior registration did not complete; inspect its native outcome')
+    return marker_bytes(result,state.get('lease_token_hex',''))
+
+
+def marker_bytes(result,token=''):
+    """The ownership marker is fixed before allocation, including failed runs."""
+    entry=bytes.fromhex(result['original_entry_hex'])
+    if len(entry)!=48 or not 0<result['payload_length']<=51200 or result['payload_length']%64:
+        raise ValueError('Invalid sound marker description')
+    token=bytes.fromhex(token)
+    if len(token) not in (0,16):raise ValueError('Invalid sound lease token')
     raw = bytearray(208)
     struct.pack_into('<8sIIq', raw, 0, b'A7PCM001', 1, 0, 0)
     for at in (48, 80, 88, 92, 112, 116, 120, 124, 192, 196, 200):
         struct.pack_into('<I', raw, at, 0xffffffff)
     struct.pack_into('<I', raw, 132, result['payload_length'])
-    raw[144:192] = bytes.fromhex(result['original_entry_hex'])
-    return bytes(raw) + bytes.fromhex(state.get('lease_token_hex', ''))
+    raw[144:192] = entry
+    return bytes(raw)+token
 
 
 def preallocation_marker_rejection(state, raw):
@@ -164,7 +174,9 @@ def replace_completed_marker(camera, root, previous_jobs):
         path=Path(path)
         try:
             previous=json.loads((path/'job.private.json').read_text(encoding='utf-8'))
-            if previous.get('identity')!=camera.identity or initial_marker(previous)!=actual:
+            if (not previous.get('identity',{}).get('serial_sha256') or
+                    any(previous['identity'].get(k)!=camera.identity.get(k) for k in ('model','serial_sha256'))
+                    or initial_marker(previous)!=actual):
                 continue
             # Decode the completed native report rather than relying on a
             # title, marker signature or a local phase label alone.
@@ -240,6 +252,8 @@ def run(root, original_job, zig=None, *, payload=None, register=False, wire_form
                 trial.save(root, state)
             ap = camera.read('/usr/lib/appFw.so')
             cp = camera.read('/cp/cpapp-b.bin')
+            if cp[candidate.OFFSET:candidate.OFFSET+2]==candidate.BEFORE:
+                raise ValueError('当前相机的电子快门声音尚未开启，请先开启；本次没有注册试听声音。')
             candidate.guard(ap, cp, installed=True)
             if register and not candidate.is_current(cp):
                 raise ValueError('请重新开启电子快门声以更新机械快门过滤，再进行试听；本次未注册声音。')

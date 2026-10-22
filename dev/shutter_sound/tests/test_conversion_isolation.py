@@ -81,10 +81,17 @@ class ConversionIsolationTests(unittest.TestCase):
         with self.assertRaises(FileExistsError):media.convert(self.source,output,duration=.1)
         self.assertEqual((output/'keep.txt').read_text(),'keep')
 
-    def test_conversion_index_does_not_unlock_camera_actions(self):
-        state=self.pending();cli.import_audio(self.work,state,self.source,duration=.1)
+    def test_camera_actions_supersede_unresolved_jobs_and_read_the_current_body(self):
+        state=self.pending();state['backup_root']=str(self.root/'backup');cli.save(self.work,state)
+        cli.import_audio(self.work,state,self.source,duration=.1)
+        self.assertEqual(state['pending']['command'],'on')  # conversion alone changes no camera state
+        import boot_trial
         for action in (lambda:cli.audition(self.work,state),lambda:cli.install(self.work,state,100)):
-            with self.assertRaisesRegex(ValueError,'unresolved'):action()
+            with patch.object(trial,'factory',side_effect=RuntimeError('current camera read')),                  patch.object(boot_trial,'require_dependencies'):
+                with self.assertRaisesRegex(RuntimeError,'current camera read'):action()
+            self.assertNotEqual((state['pending'] or {}).get('job'),'unresolved-native-job')
+        superseded=[h for h in state['history'] if h.get('phase')=='superseded_by_current_selection']
+        self.assertEqual(superseded[0]['job'],'unresolved-native-job')
 
     def test_import_error_message_does_not_claim_unknown_camera_writes(self):
         output=io.StringIO()

@@ -40,7 +40,8 @@ def test_failed_on_adopts_fresh_enabled_support_then_auditions(failed_on):
     root,state,job,old=failed_on
     before=(job/'job.private.json').read_bytes()
     def adopt(path,copy,zig,**options):
-        assert options==dict(expected=old['identity'],adopt_only=True)
+        # A fresh request reads the connected body instead of reusing old evidence.
+        assert options==dict(expected=None,adopt_only=True)
         path.mkdir(parents=True)
         result=dict(phase='written',identity=old['identity'],adopted_existing_enabled=True,
                     complete_readback_and_settings_verified=True,electronic_only_gate=True,camera_firmware_written=False)
@@ -58,7 +59,7 @@ def test_failed_on_adopts_fresh_enabled_support_then_auditions(failed_on):
         write.assert_not_called()
     assert state['pending'] is None
     assert (job/'job.private.json').read_bytes()==before
-    assert state['history'][0]['phase']=='failed_before_mutation'
+    assert state['history'][0]['phase']=='superseded_by_current_selection'
 
 
 def test_support_off_produces_specific_instruction_and_next_enable_is_unblocked(failed_on):
@@ -79,7 +80,7 @@ def test_support_off_produces_specific_instruction_and_next_enable_is_unblocked(
 
 @pytest.mark.parametrize('alter', ['write_intent','staging_only','missing_cleanup','unknown_worker',
                                   'wrong_schema','written_flag','unrelated_event','missing_mode','missing_journal'])
-def test_unresolved_or_mutating_evidence_is_never_retired(failed_on,alter):
+def test_unresolved_or_mutating_evidence_is_superseded_never_replayed(failed_on,alter):
     root,state,job,value=failed_on
     if alter=='write_intent':value['journal']+=journal('lut-program-staged.so',1)
     elif alter=='staging_only':value['journal']+=journal()[:1]
@@ -91,10 +92,14 @@ def test_unresolved_or_mutating_evidence_is_never_retired(failed_on,alter):
     elif alter=='missing_mode':value['journal'][0].pop('mode')
     elif alter=='missing_journal':value.pop('journal')
     trial.save(job,value)
-    saved=(root/'sound.private.json').read_bytes()
-    with patch.object(trial,'factory',side_effect=AssertionError('No camera')):
-        with pytest.raises(ValueError,match='unresolved'):cli.audition(root,state)
-    assert (root/'sound.private.json').read_bytes()==saved
+    before=(job/'job.private.json').read_bytes()
+    with patch.object(trial,'factory',side_effect=RuntimeError('current camera read')),          patch.object(trial,'change',side_effect=AssertionError('No replay')):
+        with pytest.raises(RuntimeError,match='current camera read'):cli.audition(root,state)
+    # The old record is archived unchanged; it is never retired as safe or replayed.
+    assert (job/'job.private.json').read_bytes()==before
+    assert (state['pending'] or {}).get('job')!=str(job)  # only this request's own step may be open
+    assert not any(h.get('phase')=='failed_before_mutation' for h in state['history'])
+    assert any(h.get('phase')=='superseded_by_current_selection' and h.get('job')==str(job) for h in state['history'])
 
 
 def test_audio_registration_mode_zero_is_not_readonly_enable(failed_on):

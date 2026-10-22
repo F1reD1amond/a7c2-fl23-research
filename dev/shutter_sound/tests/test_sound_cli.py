@@ -88,7 +88,12 @@ class IntegratedSoundTests(unittest.TestCase):
             (audio / 'payload.private.bin').write_bytes(bytes(64))
             root, state = cli.workspace(base / 'workspace', True, base / 'backup2')
             cli.attach(root, state, native, audio)
-            check(base, root, state, native, audio)
+            def adopt(job,backup,zig=None,**kwargs):
+                value=dict(phase='written',identity=identity,complete_readback_and_settings_verified=True,
+                           adopted_existing_enabled=True,camera_firmware_written=False)
+                Path(job).mkdir(parents=True);trial.save(job,value);return value
+            with patch.object(trial,'preflight',side_effect=adopt):
+                check(base, root, state, native, audio)
 
     def test_off_uses_only_narrow_CP_inverse_not_global_audio_settings(self):
         def check(base, root, state, native, audio):
@@ -122,7 +127,9 @@ class IntegratedSoundTests(unittest.TestCase):
                 cli.install(root, state, 100)
                 args = install.call_args.args
                 self.assertEqual(args[4], bytes(64))
-                self.assertEqual(args[2:4], (native, audio))
+                self.assertNotEqual(args[2], native)
+                self.assertEqual(cli.load_job(args[2])['identity'],cli.load_job(native)['identity'])
+                self.assertEqual(args[3],audio)
                 self.assertEqual(args[5], 100)
         self.scenario(check)
 
@@ -170,15 +177,27 @@ class IntegratedSoundTests(unittest.TestCase):
                     self.assertIsNone(state['pending'])
         self.scenario(check)
 
-    def test_unknown_off_result_is_durable_and_not_replayed(self):
+    def test_unknown_off_result_is_archived_and_next_off_replans_from_current_body(self):
         def check(base, root, state, native, audio):
             cli.confirm_audio(root, state, 'correct'); cli.confirm_recovery(root, state)
-            with patch.object(trial, 'change', side_effect=TimeoutError('lost native reply')) as change:
+            calls = []
+            def change(job, **kwargs):
+                calls.append(Path(job))
+                value = trial.load(job) if hasattr(trial, 'load') else json.loads((Path(job) / 'job.private.json').read_text())
+                trial.save(job, dict(value, phase='restoring'))
+                raise TimeoutError('lost native reply')
+            with patch.object(trial, 'change', side_effect=change):
                 with self.assertRaises(TimeoutError): cli.off(root, state)
-                with self.assertRaisesRegex(ValueError, 'unresolved'): cli.off(root, state)
-                self.assertEqual(change.call_count, 1)
-            saved = json.loads((root / 'sound.private.json').read_text())
-            self.assertEqual(saved['pending']['outcome'], 'needs_review')
+                saved = json.loads((root / 'sound.private.json').read_text())
+                self.assertEqual(saved['pending']['outcome'], 'needs_review')
+                # The next click is not blocked by the old record and does not
+                # replay it: it adopts the current body into a new job.
+                with self.assertRaises(TimeoutError): cli.off(root, state)
+            self.assertEqual(calls[0], native)
+            self.assertNotEqual(calls[1], native)
+            self.assertEqual(json.loads((native / 'job.private.json').read_text())['phase'], 'restoring')
+            self.assertTrue(any(h.get('phase') == 'superseded_by_current_selection' and h.get('job') == str(native)
+                                for h in state['history']))
         self.scenario(check)
 
     def test_on_fresh_job_runs_backup_preflight_before_CP_write(self):

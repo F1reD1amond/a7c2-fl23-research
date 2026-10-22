@@ -70,7 +70,10 @@ def test_second_save_does_not_require_restoring_previous_persistent_sound(tmp_pa
     old=root/'old';old.mkdir();trial.save(old,dict(phase='installed_cold_test_pending'))
     converted=root/'converted';converted.mkdir();(converted/'custom-native.private.bin').write_bytes(bytes(64))
     state.update(native_job=str(native),boot_job=str(old),conversion=str(converted))
-    with patch.object(boot_trial,'install',return_value=dict(phase='installed_cold_test_pending')) as install:
+    def adopt(job,*args,**kwargs):
+        value=dict(phase='written',identity={},complete_readback_and_settings_verified=True,adopted_existing_enabled=True)
+        Path(job).mkdir(parents=True);trial.save(job,value);return value
+    with patch.object(trial,'preflight',side_effect=adopt),patch.object(boot_trial,'install',return_value=dict(phase='installed_cold_test_pending')) as install:
         assert sound_cli.install(root,state,None,power_confirmed=True)['phase']=='installed_cold_test_pending'
     install.assert_called_once()
 

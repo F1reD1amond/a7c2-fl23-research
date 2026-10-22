@@ -281,9 +281,36 @@ def _wait_for(pid,seconds,seen,prepare=None):
             time.sleep(.5)
 
 
+def _rescue_service():
+    """Return a body from 0336 after a read-only session lost its channel.
+
+    The broken channel cannot carry auth.stop, so a fresh handle repeats the
+    normal start/authenticate/stop exit. Only sessions that sent no write
+    command use this; failures leave the camera as it was.
+    """
+    try:dev=get_device(0x0336)
+    except Exception:return False
+    try:
+        if sys.platform=='darwin':
+            from macos_host import claim_camera_interface
+            claim_camera_interface(dev)
+        auth=SonySenserAuthDevice(GenericUsbDriver(Bounded(dev,20)))
+        try:auth.start();auth.authenticate()
+        except Exception:pass
+        auth.stop()
+        print('只读通信出错后，已让相机退出服务模式（未写入相机）。',flush=True)
+        return True
+    except Exception as exc:
+        print('相机未能自动退出服务模式（%s）；请拔 USB、取电池约 1 分钟后重开。'%exc,flush=True)
+        return False
+    finally:usb.util.dispose_resources(dev)
+
+
 class Session:
     def __init__(self,expected=None,media_released=False):
         self.expected=expected;self.healthy=True;self.media_released=media_released
+        # Any command that can change camera state disables automatic rescue.
+        self.mutating=False
     def __enter__(self):
         global _service_exit
         for attempt in range(1,SERVICE_ATTEMPTS+1):
@@ -347,6 +374,8 @@ class Session:
         try:
             if self.healthy:self.auth.stop();stopped=True
         finally:usb.util.dispose_resources(self.dev)
+        if not self.healthy and not self.mutating:
+            stopped=_rescue_service()
         if stopped and sys.platform=='darwin':
             from macos_host import wait_normal_return
             # Only enumerate here. Reading configuration opens a new handle
@@ -356,11 +385,13 @@ class Session:
         if stopped:_service_exit=time.monotonic()
     def call(self,method,*args):
         if not self.healthy:raise RuntimeError('會話結果未知，停止後續命令')
+        if getattr(method,'__name__','') in ('writeBackup','saveBackup'):self.mutating=True
         self.backend.reset()
         try:return method(*args)
         except BaseException:self.healthy=False;raise
     def jiritsu(self,cmd,data=b'',missing=False):
         if cmd not in [15,16,17,18]:raise ValueError('不允許此 Jiritsu 命令')
+        if cmd in (16,18):self.mutating=True
         response,out=self.call(self.channel.sendSenserPacket,0x40,struct.pack('<HH',0x1001,cmd)+data)
         if response or len(out)<4:raise RuntimeError('Jiritsu 回應格式錯誤')
         status=struct.unpack_from('<I',out)[0]
@@ -384,9 +415,11 @@ class Session:
         return self.call(self.camera._sendAdjustControlPacket,0x603,0x40,struct.pack('<II',key,1))
     def cp_write(self,key,data):
         if key not in core.CP_KEYS or len(data)!={core.CP_KEYS[0]:8192,core.CP_KEYS[1]:28672}[key]:raise ValueError('CP 寫入目標或長度不符')
+        self.mutating=True
         return self.call(self.camera._sendAdjustControlPacket,0x603,0x41,struct.pack('<II',key,1)+data)
     def ap_write(self,key,data):
         if key not in core.AP_KEYS or len(data)!=1:raise ValueError('AP 綁定目標或長度不符')
+        self.mutating=True
         return self.call(self.camera.writeBackup,key,data)
 
 
@@ -397,6 +430,8 @@ class RecoverySession(Session):
     the previous native result and proves the live model before new writes.
     """
     def __enter__(self):
+        # Reattaching to an unknown earlier outcome never sends a stop itself.
+        self.mutating = True
         if not self.expected or self.expected.get('model') != core.MODEL or not self.expected.get('serial_sha256'):
             raise ValueError('Existing service recovery requires a recorded A7C II body identity')
         self.dev = get_device(0x0336)

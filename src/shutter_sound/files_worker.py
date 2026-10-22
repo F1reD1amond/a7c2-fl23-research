@@ -11,7 +11,7 @@ import struct
 import candidate
 
 
-def build(audio, csv, output, zig=None,*,audio_path=None,previous_csv=None):
+def build(audio, csv, output, zig=None,*,audio_path=None,previous_csv=None,temporary_files=None):
     from looktool import nativebuild
     if not 0 < len(audio) <= 51200 or len(audio) % 64 or not 0 < len(csv) < 4096:
         raise ValueError('Sound resource size exceeds its native limits')
@@ -23,9 +23,21 @@ def build(audio, csv, output, zig=None,*,audio_path=None,previous_csv=None):
         lines.extend(['#define SOUND_UPDATE 1','static const u8 previous_csv[]={' +
             ','.join(map(str,previous_csv or b'\0'))+'};','static const u32 previous_csv_size='+str(len(previous_csv))+';'])
     if audio_path:
-        if audio_path not in ('/usr/share/avsystemsound/custom-shutter-a.bin','/usr/share/avsystemsound/custom-shutter-b.bin'):
+        if audio_path not in ('/usr/share/avsystemsound/custom-shutter.bin','/usr/share/avsystemsound/custom-shutter-a.bin','/usr/share/avsystemsound/custom-shutter-b.bin'):
             raise ValueError('Unknown private sound filename')
         lines.append('#define SOUND_AUDIO_PATH '+json.dumps(audio_path))
+    if temporary_files is not None:
+        if previous_csv is None or len(temporary_files)!=2:raise ValueError('Temporary replacement requires a current update plan')
+        signatures=[];sizes=[]
+        for i,data in enumerate(temporary_files):
+            if data is None:sizes.append(-1);signatures.append(0);continue
+            if len(data)>(51200 if i==0 else 4096):raise ValueError('Existing sound temporary file is oversized')
+            value=14695981039346656037
+            for byte in data:value=((value^byte)*1099511628211)&((1<<64)-1)
+            sizes.append(len(data));signatures.append(value)
+        lines.extend(['#define REPLACE_RECORDED_TEMPORARIES 1',
+            'static const i64 previous_temporary_sizes[]={'+','.join(map(str,sizes))+'};',
+            'static const u64 previous_temporary_hashes[]={'+','.join(str(n)+'UL' for n in signatures)+'};'])
     for index, data in enumerate((audio, csv)):
         lines.append('static const u8 sound_' + str(index) + '[]={' + ','.join(map(str, data)) + '};')
     lines += ['static const u8 *sound_data[]={sound_0,sound_1};',

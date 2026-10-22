@@ -184,20 +184,27 @@ def test_native_silent_mode_sends_nothing_in_both_exposure_phases(stock):
     assert sound_calls(cp,3,0x4a0a74)==[]
 
 
-def test_legacy_saved_support_is_passed_to_install_without_a_separate_on_step(tmp_path):
+def test_save_prepares_support_from_the_current_body_without_a_separate_on_step(tmp_path):
     import boot_trial
     root,state=sound_cli.workspace(tmp_path/'sound',True,tmp_path/'backup')
     identity=dict(model='ILCE-7CM2',serial_sha256='synthetic')
     old=root/'old';old.mkdir();trial.save(old,dict(phase='written',identity=identity,complete_readback_and_settings_verified=True))
     converted=root/'converted';converted.mkdir();(converted/'custom-native.private.bin').write_bytes(bytes(64))
     state.update(native_job=str(old),conversion=str(converted))
-    with patch.object(sound_cli,'on') as on,patch.object(boot_trial,'require_dependencies'),\
+    fresh=root/'fresh'
+    def adopt(root_,state_,*args,**kwargs):
+        assert kwargs.get('defer_reload') is True
+        fresh.mkdir();trial.save(fresh,dict(phase='written',identity=identity,complete_readback_and_settings_verified=True))
+        state_['native_job']=str(fresh)
+    with patch.object(sound_cli,'on',side_effect=adopt) as on,patch.object(boot_trial,'require_dependencies'),\
          patch.object(boot_trial,'install',return_value={'phase':'installed_cold_test_pending'}) as install:
         sound_cli.install(root,state,100)
-        on.assert_not_called()
-        assert state['native_identity']==identity
+        # Save itself prepares or upgrades support from the current camera;
+        # the old enable record is archived, not required or reused.
+        on.assert_called_once()
         install.assert_called_once()
-        assert install.call_args.args[2]==old
+        assert install.call_args.args[2]==fresh
+    assert any(h.get('job')==str(old) and h.get('phase')=='refresh_from_current_camera' for h in state['history'])
 
 
 @pytest.mark.parametrize('selected',[False,True])
@@ -226,7 +233,7 @@ def test_save_program_contains_selector_upgrade_before_the_audio_boot_hook(stock
     modified=bytearray(cp);modified[candidate.OFFSET:candidate.OFFSET+2]=candidate.AFTER;cp=bytes(modified)
     target_ap=bytearray(ap);target_ap[0x100:0x104]=b'test';target_ap=bytes(target_ap)
     edits=[(0x100,ap[0x100:0x104],b'test')]
-    with patch.object(boot_trial.boot_sound,'verify',return_value=(target_ap,b'CSV',edits,{})):
+    with patch.object(boot_trial.boot_sound,'plan',return_value=(target_ap,b'CSV',edits,{})):
         target,parts=boot_trial.prepare(ap,cp,bytes(64),tmp_path/'save')
     assert candidate.is_current(target['cpapp-b.bin'])
     assert len(parts['cp_windows'])==2
