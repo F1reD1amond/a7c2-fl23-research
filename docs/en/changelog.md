@@ -2,7 +2,9 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/changelog.md)
 
-## Unreleased
+## 3.0.3 — important fixes, recommended for everyone — 2026-10-23
+
+Fixes important bugs: custom looks applied with the wrong base, extra shutter sounds on mechanical capture, USB read errors, and sound or restore actions blocked by old task records. Everyone should update.
 
 - Restore original sound no longer stops on a latest installation record that stopped part-way: it uses the newest completed installation of the workspace (the restore plans its inverse from current camera bytes) and archives the stopped record unchanged. Without any usable record it says so in Chinese and points to Restore factory functions, which returns every sound program window to stock from current bytes. When a factory restore finishes its writes, the old sound workspace is retired (files kept) so later sound actions start fresh.
 - Old sound task records never block a new sound button. Save, Audition and On re-read the connected body for the current selection; Off, Restore original sound and Verify archive an unresolved earlier operation and keep using the recorded switch/installation; Off adopts the current switch state when its record stopped part-way. Listening confirmations only archive the old record. Every camera action still reconciles only accounted sound files and stops, with power-cycle guidance, on unaccounted camera workers; nothing is replayed.
@@ -13,8 +15,6 @@
 - Persistent audio publication can replace captured stale temporary files and repair files-only interrupted installs. The inactive audio is read back before publishing its CSV; an already-installed boot hook stays unchanged for a resource replacement. Sound planning uses fixed byte windows without executing Unicorn/JIT, addressing the 3.0.0 macOS arm64 crash in `libunicorn.2.dylib` supplied in the October 23 sound-crash bundle. Developer emulation remains separate. Targeted offline regressions cover these changes; physical Mac/camera acceptance is still required.
 - Sound: an unresolved earlier sound operation is now explained in Chinese, naming the operation, and sound diagnostics bundles include a summary of the sound workspace (pending operation, recent history, job phase, event names and file names; no audio or camera buffers).
 - The old-backup section's verify button is now "Check loaded state after an old-backup restore". Clicked without an old-backup restore record (for example after a firmware-file restore), it offers the factory verification instead of failing with a raw "No such file" error; the worker also reports this case in plain words.
-
-## Unreleased — live Creative Look bindings
 
 - Fix the post-sync preservation error reported in diagnostic (72): a selected base's associated 13-byte setting-attribute array can be updated by Sony's native setter too. Accept only changed elements equal to that base's selected target; unrelated properties, other bases and calibration remain checked. Apply the same rule to the inner native-sync check and the final settings readback.
 - Continue completed-program installations stopped by this old array check in a fresh settings-only transaction. Require the existing successful program/name readback and native cleanup records, then confirm current programs and names still match the original plan. Only settings and reload preparation can run; this path cannot write program or name resources. Diagnostics retain public look values and targets while excluding firmware, serials and calibration.
