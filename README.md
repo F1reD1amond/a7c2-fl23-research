@@ -166,23 +166,54 @@ If it still fails, try another cable and a USB port on the back of the computer,
 
 ### Still failing: install with Zadig
 
-If the app's automatic driver install keeps failing, install the driver by hand with [Zadig](https://zadig.akeo.ie/). The camera shows up as two different USB identities at two stages, and **both need a driver**:
+On computers where the app's automatic driver install fails, installing the driver by hand with [Zadig](https://zadig.akeo.ie/) usually works. Nothing is written to the camera; this only changes which driver this computer uses for the camera's two USB identities.
 
-| Stage | Name in Zadig | USB ID |
-| --- | --- | --- |
-| Normal connection | `ILCE-7CM2` | `054C` `0E8A` |
-| Service mode (appears only after the first authentication) | `Sony USB Device` | `054C` `0336` |
+**First: the camera has two USB identities, and both need a driver**
 
-1. Close this app. Switch the camera on, set USB connection to **Mass Storage**, and plug it in.
-2. Open Zadig and tick **Options → List All Devices**.
-3. Pick `ILCE-7CM2` in the drop-down and **check that the USB ID is `054C 0E8A`**. Choose **libusbK** on the right, click **Replace Driver** (or **Install Driver**) and wait for it to finish.
-   - Change only this device. Leave keyboards, mice, USB drives and everything else alone.
-   - After the swap, the camera's drive letter disappears and the camera shows "Please check the connected device". Both are normal.
-4. Open this app and click **准备两阶段驱动并测试连接 (Prepare drivers and test connection)** on the **连接与驱动 (Connection & drivers)** page. After authentication the camera becomes `Sony USB Device` (`054C 0336`).
-5. If the app says the `0336` driver is missing: in Zadig, click **Options → List All Devices** again to refresh, pick `Sony USB Device`, check that the USB ID is `054C 0336`, and install **libusbK** the same way.
-6. Fully power the camera off (remove the battery for about a minute), switch it on, select Mass Storage, plug it in, and click **准备两阶段驱动并测试连接** once more.
+| Stage | Name in Zadig | USB ID | When it appears |
+| --- | --- | --- | --- |
+| Normal connection | `ILCE-7CM2` | `054C` `0E8A` | Camera on, Mass Storage selected, plugged in |
+| Service mode | `Sony USB Device` | `054C` `0336` | Only after the app authenticates; the camera usually shows "Please check the connected device" |
 
-The app keeps any WinUSB, libusbK or libusb0 driver that is already installed. To go back to the Windows default driver, click **卸载相机驱动，恢复 Windows 默认连接 (Uninstall camera driver)**; it also removes drivers installed with Zadig.
+**Prepare**
+
+1. Download the latest `zadig-x.x.exe` from the Zadig website (a single file, nothing to install).
+2. Close this app completely.
+3. Switch the camera on and set USB connection to **Mass Storage** in its menu. Connect it directly with a data cable: no hub, and on a desktop PC use a port on the back.
+
+**Part 1: driver for `0E8A`**
+
+1. Right-click Zadig and choose **Run as administrator**. If it asks about checking for updates, either answer is fine.
+2. In the **Options** menu, tick **List All Devices**. Without it the camera doesn't show up.
+3. Pick **`ILCE-7CM2`** in the drop-down at the top.
+4. **Check that the USB ID reads `054C` `0E8A`.** If it doesn't, you picked the wrong entry; try another. Don't change the driver of keyboards, mice, USB drives, network adapters or any other device.
+5. The current driver (for example `USBSTOR`) is left of the green arrow. In the driver box right of the arrow, use the up/down arrows to choose **libusbK**.
+6. Click the big **Replace Driver** button (it reads **Install Driver** when there is no driver yet). Wait 1–2 minutes until it says **The driver was installed successfully**.
+7. Afterwards the camera's drive letter disappears and the camera shows "Please check the connected device". Both are normal.
+
+**Part 2: make `0336` appear, then give it a driver**
+
+1. Leave Zadig open. In this app open **连接与驱动 (Connection & drivers)** and click **准备两阶段驱动并测试连接 (Prepare drivers and test connection)**.
+2. The app uses the `0E8A` driver you just installed and authenticates. The camera then becomes `Sony USB Device` (`054C 0336`).
+   - If the app installs the `0336` driver itself and the log says **“服务连接成功，驱动准备结束” (service connection succeeded, drivers ready)**, you're done; go to Part 3.
+   - If the log says `0336` has no driver, its interface can't be opened, or `0336` never appears: **don't unplug the cable or switch the camera off**; continue with the next step.
+3. Back in Zadig, click **Options → List All Devices** again to refresh. Pick **`Sony USB Device`** and **check that the USB ID reads `054C` `0336`**.
+   - If `0336` isn't listed, the camera has already left service mode. Repeat step 1 of this part and refresh Zadig as soon as `0336` appears.
+4. Choose **libusbK** again, click **Replace Driver** or **Install Driver**, and wait for the success message.
+
+**Part 3: power-cycle and test again**
+
+1. Unplug USB, switch the camera off and **remove the battery for about a minute**. Put it back, switch on, select Mass Storage and reconnect.
+2. In this app click **准备两阶段驱动并测试连接** again. Once the log says **“服务连接成功，驱动准备结束”**, continue with [Step 3: One-click install](#step-3-one-click-install).
+
+**Check the result:** Windows Device Manager should show a **libusbK USB Devices** category containing `ILCE-7CM2`, and `Sony USB Device` once the `0336` driver is installed.
+
+**Problems**
+
+- **libusbK fails to install:** run Zadig as administrator again. If it still fails, choose **WinUSB** instead. The app works with WinUSB, libusbK or libusb0.
+- **The camera isn't in the drop-down:** make sure **List All Devices** is ticked, the camera is on in Mass Storage mode, and try another data cable.
+- **To undo it:** click **卸载相机驱动，恢复 Windows 默认连接 (Uninstall camera driver)** on the **连接与驱动** page; this also removes drivers installed with Zadig. Then unplug and replug USB and the camera appears as a drive again.
+- **Macs need no driver.**
 
 ### Step 2: Installed an earlier version? Restore factory functions first
 
@@ -203,6 +234,9 @@ A camera that was never modified can skip this step.
 If the restore is interrupted, click the same button again: the app reads the camera's current state and finishes only what's left. If the button changes to **断电后重试恢复（本次尚未写入）(Retry after power cycle; nothing written yet)**, nothing was written this time. Do a cold reload as the dialog says, then click it.
 
 ### Step 3: One-click install
+
+> [!IMPORTANT]
+> Finish [Step 1](#step-1-install-the-drivers-windows) before the one-click install, and make sure the log says “服务连接成功，驱动准备结束” (service connection succeeded, drivers ready). Many failed installs come from starting the one-click install before the drivers work. The app also reminds you the first time you run it on a computer. If the drivers won't install, use [install with Zadig](#still-failing-install-with-zadig).
 
 1. Open **首页 · 一键安装 (Home · One-click install)**. These are selected by default:
    - **Install the six built-in looks** (replaces custom slots 1–6; Sony's own Creative Looks are kept)
