@@ -11,7 +11,7 @@ def run(action,args):
     argv = [command]
     if command == 'import':
         argv += [args['source'], '--start', str(args.get('start', 0)),
-                 '--duration', str(args.get('duration', 1)),
+                 '--duration', str(args.get('duration', .5)),
                  '--peak', str(args.get('peak', .4))]
     elif command == 'volume':
         argv += ['--reset'] if args.get('reset') else ['--decibels',str(args['decibels'])]

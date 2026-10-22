@@ -615,7 +615,7 @@ class Window(W.QMainWindow):
         self.sound_duration = W.QDoubleSpinBox()
         self.sound_duration.setRange(.01, 2)
         self.sound_duration.setDecimals(3)
-        self.sound_duration.setValue(1)
+        self.sound_duration.setValue(.5)
         media.addRow('长度（秒）', self.sound_duration)
         row = W.QHBoxLayout()
         layout.addLayout(row)
