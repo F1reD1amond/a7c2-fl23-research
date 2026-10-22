@@ -27,7 +27,7 @@ class Mac:
         self.commands,self.unmounts=[],[]
     @staticmethod
     def whole(disk):return 'disk'+disk[4:].split('s')[0]
-    def plist(self,*args):
+    def plist(self,*args,**kwargs):
         self.commands.append(args)
         if 'ioreg' in args[0]:return tree(self.disks)
         disk=args[-1].removeprefix('/dev/')
@@ -83,7 +83,7 @@ def test_whole_disk_without_parent_field_is_valid():
 
 def test_partition_parent_outside_camera_subtree_is_rejected():
     fake=Mac({'disk9s1':None})
-    def plist(*args):
+    def plist(*args,**kwargs):
         result=fake.plist(*args)
         if args[-1]=='/dev/disk9s1':result['ParentWholeDisk']='disk99'
         return result
@@ -191,3 +191,26 @@ def test_mac_session_claims_msc_interface_before_reading_strings_and_waits_after
     session.__exit__(None,None,None)
     session.auth.stop.assert_called_once()
     assert events[-1]=='wait-msc'
+
+
+def test_registry_with_invalid_xml_characters_still_parses():
+    # Field log 38: another device's name carried a control character and
+    # plistlib rejected the whole registry before any camera access.
+    bad=('<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><array><dict>'
+         '<key>USB Product Name</key><string>Dock'+chr(1)+'</string>'
+         '<key>idVendor</key><integer>1452</integer></dict></array></plist>').encode()
+    with patch.object(host.subprocess,'run',return_value=Mock(returncode=0,stdout=bad,stderr=b'')):
+        with pytest.raises(Exception):host.plist_command('/usr/sbin/ioreg')
+        assert host.plist_command('/usr/sbin/ioreg',lenient=True)==[{'USB Product Name':'Dock','idVendor':1452}]
+
+
+def test_camera_behind_hub_is_one_camera():
+    camera=tree(['disk9'])[0]
+    hub=dict(IOObjectClass='IOUSBHostDevice',idVendor=0x05e3,idProduct=0x0610,IORegistryEntryID=3,
+             IORegistryEntryChildren=[camera])
+    fake=Mac({'disk9':None})
+    def plist(*args,**kwargs):
+        return [hub,camera] if 'ioreg' in args[0] else fake.plist(*args)
+    with patch.object(host,'plist_command',side_effect=plist):
+        registry,media=host.camera_media()
+    assert registry==77 and list(media)==['disk9']

@@ -25,21 +25,35 @@ def registry_nodes(tree):
         yield from registry_nodes(tree.get('IORegistryEntryChildren',[]))
 
 
-def plist_command(*command):
+# Characters XML 1.0 forbids. Some devices publish names containing them, and
+# a single such property made the whole registry unparsable (field log 38).
+INVALID_XML=re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f]')
+
+
+def plist_command(*command,lenient=False):
     result=subprocess.run(command,capture_output=True,timeout=30)
     if result.returncode:
         print(result.stdout.decode('utf-8',errors='replace'),flush=True)
         print(result.stderr.decode('utf-8',errors='replace'),file=sys.stderr,flush=True)
         raise RuntimeError('macOS command failed (%s): %s'%(result.returncode,' '.join(command)))
-    return plistlib.loads(result.stdout)
+    data=result.stdout
+    if lenient:
+        # Only other devices' free-text names are affected; IDs and BSD names are plain ASCII.
+        data=INVALID_XML.sub('',data.decode('utf-8',errors='replace')).encode('utf-8')
+    return plistlib.loads(data)
 
 
 def camera_media():
     """Registry identity and verified disks of the one connected camera."""
-    tree=plist_command('/usr/sbin/ioreg','-p','IOService','-l','-a')
-    cameras=[node for node in registry_nodes(tree)
-             if node.get('idVendor')==0x054c and node.get('idProduct')==0x0e8a
-             and node.get('IOObjectClass')=='IOUSBHostDevice']
+    # USB device subtrees only, not the whole registry. A camera behind a hub
+    # appears under the hub's subtree and as its own root, so de-duplicate.
+    tree=plist_command('/usr/sbin/ioreg','-p','IOService','-r','-c','IOUSBHostDevice','-l','-a',lenient=True)
+    found={}
+    for node in registry_nodes(tree):
+        if (node.get('idVendor')==0x054c and node.get('idProduct')==0x0e8a
+                and node.get('IOObjectClass')=='IOUSBHostDevice'):
+            found.setdefault(node.get('IORegistryEntryID',id(node)),node)
+    cameras=list(found.values())
     if len(cameras)!=1:raise RuntimeError('请只连接一台海量存储模式的 A7C II，再准备 USB 连接。'+MSC_PROMPT)
     registry=cameras[0].get('IORegistryEntryID')
     if registry is None:raise RuntimeError('Missing camera USB registry identity')
