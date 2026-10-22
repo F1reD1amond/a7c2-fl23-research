@@ -254,6 +254,24 @@ class PowerProgressTests(unittest.TestCase):
         with patch('desktopapp.window.sys.platform', 'darwin'):
             self.assertIsNone(self.window().findChild(W.QPushButton, 'zadig_guide'))
 
+    def test_backup_verify_without_backup_record_offers_factory_verification(self):
+        window = self.window()
+        window.fields['restore_work'].setText(str(self.root / 'unused-recovery'))
+        window.settings['factory_direct_work'] = str(self.root / 'factory')
+        with patch.object(W.QMessageBox, 'question', return_value=W.QMessageBox.Cancel), \
+             patch('desktopapp.window.QtCore.QProcess'):
+            window.findChild(W.QPushButton, 'action_restore_verify').click()
+        self.assertIsNone(window.process)
+        with patch.object(W.QMessageBox, 'question', return_value=W.QMessageBox.Yes), \
+             patch('desktopapp.window.QtCore.QProcess'):
+            window.findChild(W.QPushButton, 'action_restore_verify').click()
+        request = json.loads((window.current_job / 'request.private.json').read_text())
+        self.assertEqual(request['action'], 'direct_verify')
+        self.assertTrue(request['arguments']['factory_verify'])
+        window.process = None
+        with self.assertRaisesRegex(ValueError, '没有旧备份恢复记录'):
+            worker.run('restore_verify', {'workspace': str(self.root / 'unused-recovery')}, self.root)
+
     def test_completed_continuation_is_verified_first_with_rewrite_fallback(self):
         window = self.window()
         failed, completed = self.root / 'old-failure', self.root / 'completed'

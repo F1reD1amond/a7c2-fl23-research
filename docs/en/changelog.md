@@ -2,6 +2,10 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/changelog.md)
 
+## Unreleased
+
+- The old-backup section's verify button is now "Check loaded state after an old-backup restore". Clicked without an old-backup restore record (for example after a firmware-file restore), it offers the factory verification instead of failing with a raw "No such file" error; the worker also reports this case in plain words.
+
 ## 3.0.2 — bug-fix release — 2026-10-22
 
 Fixes software bugs reported after 3.0.1. If 3.0.1 works for you, you don't need to update.

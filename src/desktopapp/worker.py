@@ -255,6 +255,9 @@ def run(action, args, job):
     if action in ('restore', 'restore_verify'):
         from looktool.checkpointjob import Rollback
         obj = Rollback(Path(args['workspace']))
+        if action == 'restore_verify' and not obj.state_path.is_file():
+            raise ValueError('所选目录没有旧备份恢复记录，本次没有连接相机。用内置原厂基准或固件文件恢复后，'
+                             '请点“重启后核对并完成恢复”。')
         if action == 'restore':
             result = obj.run(args['backup'], args.get('battery'), args['firmware'],
                              power_confirmed=args.get('power_confirmed', False))
