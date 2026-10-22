@@ -98,6 +98,24 @@ def program_report(raw,mode,build):
         raise ValueError('Checkpoint program operation incomplete: '+repr(v))
     return {'mode':mode,'windows':v[4]}
 
+REBOOT='请完整断电重开（拔 USB、关机、取下电池至少 1 分钟后装回开机），再接回 USB 点同一个恢复按钮。'
+
+
+def names_failure_detail(v,mode,build,raw):
+    """User guidance for a failed name operation; the native report stays appended."""
+    if v[5]==-28 and mode==2:
+        return ('相机 /usr 分区的临时空间用完了：已恢复 %d/%d 个名称文件，程序和已恢复的部分保持不变，'
+                '相机可以正常开机使用。旧文件占用的空间要断电后才释放。' % (v[15],build['count']) + REBOOT +
+                '只会处理剩下的部分。')
+    if v[5]==-28:
+        return '写入前检查发现相机 /usr 分区临时空间不足，本次没有写入。' + REBOOT
+    if v[5]==-30 and v[3]==1:
+        return ('相机 /usr 分区仍处于可写挂载，通常是上一次操作后还没有完整断电重开；本次没有写入。' + REBOOT)
+    if names_completed_mount_busy(raw,mode,build):
+        return '名称内容已完成，但只读挂载忙碌；需要完成设置与重新加载准备后再重开核对。'
+    return ''
+
+
 def names_report(raw,mode,build):
     if build.get('defer_busy_readonly') and names_completed_mount_busy(raw,mode,build):
         return {'mode':mode,'restored':build['count'],'readonly_verified':False,'readonly_deferred_busy':True}
@@ -106,7 +124,5 @@ def names_report(raw,mode,build):
     if (v[:5]!=(b'A7NMR001',1,mode,9,build['count']) or any(v[i] for i in (5,6,7,8,9,10,17))
         or v[11]<=0 or any(n>build['count'] for n in v[12:17])
         or (mode==4 and any(v[12:17])) or (mode==2 and any(v[13:15]))):
-        detail = ('相机 /usr 分区空间不足；保留事务，不要重复恢复或重启。' if v[5] == -28 else
-                  '名称内容已完成，但只读挂载忙碌；需要完成设置与重新加载准备后再重开核对。' if names_completed_mount_busy(raw,mode,build) else '')
-        raise ValueError(detail + 'Checkpoint name operation incomplete: '+repr(v[:18]))
+        raise ValueError(names_failure_detail(v,mode,build,raw) + 'Checkpoint name operation incomplete: '+repr(v[:18]))
     return {'mode':mode,'restored':v[15]}

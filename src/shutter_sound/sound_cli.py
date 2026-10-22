@@ -124,17 +124,22 @@ def retire_preallocation_audition(root,state):
         return False
     try:
         job=load_job(path)
-        if job.get('phase')!='needs_review' or not buffer_trial.preallocation_marker_rejection(
+        if buffer_trial.stopped_before_native(job,path):
+            reason,message='stopped_before_native_worker',('上次试听在调用相机原生程序之前就已停止，没有注册任何声音；'
+                '已解除占用，原记录保留。')
+        elif job.get('phase')=='needs_review' and buffer_trial.preallocation_marker_rejection(
                 job,(Path(path)/'report.private.bin').read_bytes()):
+            reason,message='existing_completed_marker','上次试听因旧标记在分配前停止，没有注册新声音；本次按当前状态新建试听。'
+        else:
             return False
     except (OSError,ValueError,KeyError,struct.error):
         return False
     state.setdefault('history',[]).append(dict(command='audition',job=path,
-        phase='rejected_before_allocation',reason='existing_completed_marker'))
+        phase='rejected_before_allocation',reason=reason))
     state['pending']=None
     state['audio_job']=None
     save(root,state)
-    print('上次试听因旧标记在分配前停止，没有注册新声音；本次按当前状态新建试听。',flush=True)
+    print(message,flush=True)
     return True
 
 

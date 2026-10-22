@@ -132,6 +132,22 @@ def preallocation_marker_rejection(state, raw):
     return all(events[2].get('result',{}).get(k)==v for k,v in result.items())
 
 
+def stopped_before_native(state, root):
+    """The audition stopped before its native worker was staged or invoked.
+
+    No audio registration, allocation or transfer can have happened. Steps
+    before the worker only read or replace /tmp markers, which a cold
+    power-off clears and the next attempt re-reads from the camera.
+    """
+    if (state.get('schema') != 'a7c2-empty-sound-buffer-trial/1' or state.get('phase') != 'needs_review'
+            or state.get('camera_firmware_written') is not False or 'result' in state):
+        return False
+    if (Path(root) / 'report.private.bin').exists():
+        return False
+    return not any(event.get('event') in ('native_stage_intent', 'native_intent')
+                   for event in state.get('journal', []))
+
+
 def replace_completed_marker(camera, root, previous_jobs):
     """Replace an exact owned marker from a completed prior registration.
 
