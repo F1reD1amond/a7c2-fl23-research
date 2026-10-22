@@ -68,6 +68,10 @@ class SimRollback(checkpointjob.Rollback):
     corrupt_name=False
     def native(self,camera,kind,mode,build=None):
         camera.native_calls.append((kind,mode));self.record('simulated_native',kind=kind,mode=mode)
+        if kind=='purge':
+            stale=[p for p in camera.files if p.startswith('/usr/share/app/.a7c2-')]
+            for p in stale:camera.files.pop(p)
+            return {'mode':5,'matched':len(stale),'removed':len(stale)}
         if kind=='runtime':
             return {'image_mode':camera.mode,'spans':[{'offset':0,'length':16,'memory':camera.files['/usr/lib/appFw.so'][:16].hex(),'disk':camera.files['/usr/lib/appFw.so'][:16].hex()}]}
         if kind=='wbi':

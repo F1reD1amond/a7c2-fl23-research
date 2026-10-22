@@ -254,6 +254,22 @@ class DirectJob(Rollback):
             super().restore_settings(camera, (keys, ram, saved, old_ram, old_saved))
         if getattr(self, 'vertical_stage', None):self.vertical_stage.finish()
 
+    def purge_stale_backups(self, camera):
+        """Factory restore: remove name backups that earlier project jobs left.
+
+        Unfinished or abandoned jobs can leave whole sets of 68 resource copies
+        in /usr/share/app, filling /usr until name writes fail with ENOSPC. The
+        restore supersedes those jobs, so their backups have no further use.
+        Old temporary files are accounted for before this point.
+        """
+        build = checkpointworker.build_purge(self.root / 'purge', self.state['job_id'], self.zig)
+        self.state['purge_build'] = build; write_json(self.state_path, self.state)
+        result = self.native(camera, 'purge', 5, build)
+        self.record('stale_name_backups_removed', matched=result['matched'], removed=result['removed'])
+        if result['removed']:
+            print('已清理旧任务遗留的名称备份 %d 个，释放相机 /usr 空间。' % result['removed'], flush=True)
+        return result
+
     def prepare_factory_settings(self, camera, prepared):
         """Save ST recipes before removing code that their old bases require.
 
@@ -330,6 +346,7 @@ class DirectJob(Rollback):
                     if span['disk'] != target_bytes or span['memory'] not in (target_bytes, old_spans.get((span['offset'], span['length']))):
                         raise ValueError('Unexpected loaded application state; no restoration started')
                 self.state['source_boot_id'] = runtime['boot_id'].strip()
+                self.purge_stale_backups(camera)
                 if names:
                     self.native(camera, 'names', 4, names)
                 self.save('PREFLIGHT_VERIFIED', program_builds=[], inverse_name_build=names, forward_name_build=None)
@@ -434,6 +451,8 @@ class DirectJob(Rollback):
                         raise ValueError('Finish the previous cold reload before changing another feature')
                 for build in programs:
                     self.native(camera, 'program', 0, build)
+                if mode == 'factory_reset':
+                    self.purge_stale_backups(camera)
                 if inverse_names:
                     self.native(camera, 'names', 4, inverse_names)
                 if forward:
@@ -603,6 +622,7 @@ class DirectJob(Rollback):
                 self.state['source_boot_id'] = runtime['boot_id'].strip()
                 for build in programs:
                     self.native(camera, 'program', 0, build)
+                self.purge_stale_backups(camera)
                 if names:
                     self.native(camera, 'names', 4, names)
                 self.save('PREFLIGHT_VERIFIED')

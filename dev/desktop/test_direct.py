@@ -155,6 +155,21 @@ class DirectTransactionTests(unittest.TestCase):
             self.assertEqual(self.camera.saved[1][key].data[0x80:0x88], b'FLASHDAT')
         self.assertEqual(list(self.root.rglob('*.zip')), [])
 
+    def test_factory_restore_removes_stale_backups_before_any_write(self):
+        stale = '/usr/share/app/.a7c2-lut-3e57ffe746c143e3-' + nameworker.filenames()[0] + '.original'
+        self.camera.files[stale] = b'old backup'
+        job = SimDirect(self.root / 'purge', factory=self.camera)
+        with patch.object(direct, 'plan', side_effect=lambda current, *a, **k: (dict(current), [{}, {}], None)):
+            result = job.run_direct('factory_reset', version='2.01', power_confirmed=True)
+        self.assertNotIn(stale, self.camera.files)
+        kinds = [kind for kind, mode in self.camera.native_calls]
+        self.assertIn('purge', kinds)
+        self.assertFalse(any(kind in ('program', 'names') and mode in (1, 2)
+                             for kind, mode in self.camera.native_calls[:kinds.index('purge')]))
+        event = next(e for e in result['journal'] if e['event'] == 'stale_name_backups_removed')
+        self.assertEqual(event['removed'], 1)
+        self.assertTrue(Path(result['purge_build']['path']).is_file())
+
     def named_job(self, *, fail_names=False):
         class Named(SimDirect):
             def forward_names(inner, camera, build, mode):

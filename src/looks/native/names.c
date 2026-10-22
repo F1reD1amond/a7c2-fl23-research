@@ -205,13 +205,62 @@ static i64 rollback_install(void) {
  if(!status)for(u32 i=0;i<asset_count;i++) {paths(i);i64 v=verify(actual,assets[i].size,assets[i].before,0);if(v){status=v;break;}}
  if(!status)status=sync_dir();return status;
 }
+#ifdef NAMES_PURGE
+/* Mode 5, factory restore only: remove name backups that earlier project jobs
+ * left in /usr/share/app. A name must be exactly ".a7c2-lut-" or
+ * ".a7c2-checkpoint-", 16 lowercase hex digits, "-", one of the pinned
+ * resource names, then ".original" or ".stage"; this build's own prefix and
+ * anything that is not a regular file are kept. Removing a backup name never
+ * edits a live resource: a hardlinked backup only loses its extra name.
+ */
+struct Dirent {u64 ino;i64 off;unsigned short reclen;u8 type;char name[1];};
+static u8 dents[16384];static char doomed[512][128];
+static u32 prefixed(const char*n,const char*p) {u32 i=0;while(p[i]) {if(n[i]!=p[i])return 0;i++;}return i;}
+static int project_backup(const char*n) {
+ u32 at=prefixed(n,".a7c2-lut-");if(!at)at=prefixed(n,".a7c2-checkpoint-");if(!at)return 0;
+ if(prefixed(n,backup_prefix+15))return 0;
+ for(u32 k=0;k<16;k++,at++)if(!((n[at]>='0'&&n[at]<='9')||(n[at]>='a'&&n[at]<='f')))return 0;
+ if(n[at++]!='-')return 0;
+ for(u32 i=0;i<asset_count;i++) {u32 x=prefixed(n+at,assets[i].name);if(!x)continue;
+  const char*s=n+at+x;if(prefixed(s,".original")==9&&!s[9])return 1;if(prefixed(s,".stage")==6&&!s[6])return 1;}
+ return 0;
+}
+static void purge(void) {
+ if(!prefixed(backup_prefix,"/usr/share/app/")){r.status=-22;return;}
+ i64 fd=op("/usr/share/app",0x4000,0);if(fd<0){r.status=fd;return;}
+ u32 found=0;
+ while(!r.status) {i64 n=sc(61,fd,(i64)dents,sizeof(dents),0,0,0);
+  if(n<0){r.status=n;break;}if(!n)break;
+  for(i64 at=0;at<n&&!r.status;) {struct Dirent*d=(struct Dirent*)(dents+at);
+   if(d->reclen<20||at+d->reclen>n){r.status=-5;break;}
+   if(project_backup(d->name)) {
+    u32 len=0;while(d->name[len]&&len<128)len++;
+    if(len>=128-1){r.status=-36;break;}if(found>=512){r.status=-75;break;}
+    for(u32 k=0;k<=len;k++)doomed[found][k]=d->name[k];found++;}
+   at+=d->reclen;}}
+ i64 c=cl(&fd);if(!r.status)r.status=c;
+ r.staged=found;if(r.status)return;
+ r.phase=2;if(!found){r.phase=9;return;}
+ mounted_rw=1;r.remount=remount(0);if(r.remount){r.status=r.remount;return;}
+ r.phase=7;const char*dir="/usr/share/app/";
+ for(u32 i=0;i<found;i++) {
+  u32 x=0;while(dir[x]){actual[x]=dir[x];x++;}u32 y=0;while(doomed[i][y])actual[x++]=doomed[i][y++];actual[x]=0;
+  struct Stat s;i64 v=sc(79,-100,(i64)actual,(i64)&s,0x100,0,0);
+  if(v==-2)continue;if(v){r.status=v;return;}
+  if((s.mode&0170000)!=0100000)continue;
+  v=unlink_path(actual);if(v==-2)continue;if(v){r.status=v;return;}r.removed_backups++;}
+ r.status=sync_dir();if(!r.status)r.phase=9;
+}
+#endif
 static void work(void) {
  i64 fd=op(NAMES_REQUEST,0,0);if(fd<0){r.status=fd;return;}
  r.status=read_exact(fd,(u8*)&req,sizeof(req),0);i64 c=cl(&fd);if(!r.status)r.status=c;
  if(r.status)return;
- if(!same(req.magic,(const u8*)"A7NAM001",8)||req.mode>4||req.reserved||!asset_count||asset_count>68){r.status=-22;return;}
-#ifndef CHECKPOINT_BYTES
- if(req.mode==4){r.status=-22;return;}
+ if(!same(req.magic,(const u8*)"A7NAM001",8)||req.mode>5||req.reserved||!asset_count||asset_count>68){r.status=-22;return;}
+#if defined(NAMES_PURGE)
+ if(req.mode!=5){r.status=-22;return;}
+#elif !defined(CHECKPOINT_BYTES)
+ if(req.mode>3){r.status=-22;return;}
 #elif defined(BYTE_NAME_UPDATES)
  if(req.mode>3){r.status=-22;return;}
 #else
@@ -219,6 +268,9 @@ static void work(void) {
 #endif
  r.mode=req.mode;r.count=asset_count;if(r.euid){r.status=-13;return;}
  r.phase=1;r.status=mount_state(1);if(r.status)return;
+#ifdef NAMES_PURGE
+ purge();return;
+#endif
 #ifndef CHECKPOINT_BYTES
  r.status=hash_path("/usr/lib/appFw.so",ap_size,r.ap_hash,0);if(r.status)return;
  if(!same(r.ap_hash,req.mode==3?ap_named_hash:ap_plain_hash,32)){r.status=-84;return;}

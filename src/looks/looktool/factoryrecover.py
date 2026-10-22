@@ -199,6 +199,14 @@ def outcome(raw, result, mode, state, camera, *, allow_completed_name_mount_busy
                 or any(v[i] for i in (6, 7, 8, 9, 10)) or v[11] <= 0
                 or list(v[14:16]) not in sizes):
             raise ValueError('Native program did not establish a clean completed outcome')
+    elif result == 'checkpoint.names.result' and mode == 5:
+        # Backup cleanup only deletes stale project backups; any complete
+        # report that restored the read-only mount is accounted for.
+        if len(raw) != nameworker.REPORT.size:
+            raise ValueError('Incomplete backup cleanup result')
+        v = nameworker.REPORT.unpack(raw)
+        if v[:3] != (b'A7NMR001', 1, 5) or not 1 <= v[3] <= 9 or any(v[i] for i in (6, 7, 8, 9, 10)) or v[11] <= 0:
+            raise ValueError('Backup cleanup remount is unconfirmed')
     elif result == 'checkpoint.names.result':
         if len(raw) != nameworker.REPORT.size:
             raise ValueError('Incomplete native name result')
@@ -269,6 +277,8 @@ def cleanup(camera, history, record, save_raw, *, allow_completed_name_mount_bus
         raise ValueError('Unsupported outstanding recovery namespace')
     if result == 'checkpoint.program.result':
         blobs = [Path(b['path']).read_bytes() for b in state.get('program_builds', [])]
+    elif result == 'checkpoint.names.result' and intent.get('mode') == 5:
+        blobs = [Path(state['purge_build']['path']).read_bytes()]
     elif result == 'checkpoint.names.result':
         blobs = [Path(state['inverse_name_build']['path']).read_bytes()]
     else:

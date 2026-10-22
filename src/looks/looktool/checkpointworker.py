@@ -82,6 +82,34 @@ def build_names(current,target,out,identifier,zig=None,*,defer_busy_readonly=Fal
     path=out/'names.so';compile_worker(ROOT/'src/looks/native/names.c',header,path,zig,fingerprints=False)
     return {'path':str(path),'count':len(files),'files':files,'defer_busy_readonly':defer_busy_readonly}
 
+def build_purge(out,identifier,zig=None):
+    """Mode-5-only names worker: remove backups left by earlier project jobs."""
+    files=nameworker.filenames();q=json.dumps
+    lines=['#define CHECKPOINT_BYTES 1','#define CHECKPOINT_STREAM_RESTORE 1','#define NAMES_PURGE 1',
+        '#define NAMES_REQUEST "/tmp/jiritsu/checkpoint.names.request"',
+        '#define NAMES_RESULT "/tmp/jiritsu/checkpoint.names.result"',
+        'static const struct Asset assets[]={'+','.join('{'+q(n)+',0,{0},{0}}' for n in files)+'};',
+        f'static const u32 asset_count={len(files)};',
+        'static const u32 after_sizes[68]={0};','static const u32 old_counts[68]={0};',
+        'static const u32 label_ids[]={'+','.join(str(r)+'U' for r in resources.LABEL_IDS)+'};',
+        'static const unsigned short old_pointers[68][6]={{0}};',
+        'static const u8 names[6][64]={{0}};','static const u32 selected_mask=0;',
+        'static const char backup_prefix[]='+q('/usr/share/app/.a7c2-checkpoint-'+identifier+'-')+';',
+        'static const u32 original_uid=57285,original_gid=1000;']
+    out=Path(out);out.mkdir(parents=True,exist_ok=True)
+    header=out/'names.private.h';header.write_text('\n'.join(lines)+'\n',encoding='ascii')
+    path=out/'purge.so';compile_worker(ROOT/'src/looks/native/names.c',header,path,zig,fingerprints=False)
+    return {'path':str(path),'count':len(files),'purge':True}
+
+def purge_report(raw,build):
+    if len(raw)!=nameworker.REPORT.size:raise ValueError('Incomplete backup cleanup report')
+    v=nameworker.REPORT.unpack(raw)
+    if (v[:5]!=(b'A7NMR001',1,5,9,build['count']) or any(v[i] for i in (5,6,7,8,9,10,17))
+        or v[11]<=0 or any(v[13:16]) or v[16]>v[12]):
+        raise ValueError('旧任务名称备份清理未完成，相机名称文件没有改动；请完整断电重开后再点恢复。'
+                         'Backup cleanup incomplete: '+repr(v[:18]))
+    return {'mode':5,'matched':v[12],'removed':v[16]}
+
 def names_completed_mount_busy(raw,mode,build):
     if len(raw)!=nameworker.REPORT.size or mode!=2:return False
     v=nameworker.REPORT.unpack(raw)

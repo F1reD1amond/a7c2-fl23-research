@@ -68,10 +68,11 @@ class Rollback:
             path=Path(build['path']);magic=b'A7INS001'
             request,result='checkpoint.program.request','checkpoint.program.result'
             decode=lambda raw:checkpointworker.program_report(raw,mode,build)
-        elif kind=='names':
+        elif kind in ('names','purge'):
             path=Path(build['path']);magic=b'A7NAM001'
             request,result='checkpoint.names.request','checkpoint.names.result'
-            decode=lambda raw:checkpointworker.names_report(raw,mode,build)
+            decode=((lambda raw:checkpointworker.purge_report(raw,build)) if kind=='purge' else
+                    (lambda raw:checkpointworker.names_report(raw,mode,build)))
         elif kind=='wbi':
             path=nativebuild.ROOT/'src/fl23/assets/wbi.so';magic=b'A7WBI001'
             request,result='a7c2.wbi.request','a7c2.wbi.result'
