@@ -63,6 +63,11 @@ def is_current(cp):
     return sound_state(cp) == 'electronic_only'
 
 
+def is_legacy(cp):
+    return (cp[SELECTOR_TABLE:SELECTOR_TABLE+len(TABLE_BEFORE)]==TABLE_BEFORE
+            and cp[GATE:GATE+len(LEGACY_GATE)]==LEGACY_GATE)
+
+
 def guard(ap, cp, *, installed=False):
     if ap[:4] != b'\x7fELF' or len(ap) < 0x288549c:
         raise ValueError('Expected the A7C II 2.01 AArch64 AP')

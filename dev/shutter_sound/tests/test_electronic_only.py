@@ -184,19 +184,54 @@ def test_native_silent_mode_sends_nothing_in_both_exposure_phases(stock):
     assert sound_calls(cp,3,0x4a0a74)==[]
 
 
-def test_legacy_saved_support_is_automatically_upgraded_before_save(tmp_path):
+def test_legacy_saved_support_is_passed_to_install_without_a_separate_on_step(tmp_path):
     import boot_trial
     root,state=sound_cli.workspace(tmp_path/'sound',True,tmp_path/'backup')
     identity=dict(model='ILCE-7CM2',serial_sha256='synthetic')
     old=root/'old';old.mkdir();trial.save(old,dict(phase='written',identity=identity,complete_readback_and_settings_verified=True))
     converted=root/'converted';converted.mkdir();(converted/'custom-native.private.bin').write_bytes(bytes(64))
     state.update(native_job=str(old),conversion=str(converted))
-    def upgrade(*args,**kwargs):
-        assert state['native_identity']==identity
-        trial.save(old,dict(phase='written',identity=identity,electronic_only_gate=True,complete_readback_and_settings_verified=True))
-    with patch.object(sound_cli,'on',side_effect=upgrade) as on,patch.object(boot_trial,'require_dependencies'),\
+    with patch.object(sound_cli,'on') as on,patch.object(boot_trial,'require_dependencies'),\
          patch.object(boot_trial,'install',return_value={'phase':'installed_cold_test_pending'}) as install:
         sound_cli.install(root,state,100)
-        on.assert_called_once()
-        assert on.call_args.kwargs['defer_reload']
+        on.assert_not_called()
+        assert state['native_identity']==identity
         install.assert_called_once()
+        assert install.call_args.args[2]==old
+
+
+@pytest.mark.parametrize('selected',[False,True])
+@pytest.mark.parametrize('prior',['stock','legacy','muted','current'])
+def test_combined_install_upgrades_legacy_in_its_existing_plan(stock,selected,prior):
+    from looktool import bundle
+    ap,cp=stock
+    if prior=='legacy':
+        modified=bytearray(cp);modified[candidate.OFFSET:candidate.OFFSET+2]=candidate.AFTER;cp=bytes(modified)
+    elif prior=='muted':cp=candidate.disable(ap,cp)['cpapp-b.bin']
+    elif prior=='current':cp=candidate.patch(ap,cp)['cpapp-b.bin']
+    before={'appFw.so':ap,'cpapp-b.bin':cp}
+    options=dict(fl23=False,sound=selected)
+    target,settings,_=bundle.plan(before,[{},{}],options,[])
+    assert settings==[{},{}]
+    assert target['appFw.so']==ap
+    if selected or prior=='legacy':assert candidate.is_current(target['cpapp-b.bin'])
+    else:assert target==before
+    assert bundle.plan(target,[{},{}],options,[])[0]==target
+
+
+def test_save_program_contains_selector_upgrade_before_the_audio_boot_hook(stock,tmp_path):
+    import boot_trial
+    from verify_worker import verify,AP,CP
+    ap,cp=stock
+    modified=bytearray(cp);modified[candidate.OFFSET:candidate.OFFSET+2]=candidate.AFTER;cp=bytes(modified)
+    target_ap=bytearray(ap);target_ap[0x100:0x104]=b'test';target_ap=bytes(target_ap)
+    edits=[(0x100,ap[0x100:0x104],b'test')]
+    with patch.object(boot_trial.boot_sound,'verify',return_value=(target_ap,b'CSV',edits,{})):
+        target,parts=boot_trial.prepare(ap,cp,bytes(64),tmp_path/'save')
+    assert candidate.is_current(target['cpapp-b.bin'])
+    assert len(parts['cp_windows'])==2
+    spans=[(CP,w['offset'],bytes.fromhex(w['before_hex']),bytes.fromhex(w['after_hex'])) for w in parts['cp_windows']]
+    spans += [(AP,*edit) for edit in edits]
+    result=verify(parts['program']['path'],parts['program']['sizes'],spans)
+    assert result['compiled_worker_cases']==18
+    assert result['cases'][1]['pwrite_offsets']==[w[1] for w in spans]

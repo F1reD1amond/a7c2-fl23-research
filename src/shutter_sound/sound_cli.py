@@ -341,8 +341,7 @@ def install(root, state, battery, zig=None, *, power_confirmed=False):
     previous_native=load_job(state['native_job']) if state.get('native_job') else None
     if previous_native and previous_native.get('identity'):
         state['native_identity']=previous_native['identity']
-    if (not previous_native or previous_native.get('phase')=='restored'
-            or not previous_native.get('electronic_only_gate')):
+    if not previous_native or previous_native.get('phase')=='restored':
         print('自动准备电子快门声支援；已有开关直接接入，不要求先手动开启或关联旧任务。',flush=True)
         on(root,state,battery,zig,power_confirmed=power_confirmed,defer_reload=True)
     original, _ = native_job(state)

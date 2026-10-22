@@ -20,7 +20,8 @@ def test_foreign_csv_is_not_used_as_a_path():
 
 
 @pytest.mark.parametrize('same',[False,True])
-def test_existing_hook_is_kept_and_audio_publication_precedes_csv(tmp_path,same):
+@pytest.mark.parametrize('upgrade',[False,True])
+def test_existing_hook_is_kept_and_audio_publication_precedes_csv(tmp_path,same,upgrade):
     root=tmp_path/'job';root.mkdir()
     old=bytes(64);payload=old if same else bytes([0,1])*64
     csv=boot_sound.CSV.replace(b'0xEC0',b'0x40')
@@ -31,7 +32,9 @@ def test_existing_hook_is_kept_and_audio_publication_precedes_csv(tmp_path,same)
     state={'identity':{},'journal':[]};events=[];workers={}
     def prepare(ap,cp,raw,output,zig):
         output.mkdir();audio=output/'audio';text=output/'csv';audio.write_bytes(raw);text.write_bytes(b'initial')
-        return dict(before),dict(audio=str(audio),csv=str(text),probe='probe',wbi='wbi',windows=[])
+        target=dict(before,**({'cpapp-b.bin':b'new-selector'} if upgrade else {}))
+        cp_windows=[dict(offset=100,before_hex=b'old'.hex(),after_hex=b'new'.hex())] if upgrade else []
+        return target,dict(audio=str(audio),csv=str(text),probe='probe',wbi='wbi',windows=[],cp_windows=cp_windows)
     def build(audio,csv,path,zig=None,**kwargs):
         workers[str(path)]=(audio,csv,kwargs);return str(path)
     def invoke(camera,root,state,worker,mode):
@@ -43,16 +46,22 @@ def test_existing_hook_is_kept_and_audio_publication_precedes_csv(tmp_path,same)
             # At the publish point both the old and new referenced audio exist.
             assert files[boot_trial.PATHS[0]]==old
             files[boot_trial.PATHS[1]]=csv
+    def native_call(camera,root,state,worker,kind,mode=0,plan=None):
+        events.append((kind,mode))
+        if kind=='program' and mode:
+            files['/cp/cpapp-b.bin']=b'new-selector'
     with patch.object(boot_sound,'expected_windows',return_value=[]),patch.object(boot_sound,'patch',return_value=b'stock'), \
          patch.object(boot_trial,'prepare',side_effect=prepare),patch.object(boot_trial,'probe',return_value={'image_mode':'0'}), \
          patch.object(files_worker,'build',side_effect=build),patch.object(boot_trial,'invoke_files',side_effect=invoke), \
          patch.object(boot_trial,'check_settings'),patch.object(trial,'backup',return_value='small-backup'), \
-         patch.object(trial,'run_native') as native:
+         patch.object(boot_trial,'program_worker',return_value=dict(path='selector',windows=1,sizes=[10,10])), \
+         patch.object(trial,'run_native',side_effect=native_call) as native:
         result=boot_trial.replace_connected(camera,before,root,tmp_path/'backup',state,payload,None)
-    assert result['phase']=='installed_cold_test_pending' and not result['camera_firmware_written']
-    assert files['/usr/lib/appFw.so']==before['appFw.so'] and files['/cp/cpapp-b.bin']==before['cpapp-b.bin']
-    native.assert_not_called()
-    assert events==([] if same else [('files',0),('files',1)])
+    assert result['phase']=='installed_cold_test_pending' and result['camera_firmware_written']==upgrade
+    assert files['/usr/lib/appFw.so']==before['appFw.so']
+    assert files['/cp/cpapp-b.bin']==(b'new-selector' if upgrade else before['cpapp-b.bin'])
+    if not upgrade:native.assert_not_called()
+    assert events==([('program',0)] if upgrade else [])+([] if same else [('files',0),('files',1)])+([('program',1)] if upgrade else [])
 
 
 def test_second_save_does_not_require_restoring_previous_persistent_sound(tmp_path):

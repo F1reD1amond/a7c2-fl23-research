@@ -50,11 +50,19 @@ def replace_connected(camera,before,root,backup_copy,state,payload,zig):
     components['files']=str(files_worker.build(payload,csv,root/'current-files',zig,audio_path=audio_path))
     components['paths']=[name,PATHS[1]]
     state['components']=components;state['resource_update']=True
+    cp_edits=[(w['offset'],bytes.fromhex(w['before_hex']),bytes.fromhex(w['after_hex']))
+              for w in components.get('cp_windows',[])]
+    selector_program=(program_worker(before['appFw.so'],before['cpapp-b.bin'],[],root/'selector-upgrade',zig,
+                                    cp_edits=cp_edits) if cp_edits else None)
+    if selector_program:components['selector_program']=selector_program
     small={'custom.txt':old_csv} if old_csv else {}
     if prior_audio is not None:small[Path(active[0]).name]=prior_audio
+    if cp_edits:small['sound-selector-before.bin']=b''.join(old for _,old,_ in cp_edits)
     state['backup_copy']=trial.backup(root,backup_copy,small)
     trial.save(root,state);camera.programs_pinned=True
     runtime=probe(camera,root,state,components)
+    if selector_program:
+        trial.run_native(camera,root,state,selector_program['path'],'program',0,selector_program)
     if not same:
         worker=files_worker.build(payload,csv,root/'update-files',zig,audio_path=name,previous_csv=old_csv)
         state['phase']='preparing_resource_replacement';trial.save(root,state)
@@ -63,12 +71,16 @@ def replace_connected(camera,before,root,backup_copy,state,payload,zig):
         invoke_files(camera,root,state,worker,1)
     for path,raw in ((name,payload),(PATHS[1],csv)):
         if camera.read(path)!=raw:raise ValueError('Updated custom sound readback differs: '+path)
+    if selector_program:
+        state['phase']='upgrading_electronic_sound_gate';trial.save(root,state)
+        trial.run_native(camera,root,state,selector_program['path'],'program',1,selector_program)
+        state['camera_firmware_written']=True;trial.save(root,state)
     for program,path in (('appFw.so','/usr/lib/appFw.so'),('cpapp-b.bin','/cp/cpapp-b.bin')):
-        if camera.read(path)!=before[program]:raise ValueError('Programs changed during sound-resource replacement')
+        if camera.read(path)!=target[program]:raise ValueError('Programs differ after sound-resource replacement')
     check_settings(camera,before)
-    if not same and runtime['image_mode']=='2':trial.run_native(camera,root,state,components['wbi'],'wbi',1)
+    if (not same or selector_program) and runtime['image_mode']=='2':trial.run_native(camera,root,state,components['wbi'],'wbi',1)
     state.update(phase='installed_cold_test_pending',complete_readback_and_settings_verified=True,
-                 camera_firmware_written=False,audio_resources_written=not same,adopted_same_sound=same)
+                 camera_firmware_written=bool(selector_program),audio_resources_written=not same,adopted_same_sound=same)
     trial.save(root,state)
     return state
 
@@ -82,9 +94,9 @@ def require_dependencies():
 
 def prepare(ap, cp, payload, output, zig=None):
     from looktool import nativebuild
-    candidate.guard(ap, cp, installed=True)
-    if not candidate.is_current(cp):
-        raise ValueError('请重新开启电子快门声以更新机械快门过滤，再保存声音；本次未写入声音。')
+    target_cp=candidate.patch(ap,cp)['cpapp-b.bin']
+    cp_edits=[(at,cp[at:at+len(old)],target_cp[at:at+len(old)])
+              for at,old,_ in candidate.WINDOWS if cp[at:at+len(old)]!=target_cp[at:at+len(old)]]
     target, csv, edits, report = boot_sound.verify(ap, payload)
     root = Path(output)
     root.mkdir(parents=True, exist_ok=False)
@@ -98,7 +110,7 @@ def prepare(ap, cp, payload, output, zig=None):
     header.write_text('\n'.join(lines) + '\n', encoding='ascii')
     nativebuild.compile_worker((Path(__file__).parent / 'native/sound_probe.c'), header, root / 'probe.so', zig, fingerprints=False)
     nativebuild.compile_worker(candidate.ROOT / 'src/fl23/native/wbi.c', header, root / 'wbi.so', zig, fingerprints=False)
-    program = program_worker(ap, cp, edits, root / 'program', zig)
+    program = program_worker(ap, cp, edits, root / 'program', zig,cp_edits=cp_edits)
     post = list(lines) + ['#define CHECK_EXTRA_GUARDS 1',
         'struct ExtraGuard {u64 offset;u32 length;const u8 *bytes;};']
     rows = []
@@ -112,25 +124,27 @@ def prepare(ap, cp, payload, output, zig=None):
     nativebuild.compile_worker((Path(__file__).parent / 'native/sound_probe.c'), post_header,
                                root / 'post-probe.so', zig, fingerprints=False)
     files = files_worker.build(payload, csv, root / 'files', zig)
-    return {'appFw.so': target, 'cpapp-b.bin': cp}, {
+    return {'appFw.so': target, 'cpapp-b.bin': target_cp}, {
         'windows': [{'offset': at, 'before_hex': old.hex(), 'after_hex': new.hex()} for at, old, new in edits],
+        'cp_windows': [{'offset': at, 'before_hex': old.hex(), 'after_hex': new.hex()} for at, old, new in cp_edits],
         'program': program, 'files': str(files), 'probe': str(root / 'probe.so'),
         'post_probe': str(root / 'post-probe.so'),
         'wbi': str(root / 'wbi.so'), 'csv': str(root / 'custom.txt'),
         'audio': str(root / 'custom-shutter.bin')}
 
 
-def program_worker(ap, cp, edits, output, zig=None):
+def program_worker(ap, cp, edits, output, zig=None, *, cp_edits=()):
     from looktool import nativebuild
     root = Path(output)
     root.mkdir(parents=True, exist_ok=False)
     lines, rows = ['#define BYTE_WINDOWS_ONLY 1'], []
-    for index, (at, old, new) in enumerate(edits):
-        if len(old) != len(new) or not old or ap[at:at + len(old)] != old:
+    combined=[(1,cp,*edit) for edit in cp_edits]+[(0,ap,*edit) for edit in edits]
+    for index, (chip,source,at,old,new) in enumerate(combined):
+        if len(old) != len(new) or not old or source[at:at + len(old)] != old:
             raise ValueError('Boot sound program window conflicts')
         for label, value in (('old', old), ('new', new)):
             lines.append('static const u8 ' + label + '_' + str(index) + '[]={' + ','.join(map(str, value)) + '};')
-        rows.append('{' + str(at) + 'UL,' + str(len(old)) + ',0,old_' + str(index) + ',new_' + str(index) + '}')
+        rows.append('{' + str(at) + 'UL,' + str(len(old)) + ',' + str(chip) + ',old_' + str(index) + ',new_' + str(index) + '}')
     lines += ['static const struct Window windows[]={' + ','.join(rows) + '};',
               'static const u32 window_count=' + str(len(rows)) + ';',
               'static const u64 file_sizes[]={' + str(len(ap)) + 'UL,' + str(len(cp)) + 'UL};']
