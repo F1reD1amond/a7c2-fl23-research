@@ -94,7 +94,7 @@ jobs:
           ls -la packages release-assets
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" $files --clobber
-            gh release edit "$tag" --title "$title" --notes-file release-assets/notes.md
+            gh release edit "$tag" --target "$target" --title "$title" --notes-file release-assets/notes.md
           else
             gh release create "$tag" --draft --target "$target" --title "$title" --notes-file release-assets/notes.md $files
           fi
