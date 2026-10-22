@@ -2,7 +2,9 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/changelog.md)
 
-## Unreleased — 3.0.1 candidate
+## 3.0.1 — bug-fix release — 2026-10-22
+
+Fixes software bugs reported by users after 3.0.0. If 3.0.0 works for you, you don't need to update.
 
 - One-click factory restore no longer depends on the state of old tasks. Old records are evidence only: unreadable records, records without a body identity, or records from several bodies are kept and skipped. The restore then re-plans from the connected camera's current bytes and never stops. A finished restore is verified first. If the camera changed since (e.g. features were installed again), it re-plans instead of failing verification on every click. If another body is connected than the unfinished record names, the mismatch is caught from the USB serial before authentication and the restore re-plans for that body. A restore clicked before the cold reload stops without writing and says to power-cycle.
 - Out-of-space name restoration is a known multi-pass case. Each replaced name file stays allocated while the running camera maps it, so a body with little free `/usr` space may stop part-way (e.g. 37/68). The message now gives the progress. After a full power-cycle, clicking restore again continues with the remaining files from current bytes.
