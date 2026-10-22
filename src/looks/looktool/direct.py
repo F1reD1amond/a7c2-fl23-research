@@ -87,6 +87,11 @@ def plan(current, records, mode, *, factory=None, slot=None, look=None, name=Non
                 target[program] = factory[program]
         wanted[0] = recipe_defaults(target['appFw.so'], range(1, 7))
         wanted[0].update({key: b'\0' for key in checkpoint.AP_KEYS})
+        # The current selection must not keep pointing at a removed FL23 entry.
+        row=struct.unpack_from('<8I',target['appFw.so'],0x57c6710-32)
+        if row[:3]!=(3,0x02cf0cbb,0x10000) or row[6]!=0x14e9:
+            raise ValueError('Current Creative Look descriptor differs')
+        wanted[0][row[1]]=b'\0'
         from . import verticalpersist
         if verticalpersist.SETTING in records[0]:
             wanted[0].update(verticalpersist.field(ap, records, False))
@@ -249,6 +254,24 @@ class DirectJob(Rollback):
             super().restore_settings(camera, (keys, ram, saved, old_ram, old_saved))
         if getattr(self, 'vertical_stage', None):self.vertical_stage.finish()
 
+    def prepare_factory_settings(self, camera, prepared):
+        """Save ST recipes before removing code that their old bases require.
+
+        Keep CP color data and vertical resource aliases until their normal
+        restoration steps. A later name-space failure can then be resumed
+        without leaving a saved FL23 recipe on stock programs.
+        """
+        keys,ram,saved,before_ram,before_saved=prepared
+        ready_ram,ready_saved=copy.deepcopy(before_ram),copy.deepcopy(before_saved)
+        for key in keys:
+            ready_ram[0][key]=ram[0][key]
+            ready_saved[0][key]=saved[0][key]
+        if ready_ram!=before_ram or ready_saved!=before_saved:
+            # Do not run vertical_stage.finish() before the program/name steps.
+            Rollback.restore_settings(self,camera,(keys,ready_ram,ready_saved,before_ram,before_saved))
+        self.record('factory_look_settings_safe')
+        return keys,ram,saved,ready_ram,ready_saved
+
     def forward_names(self, camera, build, mode):
         if build.get('unchanged'):
             return
@@ -301,6 +324,7 @@ class DirectJob(Rollback):
                 self.save('PREFLIGHT_VERIFIED', program_builds=[], inverse_name_build=names, forward_name_build=None)
                 print('只继续名称、设置与重新加载准备，不重复写入程序。', flush=True)
                 self.save('WRITING')
+                prepared=self.prepare_factory_settings(camera,prepared)
                 if names:
                     self.native(camera, 'names', 2, names)
                 self.readback(camera, target)
@@ -357,7 +381,8 @@ class DirectJob(Rollback):
                 # Preserve the independent saved calibration when reconstructing
                 # CP units; only the declared FL23 subranges use factory data.
                 prepared = self.settings(camera, current, wanted)
-                programs = checkpointworker.build_programs(current, target, self.root / 'worker', self.zig)
+                programs = checkpointworker.build_programs(current, target, self.root / 'worker', self.zig,
+                    window_priority=(lambda row:(row[0],row[1])) if mode=='factory_reset' else None)
                 inverse_names = None
                 forward = None
                 if rename:
@@ -406,6 +431,7 @@ class DirectJob(Rollback):
                           inverse_name_build=inverse_names, forward_name_build=forward)
                 self.save('WRITING')
                 if self.vertical_stage:self.vertical_stage.prepare()
+                if mode=='factory_reset':prepared=self.prepare_factory_settings(camera,prepared)
                 # Original native records are preserved by appended titles.
                 # Finish the resource transaction before any program edits;
                 # ENOSPC here must leave the previous program executable.
@@ -535,7 +561,8 @@ class DirectJob(Rollback):
                 target, wanted, _ = plan(current, camera.records(current['settings-ram.bin']),
                     'factory_reset', factory=factory_values)
                 prepared = self.settings(camera, current, wanted)
-                programs = checkpointworker.build_programs(current, target, self.root / 'worker', self.zig)
+                programs = checkpointworker.build_programs(current, target, self.root / 'worker', self.zig,
+                    window_priority=lambda row:(row[0],row[1]))
                 names = checkpointworker.build_names(current, target, self.root / 'worker', self.state['job_id'], self.zig,
                                                      defer_busy_readonly=True)
                 self.save('PLANNED', program_builds=programs, inverse_name_build=names, forward_name_build=None)
@@ -569,6 +596,7 @@ class DirectJob(Rollback):
                 print('续接计划：剩余程序批次 %d，剩余名称文件 %d；已符合目标的内容不重复写入。' %
                       (len(programs), names['count'] if names else 0), flush=True)
                 self.save('WRITING')
+                prepared=self.prepare_factory_settings(camera,prepared)
                 for build in programs:
                     self.native(camera, 'program', 1, build)
                 for program, path in checkpoint.PROGRAM_PATHS.items():
