@@ -7,6 +7,11 @@
 - Sound: an unresolved earlier sound operation is now explained in Chinese, naming the operation, and sound diagnostics bundles include a summary of the sound workspace (pending operation, recent history, job phase, event names and file names; no audio or camera buffers).
 - The old-backup section's verify button is now "Check loaded state after an old-backup restore". Clicked without an old-backup restore record (for example after a firmware-file restore), it offers the factory verification instead of failing with a raw "No such file" error; the worker also reports this case in plain words.
 
+## Unreleased — live Creative Look bindings
+
+- Fix ST resets that changed the backup settings while the running AP model still held BW or another old base. Direct LUT installation, selected-slot reset and factory recovery now synchronize selected bases through the native menu's locking, backing-value and notification sequence before completing setting readback. LUT programs are not written if synchronization fails. Unselected bases and the current selection are preserved; Windows and macOS share this backend.
+- On the owner's C2, slot 4 reproduced backup ST / live BW. Both the original menu setter and the integrated worker restored the ST icon and color preview without rebooting or writing firmware programs; the owner confirmed both. Repeated application made no further model change. Offline coverage includes all 63 nonempty combinations of six custom slots and restoration/failure paths; physical coverage remains one body and slot 4.
+
 ## 3.0.2 — bug-fix release — 2026-10-22
 
 Fixes software bugs reported after 3.0.1. If 3.0.1 works for you, you don't need to update.
