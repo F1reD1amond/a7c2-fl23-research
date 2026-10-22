@@ -16,7 +16,7 @@ import uuid
 from contextlib import nullcontext
 
 import trial
-from replacement import replace_request,optional_job,command_lock,ReconnectRequired,supersede_pending
+from replacement import replace_request,optional_job,command_lock,supersede_pending
 
 SCHEMA = 'a7c2-sound-workspace/1'
 RELOAD = ('USB I/O ended. Shut down normally, wait for the access light, unplug '
@@ -320,8 +320,7 @@ def audition(root, state, zig=None):
             Path(state['backup_root']) / adoption.name, zig,
             expected=expected, adopt_only=True))
     original, _ = native_job(state)
-    if previous and (optional_job(previous) or {}).get('identity')!=load_job(original).get('identity'):previous=None
-    replace_jobs=audio_evidence(root,state)
+    replace_jobs=()  # The new request replaces the marker; no old audition proof is required.
     job = new_path(root, 'audition')
     state['audio_job'] = str(job)
     result = operate(root, state, 'audition', job, lambda: buffer_trial.run(job, original,
@@ -356,6 +355,7 @@ def install(root, state, battery, zig=None, *, power_confirmed=False):
     require_idle(state,root)
     conversion=selected_conversion(root,state)
     audio=Path(state['audio_job']) if state.get('audio_job') else None
+    if audio and not (audio/'payload.private.bin').is_file():audio=None
     if conversion:
         payload=(Path(conversion)/'custom-native.private.bin').read_bytes()
         if audio and (not (audio/'payload.private.bin').is_file() or (audio/'payload.private.bin').read_bytes()!=payload):audio=None
@@ -373,7 +373,9 @@ def install(root, state, battery, zig=None, *, power_confirmed=False):
         print('自动准备电子快门声支援；已有开关直接接入，不要求先手动开启或关联旧任务。',flush=True)
         on(root,state,battery,zig,power_confirmed=power_confirmed,defer_reload=True)
     original, _ = native_job(state)
-    if audio and (optional_job(audio) or {}).get('identity')!=load_job(original).get('identity'):audio=None
+    # Current selected bytes are sufficient. Do not use an old audition record
+    # as installation provenance or as a prerequisite for replacement.
+    audio=None
     # Each Save derives the current hook/files from the camera. A previous
     # completed installation is not a restore/old-job prerequisite.
     from looktool.power import require_power
@@ -615,12 +617,6 @@ def main(argv=None, *, report=None, failure=None):
             report(public)
         # Never print body identity, raw native buffers or the complete private journal.
         print(json.dumps(public if args.command not in ('status', 'doctor') else result, indent=2))
-        return 0
-    except ReconnectRequired as exc:
-        result=dict(phase='sound_reconnect_required',camera_io=True,camera_firmware_written=False,
-                    user_action_required=True,next_action=args.command,reason=str(exc))
-        if report is not None:report(result)
-        print(json.dumps(result,ensure_ascii=False))
         return 0
     except (ValueError, OSError, ImportError, RuntimeError, KeyError) as exc:
         detail=('\n电脑端音频处理失败，本次没有相机读写；请修正输入后重试。' if args.command=='volume' else
