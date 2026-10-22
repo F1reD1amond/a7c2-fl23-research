@@ -4,6 +4,33 @@ import struct
 from .nativebuild import ROOT,compile_worker
 from .devicesession import invoke
 
+BASE_KEYS={0x02cf0cd0+2*i:10+i for i in range(6)}
+BASE_KEYS.update({0x02cf1287:16,0x02cf1289:17})
+
+
+def setting_array_changes(before,after,values):
+    """Allow a selected setting's native per-setting copies to take its value.
+
+    BK4 attr 0x80 denotes a Backup_read_setting_attr array, not another recipe.
+    In C2 2.01 each base is followed by its 13 one-byte setting copies. Native
+    setters can update those copies too. Never write them or allow arbitrary
+    changes: only changed elements equal to the selected target are accepted.
+    """
+    changes={}
+    for key,target in values.items():
+        if key not in BASE_KEYS:continue
+        companion=key+1
+        old,new=before[0].get(companion),after[0].get(companion)
+        if old is None and new is None:continue
+        if old is None or new is None:raise ValueError('Look setting-array property missing: '+hex(companion))
+        if (old.data,old.attr)==(new.data,new.attr):continue
+        if old.attr!=0xc0 or new.attr!=old.attr or len(old.data)!=13 or len(new.data)!=13:
+            raise ValueError('Look setting-array layout differs: '+hex(companion))
+        if any(a!=b and b!=target for a,b in zip(old.data,new.data)):
+            raise ValueError('Look setting-array changed outside the selected value: '+hex(companion))
+        changes[companion]=new.data
+    return changes
+
 # Reviewed 2.01 function boundaries. This is a native menu operation, not the
 # withdrawn ff2f04 notification or a patch to any display/preview instructions.
 SIGNATURES={
@@ -24,8 +51,7 @@ SIGNATURES={
 def targets(ap,fields):
     # Descriptor attributes are one greater than the native model attributes.
     result=[]
-    known={0x02cf0cd0+2*i:10+i for i in range(6)}
-    known.update({0x02cf1287:16,0x02cf1289:17})
+    known=BASE_KEYS
     for key,value in sorted(fields.items()):
         if key not in known:continue
         index=known[key];attribute=0x14ea+index
@@ -70,7 +96,7 @@ def parse(raw,selected):
 
 def sync(camera,owner,fields,expected=None):
     previous=getattr(owner,'_synced_look_bases',{})
-    keys={0x02cf0cd0+2*i for i in range(6)}|{0x02cf1287,0x02cf1289}
+    keys=BASE_KEYS
     fields={key:value for key,value in fields.items() if key in keys and previous.get(key)!=value[0]}
     if not fields:return None
     ap=getattr(owner,'_runtime_binding_ap',None)
@@ -83,6 +109,9 @@ def sync(camera,owner,fields,expected=None):
     result=invoke(camera,Path(compiled['path']).read_bytes(),stage='lut-runtime-staged.so',request=None,
         result='a7c2.runtime.result',contents=None,mode=1,decode=lambda raw:parse(raw,selected),
         record=owner.record,save_raw=lambda raw:owner.raw('look-bindings.bin',raw),extras=('a7c2.probe.result',))
+    owned=dict(previous)
+    owned.update({row['key']:row['value'] for row in selected})
+    result['setting_array_updates']=[]
     # Native menu callbacks must preserve the saved/live backup result too.
     for i,memory in enumerate((True,False)):
         records=camera.records(camera.snapshot(memory))
@@ -90,8 +119,9 @@ def sync(camera,owner,fields,expected=None):
             raise ValueError('Look backup changed after native model synchronization')
         if expected is not None:
             from .devicesettings import compare
-            compare(expected[i],records,{},camera.core)
-    owner._synced_look_bases=dict(previous)
-    owner._synced_look_bases.update({row['key']:row['value'] for row in selected})
+            changes=setting_array_changes(expected[i],records,owned)
+            compare(expected[i],records,{key:value.hex() for key,value in changes.items()},camera.core)
+            result['setting_array_updates'].append(dict(source='ram' if memory else 'saved',keys=[hex(k) for k in changes]))
+    owner._synced_look_bases=owned
     owner.record('native_look_bases_synchronized',result=result)
     return result

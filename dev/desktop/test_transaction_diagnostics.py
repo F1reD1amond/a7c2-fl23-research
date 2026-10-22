@@ -52,6 +52,21 @@ def test_program_mismatch_export_keeps_offsets_without_program_bytes(tmp_path,mo
     assert 'PRIVATE-' not in json.dumps(summary)
 
 
+def test_binding_export_keeps_public_values_without_private_payloads(tmp_path,monkeypatch):
+    monkeypatch.setenv('A7C2_DESKTOP_DATA',str(tmp_path/'app'))
+    root=tmp_path/'install';root.mkdir()
+    native=dict(before=[0]*18,after=[0]*16+[10,11],current=13,changed_mask=3<<16,
+        targets=[dict(key=0x02cf1287,index=16,value=10,serial='PRIVATE-SERIAL')],
+        memory='PRIVATE-PROGRAM',calibration='PRIVATE-CALIBRATION')
+    (root/'direct.private.json').write_text(json.dumps(dict(phase='NEEDS_REVIEW',journal=[
+        dict(event='native_result_verified',result=native)])))
+    job=jobs.new_job('direct_verify',dict(workspace=str(root)))
+    result=jobs.transaction_summaries(job)['direct-summary-0.json']['journal'][0]['result']
+    assert result['after'][16:]==[10,11]
+    assert result['targets']==[dict(key=0x02cf1287,index=16,value=10)]
+    assert 'PRIVATE-' not in json.dumps(result)
+
+
 def test_sound_export_names_the_unresolved_operation_without_buffers(tmp_path,monkeypatch):
     monkeypatch.setenv('A7C2_DESKTOP_DATA',str(tmp_path/'app'))
     root=tmp_path/'sound';job=root/'jobs/audition-1';job.mkdir(parents=True)

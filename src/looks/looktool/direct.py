@@ -206,6 +206,11 @@ class DirectJob(Rollback):
     def after_settings_write(self,camera,prepared):
         self.sync_look_bases(camera,prepared)
 
+    def settings_readback_expected(self,before,after,expected):
+        from .runtimebindings import setting_array_changes
+        derived=setting_array_changes(before,after,getattr(self,'_synced_look_bases',{}))
+        return expected|{(0,key):value for key,value in derived.items()}
+
     def save(self, phase, **values):
         if phase=='NEEDS_REVIEW' and self.state.get('phase')!='NEEDS_REVIEW':
             values.setdefault('failed_during',self.state.get('phase'))
@@ -285,6 +290,57 @@ class DirectJob(Rollback):
         if result['removed']:
             print('已清理旧任务遗留的名称备份 %d 个，释放相机 /usr 空间。' % result['removed'], flush=True)
         return result
+
+    def resume_install_settings(self,failed_workspace,*,power_confirmed):
+        """Finish a known completed-program install, without a program writer."""
+        from . import settingsresume,bundle
+        require_power(confirmed=power_confirmed)
+        prior_root,prior=settingsresume.source(failed_workspace)
+        if self.root.exists() and any(self.root.iterdir()):
+            raise ValueError('Use a fresh settings continuation directory')
+        self.root.mkdir(parents=True,exist_ok=True)
+        self.state=dict(schema='a7c2-direct-job/1',mode='install_all',slot=None,name=None,
+            job_id=uuid.uuid4().hex[:16],journal=[],backup_created=False,
+            bundle_options=prior['bundle_options'],settings_resume_from=str(prior_root),program_builds=[],
+            power_confirmation=require_power(confirmed=True))
+        if prior.get('names_cleanup_pending'):
+            self.state.update(names_cleanup_pending=True,forward_name_build=prior['forward_name_build'])
+            header=self.root/'names/names.private.h';header.parent.mkdir()
+            header.write_bytes((prior_root/'names/names.private.h').read_bytes())
+        self.save('READING')
+        try:
+            with self.recovery_session(prior['identity']) as camera:
+                self.state['identity']=camera.identity
+                current=self.capture(camera)
+                options,rows=bundle.documents(prior['bundle_options'])
+                target,wanted,_=bundle.plan(current,camera.records(current['settings-ram.bin']),options,rows)
+                # Plan from the current body and require every program/name to
+                # already match. This method has no program/name write path.
+                for name in checkpoint.PROGRAM_PATHS:
+                    if current[name]!=target[name]:
+                        raise ContentChanged('Saved install programs changed; settings-only continuation stopped: '+name)
+                for filename in nameworker.filenames():
+                    name='resources/'+filename
+                    if current[name]!=target[name]:
+                        raise ContentChanged('Saved install names changed; settings-only continuation stopped: '+filename)
+                self.record('complete_program_and_name_bytes_verified')
+                prepared=self.settings(camera,current,wanted)
+                runtime=self.native(camera,'runtime',0)
+                if runtime['image_mode'].strip() not in ('0','2') or not runtime.get('boot_id','').strip():
+                    raise ValueError('Camera reload state unavailable; no settings continuation started')
+                self.state['source_boot_id']=runtime['boot_id'].strip()
+                self.prepare_vertical(camera)
+                if self.vertical_stage:self.vertical_stage.verify_existing()
+                self.save('RESTORING_SETTINGS')
+                self.restore_settings(camera,prepared)
+                self.save('PREPARING_RELOAD')
+                if runtime['image_mode'].strip()=='2':
+                    self.native(camera,'wbi',0);self.native(camera,'wbi',1)
+            self.save('AWAITING_RELOAD',raw_profile_effective_since=datetime.now().isoformat(timespec='microseconds'))
+            print('已核对程序和名称均符合原安装计划，只续做设置与重新加载准备；没有重复刷写程序。',flush=True)
+            return self.state
+        except BaseException as exc:
+            self.save('NEEDS_REVIEW',error=str(exc));raise
 
     def prepare_factory_settings(self, camera, prepared):
         """Save ST recipes before removing code that their old bases require.

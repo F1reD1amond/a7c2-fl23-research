@@ -11,7 +11,7 @@ from . import lookbatch
 
 
 def run(arguments, *, dispatch):
-    from looktool import bundle
+    from looktool import bundle, settingsresume
     from looktool.power import require_power
     require_power(confirmed=arguments.get('power_confirmed', False))
     if arguments.get('firmware') != '2.01':
@@ -72,7 +72,7 @@ def run(arguments, *, dispatch):
     if state['phase']=='PREPARING_VERTICAL' or (state['phase']=='NEEDS_REVIEW' and state.get('failed_step')=='portrait_frames'):
         print('重新读取当前竖屏与线框状态，续接本次安装；相同内容不重复写入。',flush=True)
         save('PREPARED')
-    if state['phase'] in ('INSTALLING', 'NEEDS_REVIEW', 'RESUMING_RESOURCES'):
+    if state['phase'] in ('INSTALLING', 'NEEDS_REVIEW', 'RESUMING_RESOURCES','RESUMING_SETTINGS'):
         child = install / 'direct.private.json'
         child_state = json.loads(child.read_text(encoding='utf-8')) if child.exists() else {}
         # A ready resource checkpoint can start its program child before the
@@ -82,7 +82,11 @@ def run(arguments, *, dispatch):
             install=nested.parent
             child_state=json.loads(nested.read_text(encoding='utf-8'))
             state['install_workspace']=str(install)
-        if (state['phase']=='RESUMING_RESOURCES' and not child_state and
+        if (state['phase'] in ('RESUMING_SETTINGS','NEEDS_REVIEW') and state.get('resume_settings_from') and not child_state and
+                (not install.exists() or not any(install.iterdir()))):
+            install=Path(state['resume_settings_from'])
+            save('SETTINGS_REVIEW_REQUIRED',install_workspace=str(install))
+        elif (state['phase']=='RESUMING_RESOURCES' and not child_state and
                 (not install.exists() or not any(install.iterdir()))):
             # Dispatch never created a transaction; continue from the saved
             # resource source in a fresh child, never reuse an unknown job.
@@ -104,6 +108,8 @@ def run(arguments, *, dispatch):
             state.setdefault('failed_install_workspaces',[]).append(str(install))
             install=root/('install-retry-'+uuid.uuid4().hex[:8])
             save('PREPARED',install_workspace=str(install))
+        elif settingsresume.eligible(child_state):
+            save('SETTINGS_REVIEW_REQUIRED')
         else:
             from . import reviewnames
             try:reviewnames.source(install)
@@ -124,6 +130,21 @@ def run(arguments, *, dispatch):
                 save('PREPARED',install_workspace=str(install),last_name_failure_review=reviewed)
     host_step=False
     try:
+        if state['phase']=='SETTINGS_REVIEW_REQUIRED':
+            previous=install
+            failed=state.setdefault('failed_install_workspaces',[])
+            if str(previous) not in failed:failed.append(str(previous))
+            candidate=root/('install-settings-'+uuid.uuid4().hex[:8])
+            save('RESUMING_SETTINGS',resume_settings_from=str(previous),install_workspace=str(candidate))
+            print('上次程序与名称已完整读回；核对当前内容后只继续设置，不重装驱动、不重复刷写程序。',flush=True)
+            result=call('direct_resume_settings',dict(common,workspace=str(candidate),failed_workspace=str(previous)),
+                        'settings-resume-'+uuid.uuid4().hex[:6])
+            install=Path(result['workspace']);state['install_result']=result
+            if result['phase']!='AWAITING_RELOAD':raise ValueError('Settings continuation did not reach reload preparation')
+            save('WAIT_RELOAD')
+            from .reloadguide import text
+            print('所有读写已结束。\n'+text(setup=True),flush=True)
+            return state
         if state['phase'] in ('WAIT_RESOURCE_RELOAD','RESOURCE_REVIEW_REQUIRED'):
             print('名称已经写好；核对／准备资源重新加载，不重写名称，不重装驱动。',flush=True)
             previous=install

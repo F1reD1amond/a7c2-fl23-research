@@ -141,6 +141,7 @@ class Rollback:
         for previous,actual,wanted in [(before_ram,actual_ram,ram),(before_saved,actual_saved,saved)]:
             expected={(0,k):wanted[0][k].data for k in keys}
             expected.update({(1,k):wanted[1][k].data for k in checkpoint.CP_KEYS})
+            expected=self.settings_readback_expected(previous,actual,expected)
             # Restrict comparison to writable AP02cf and CP02a4; skip telemetry.
             scope=lambda r:[{k:v for k,v in r[0].items() if k>>16==0x02cf and k!=devicesettings.SAVED_TELEMETRY},
                             {k:v for k,v in r[1].items() if k>>16==0x02a4}]
@@ -149,6 +150,8 @@ class Rollback:
     def after_settings_write(self,camera,plan):
         """Direct jobs synchronize the native model before the final snapshots."""
         pass
+    def settings_readback_expected(self,before,after,expected):
+        return expected
     def run(self,archive,battery,firmware_version,*,power_confirmed=False):
         if firmware_version!='2.01':raise ValueError('Read the camera version page: rollback supports 2.01 only')
         from .power import require_power

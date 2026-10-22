@@ -99,7 +99,9 @@ def run(action, args, job):
             if found:
                 args = dict(args, failed_workspace=str(found[0]))
                 mode = 'resume_factory'
-        if mode=='resume_looks':
+        if mode=='resume_settings':
+            result=obj.resume_install_settings(args['failed_workspace'],power_confirmed=args.get('power_confirmed',False))
+        elif mode=='resume_looks':
             prior_root=Path(args['failed_workspace'])
             prior=DirectJob(prior_root)
             saved=json.loads(prior.state_path.read_text(encoding='utf-8'))

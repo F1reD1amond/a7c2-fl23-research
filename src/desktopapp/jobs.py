@@ -96,6 +96,21 @@ def transaction_summaries(job):
                     'failure_group','failure_step','progress_bytes','available_bytes','required_bytes',
                     'created','removed','source_sizes',
                     'program','expected_bytes','actual_bytes','first_difference') if k in event['result']}
+                # These are public look indices/values, not program or sensor
+                # bytes. Keep the binding report that older exports discarded.
+                native=event['result']
+                targets=native.get('targets')
+                if isinstance(targets,list) and targets and all(isinstance(t,dict)
+                        and t.get('key') in {*(0x02cf0cd0+2*i for i in range(6)),0x02cf1287,0x02cf1289}
+                        and type(t.get('index')) is int and t['index'] in range(10,18)
+                        and type(t.get('value')) is int and t['value'] in range(12) for t in targets):
+                    row['result']['targets']=[{k:t[k] for k in ('key','index','value')} for t in targets]
+                    for key in ('before','after'):
+                        value=native.get(key)
+                        if isinstance(value,list) and len(value)==18 and all(type(v) is int and 0<=v<=0xffffffff for v in value):
+                            row['result'][key]=value
+                    for key in ('current','changed_mask'):
+                        if type(native.get(key)) is int:row['result'][key]=native[key]
             summary['journal'].append(row)
         result['direct-summary-%d.json'%i]=summary
     return result
