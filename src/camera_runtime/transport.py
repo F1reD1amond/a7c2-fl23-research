@@ -19,13 +19,13 @@ class SenserProtocolError(RuntimeError):
 
 
 class SonySenserDevice(PmcaSenserDevice):
-    """Finish aligned IN transfers before sending the next command.
+    """Use length-delimited reads, finishing direct CP unit reads explicitly.
 
-    Keep 3.0.2's bounded end-packet read: the camera can still own its previous
-    response until that packet is received. Preserve nonempty lookahead bytes
-    rather than discarding them as the old end-packet reader did.
+    File/settings snapshots retain the field-tested v2 no-eager-read path.
+    Direct CP reads finish their aligned response before the immediate WRITE41.
+    Preserve any nonempty lookahead rather than discarding real data.
     """
-    RESPONSE_FRAMING='length-delimited-zlp/2'
+    RESPONSE_FRAMING='length-delimited-zlp/3'
     END_PACKET_MS=1000
 
     def __init__(self,driver):
@@ -69,6 +69,8 @@ class SonySenserDevice(PmcaSenserDevice):
             raise
 
     def _exchange(self,pFunc,data,oData):
+        finish_cp_read=(pFunc==SonySenserCamera.SONY_PFUNC_AdjustControl
+                        and data[:4]==struct.pack('<HH',0x603,0x40))
         while data!=b'':
             header=self.SenserPacketHeader.pack(size=len(data),pFunc=pFunc,sequence=self._sequence,
                                                 version=0,miconType=0,offsetType=0,response=0)
@@ -95,7 +97,7 @@ class SonySenserDevice(PmcaSenserDevice):
                 l=min(dataLen-done,chunkLen)
                 outData.write(self._readAll(l))
                 done+=l
-                if not (l&(self.SenserMinSize-1)):self._end_packet()
+                if finish_cp_read and not (l&(self.SenserMinSize-1)):self._end_packet()
                 chunkLen=self.SenserChunkSize
             if header.size<=self.SenserMaxSize:break
         self._sequence+=1

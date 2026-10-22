@@ -4,7 +4,8 @@
 
 ## Unreleased
 
-- Restore the 3.0.2 ordering that finishes an aligned Senser IN response before sending the next command. Removing its end-packet read in `197a4e4` left a CP read's completion pending before the immediate WRITE41 in recovery. Keep a one-second bounded finish read, but buffer any nonempty continuation bytes instead of discarding them. The new regression exercises actual CP read → changed-unit write → full readback, including a receiver that blocks a long OUT command while its preceding IN response remains unfinished. The experimental CP OUT fragmentation/partial-send change was withdrawn after its physical test still timed out. No old transaction is replayed; physical acceptance of this correction remains pending.
+- Limit the restored one-second end-packet read to direct CP unit READ40 requests, before a subsequent WRITE41. File and settings-snapshot reads retain the v2 no-eager-read path that completed all 72 reads in 9.75 s on the affected Windows camera. Nonempty CP lookahead is buffered. The captured v2 metadata trace also replays against this scoped implementation: 143 requests and 8,520 USB reads with matching lengths/order; payload contents were synthetic because raw camera bytes were not exported.
+- The owner confirmed factory recovery works with cp-restore.2; its local transaction reached LOADED after the fresh-boot check. This is one-body physical evidence for recovery. The experimental OUT-fragmentation change remains withdrawn. The recipient has not yet physically tested this scoped revision.
 
 ## 3.0.3 — important fixes, recommended for everyone — 2026-10-23
 
