@@ -104,3 +104,84 @@ def test_reenable_repairs_current_pr_bytes_with_a_stale_active_table(looks_first
     assert firmware.apply(after,reverse)==programs
     assert compat.plan(after['appFw.so'],after['cpapp-b.bin'],transitions=False)[1]
 
+
+def test_native_fl23_and_custom_base_fl23_use_the_same_ap_mode(looks_first):
+    from unicorn import Uc,UC_ARCH_ARM64,UC_MODE_ARM
+    from unicorn.arm64_const import UC_ARM64_REG_W0,UC_ARM64_REG_W1,UC_ARM64_REG_X2,UC_ARM64_REG_X30
+    current,records,installed,working,_=looks_first
+    standalone,wanted,_=direct.plan(current,records,'fl23_enable')
+    combined,_,_=direct.plan(installed,working,'fl23_enable')
+    assert wanted[0]=={0x02cf1287:b'\x0a',0x02cf1289:b'\x0b'}
+    for target in (standalone,combined):
+        ap=target['appFw.so']
+        cpu=Uc(UC_ARCH_ARM64,UC_MODE_ARM)
+        cpu.mem_map(0x3528000,4096);cpu.mem_write(0x35287f0,ap[0x35287f0:0x3528880])
+        cpu.mem_map(0x4c7c000,4096);cpu.mem_write(0x4c7cf7c,ap[0x4c7cf7c:0x4c7cf88])
+        cpu.mem_map(0x30000000,4096);cpu.mem_map(0x31000000,4096)
+        for selector in (10,15,17,18):
+            for binding,mode in ((10,19),(11,20)):
+                for register,value in ((UC_ARM64_REG_W0,selector),(UC_ARM64_REG_W1,binding),
+                        (UC_ARM64_REG_X2,0x30000000),(UC_ARM64_REG_X30,0x31000000)):
+                    cpu.reg_write(register,value)
+                cpu.emu_start(0x35287f0,0x31000000,count=100)
+                assert bytes(cpu.mem_read(0x30000000,1))==bytes([mode])
+
+
+def test_preview_and_photo_constructors_use_the_updated_fl23_records(looks_first):
+    from unicorn import Uc,UC_ARCH_ARM,UC_MODE_THUMB
+    from unicorn.arm_const import UC_ARM_REG_R0,UC_ARM_REG_R1,UC_ARM_REG_R4,UC_ARM_REG_R11,UC_ARM_REG_LR
+    current,records,installed,working,_=looks_first
+    standalone,_,_=direct.plan(current,records,'fl23_enable')
+    combined,_,_=direct.plan(installed,working,'fl23_enable')
+    for target,relocated in ((standalone,False),(combined,True)):
+        cp=target['cpapp-b.bin']
+        cpu=Uc(UC_ARCH_ARM,UC_MODE_THUMB)
+        cpu.mem_map(photobuild.BASE,(len(cp)+4095)&~4095);cpu.mem_write(photobuild.BASE,cp)
+        cpu.mem_map(0x31000000,4096)
+        # Every gamma-table constructor edited by the two engines, including
+        # the separate 0x9cf... path, must resolve to the table we inspect.
+        table=photobuild.TABLE_VA if relocated else 0x1209480
+        for low,high,register in ((0x32345a,0x323464,UC_ARM_REG_R11),
+                (0x323d82,0x323d8a,UC_ARM_REG_R1),(0x323dd0,0x323dd8,UC_ARM_REG_R1),
+                (0x323eb6,0x323eba,UC_ARM_REG_R0),(0x9cf436,0x9cf43e,UC_ARM_REG_R1)):
+            cpu.reg_write(register,0)
+            for at in (low,high):
+                cpu.emu_start((photobuild.BASE+at)|1,photobuild.BASE+at+4,count=1)
+            assert cpu.reg_read(register)==table
+        entry=photobuild.BASE+(0xb27500 if relocated else 0x138832)
+        for mode,photo_row,movie_row,photo_record in ((19,48,46,0),(20,49,47,2)):
+            for domain,row,index in ((0,photo_row,photo_record),(1,movie_row,photo_record+1)):
+                cpu.reg_write(UC_ARM_REG_R0,mode);cpu.reg_write(UC_ARM_REG_R4,domain)
+                cpu.reg_write(UC_ARM_REG_LR,0x31000001)
+                cpu.emu_start(entry|1,0x31000000,count=100)
+                assert cpu.reg_read(UC_ARM_REG_R0)==mode
+                modes=cpu.reg_read(UC_ARM_REG_R1)
+                actual_row=struct.unpack('<I',cpu.mem_read(modes+mode*8+domain*4,4))[0]
+                assert actual_row==row
+                pointer=struct.unpack('<I',cpu.mem_read(table+row*28+6*4,4))[0]
+                assert pointer==0x1208b80+index*576
+                curve=bytes(cpu.mem_read(pointer,576))
+                assert struct.unpack_from('<I',curve,0x21c)[0]==(5 if domain==0 else 6)
+
+
+def test_real_write_plan_contains_active_rows_and_both_saved_bindings(looks_first,tmp_path):
+    from types import SimpleNamespace
+    from looktool import checkpointworker
+    _,_,installed,working,_=looks_first
+    target,wanted,_=direct.plan(installed,working,'fl23_enable')
+    camera=SimpleNamespace(records=lambda raw:working)
+    prepared=direct.DirectJob(tmp_path/'settings').settings(camera,
+        {'settings-ram.bin':b'ram','settings-saved.bin':b'saved'},wanted)
+    for fields in prepared[1:3]:
+        assert fields[0][0x02cf1287].data==b'\x0a'
+        assert fields[0][0x02cf1289].data==b'\x0b'
+        for key,value in wanted[1].items():
+            assert fields[1][key].data==value
+    changes=list(checkpointworker.differences(installed['cpapp-b.bin'],target['cpapp-b.bin']))
+    for row in (46,47,48,49):
+        start=photobuild.TABLE_FILE+row*28
+        assert any(at<start+28 and start<at+len(old) for at,old,new in changes)
+    # Compile the actual AArch64 program workers, without executing them.
+    builds=checkpointworker.build_programs(installed,target,tmp_path/'workers')
+    assert builds and all(Path(build['path']).read_bytes().startswith(b'\x7fELF') for build in builds)
+

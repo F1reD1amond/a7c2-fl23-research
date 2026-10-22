@@ -6,6 +6,7 @@
 
 - Fix enabling/re-enabling FL23 after native custom looks were installed: update the active relocated gamma table as well as the original table. Preserve all six custom LUTs, native slot parameters and body calibration. Re-enabling also repairs the stale copied table left by earlier versions. This shared planner serves Windows and macOS.
 - Audit merged PRs #5 and #6: their color records, still/movie gamma curves and routing helper are used by the GUI and included in the published Windows 3.0.1 package. The missed integration was the second table used by native custom looks. Offline reproduction and regression tests do not establish physical output on the affected body.
+- Exercise the installed AP converter and CP gamma selectors/constructors in offline instruction emulation, and compile the actual write workers. Normal and custom-slot FL23 bases both map to CP modes 19/20 with bindings 10/11. The separate report that only the custom-slot entry works still needs the affected body's binding/reload evidence. Unicorn on Windows prints handled native exception diagnostics during the emulator tests even though the assertions pass and the process exits successfully.
 
 ## 3.0.1 — bug-fix release — 2026-10-22
 
