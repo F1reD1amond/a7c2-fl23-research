@@ -6,6 +6,21 @@
 
 **3.0 是第一个带正式图形界面的版本。**从装驱动、安装、断电重开到核对，都在同一个窗口里按按钮完成，不再需要命令行。
 
+## 支持的机型
+
+> [!IMPORTANT]
+> **本工具只支持 Sony A7C II（ILCE-7CM2），固件 2.01。**其他机型（包括 A7 IV、A7CR、A7R V、A6700、A7 V 等）都**不能**使用，程序会拒绝连接，请不要尝试。
+
+其他机型可以关注下面这些独立项目。它们和本项目没有关系，支持范围和风险以各自的说明为准：
+
+| 机型 | 项目 | 内容 |
+| --- | --- | --- |
+| A7CR | [lzh2016zzz/a7cr-fl23-research](https://github.com/lzh2016zzz/a7cr-fl23-research) | FL2／FL3 移植研究 |
+| A7R V | [Hearts-Ace/sony-a7r5-custom-firmware](https://github.com/Hearts-Ace/sony-a7r5-custom-firmware) | FL2／FL3 固件适配与 RAW 色彩研究 |
+| A7 IV | [DavidBuchanan314/ILCE-7M4-RE](https://github.com/DavidBuchanan314/ILCE-7M4-RE) | 机身固件逆向研究笔记 |
+| A6700 | [xyzhangxin/sony-a6700-powerful](https://github.com/xyzhangxin/sony-a6700-powerful) | 固件 2.00 中文教程：Pico 接线、进入 Fastboot、备份，以及功能解锁 |
+| A7 V | 暂时没有改机身固件的项目 | [751K/sony-a7m5-looks](https://github.com/751K/sony-a7m5-looks) 把 A7 V 的创意外观做成了 Lightroom／Capture One 配置文件（只在电脑上用，不改相机） |
+
 **交流群：**[Telegram（推荐）](https://t.me/sonyfwlab) · [Discord](https://discord.gg/SwPdfSd9c)
 **作者：**小红书 [QAQLeonard（读研版）](https://www.xiaohongshu.com/user/profile/660501f7000000000600d03c) · 抖音 **LeonardZ**（抖音号 `90860261487`）
 
@@ -14,6 +29,7 @@
 
 ## 目录
 
+- [支持的机型](#支持的机型)
 - [能做什么](#能做什么)
 - [下载与系统要求](#下载与系统要求)
 - [开始前必读](#开始前必读)

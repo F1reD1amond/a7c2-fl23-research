@@ -6,6 +6,21 @@ A desktop tool for the **Sony A7C II (ILCE-7CM2) on firmware 2.01**. It adds FL2
 
 **3.0 is the first release with a proper graphical interface.** Driver setup, installation, cold reload and verification all happen with buttons in one window; no command line needed.
 
+## Supported cameras
+
+> [!IMPORTANT]
+> **This tool supports only the Sony A7C II (ILCE-7CM2) on firmware 2.01.** It does **not** work on any other model, including the A7 IV, A7CR, A7R V, A6700 and A7 V. The app refuses to connect to them; please don't try.
+
+For other models, these independent projects may help. They are not part of this project; check each one for its own scope and risks:
+
+| Camera | Project | What it is |
+| --- | --- | --- |
+| A7CR | [lzh2016zzz/a7cr-fl23-research](https://github.com/lzh2016zzz/a7cr-fl23-research) | FL2/FL3 porting research |
+| A7R V | [Hearts-Ace/sony-a7r5-custom-firmware](https://github.com/Hearts-Ace/sony-a7r5-custom-firmware) | FL2/FL3 firmware adaptation and RAW color research |
+| A7 IV | [DavidBuchanan314/ILCE-7M4-RE](https://github.com/DavidBuchanan314/ILCE-7M4-RE) | Firmware reverse-engineering notes |
+| A6700 | [xyzhangxin/sony-a6700-powerful](https://github.com/xyzhangxin/sony-a6700-powerful) | Chinese guide for firmware 2.00: Pico wiring, Fastboot, backups and feature unlocks |
+| A7 V | No in-camera firmware project yet | [751K/sony-a7m5-looks](https://github.com/751K/sony-a7m5-looks) ports the A7 V Creative Looks to Lightroom/Capture One profiles (computer only; the camera is not modified) |
+
 **Community:** [Telegram (recommended)](https://t.me/sonyfwlab) · [Discord](https://discord.gg/SwPdfSd9c)
 **Author:** Xiaohongshu [QAQLeonard（读研版）](https://www.xiaohongshu.com/user/profile/660501f7000000000600d03c) · Douyin **LeonardZ** (ID `90860261487`)
 
@@ -16,6 +31,7 @@ The interface is in Simplified Chinese. Button names below are given in Chinese 
 
 ## Contents
 
+- [Supported cameras](#supported-cameras)
 - [What it does](#what-it-does)
 - [Download and requirements](#download-and-requirements)
 - [Before you start](#before-you-start)
