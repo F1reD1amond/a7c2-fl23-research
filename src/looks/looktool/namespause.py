@@ -20,14 +20,30 @@ def source(folder):
     if any(e.get('event')=='native_intent' and e.get('result')=='checkpoint.program.result' and e.get('mode')==1 for e in state['journal']):
         raise ValueError('Program writes have started; not a name-only checkpoint')
     paths=list((root/'evidence').glob('*-names-forward-1.bin'))
-    if len(paths)!=1 or not nameworker.completed_mount_busy(paths[0].read_bytes(),1,build):
+    raw=paths[0].read_bytes() if len(paths)==1 else b''
+    busy=nameworker.completed_mount_busy(raw,1,build)
+    # A streamed install leaves no name backups to clean, so a clean complete
+    # report is the same checkpoint once its temporary files are accounted for.
+    clean=False
+    if not busy and raw and build.get('stream_install'):
+        try:clean=not nameworker.validate(raw,1,build).get('readonly_deferred_busy')
+        except ValueError:clean=False
+    if not (busy or clean):
         raise ValueError('Names/cleanup/mount outcome is not fully accounted for')
     if state['phase']=='NEEDS_REVIEW':
-        if not state['journal']:raise ValueError('No completed operation report to continue')
-        last=state['journal'][-1]
-        if last.get('event')!='native_intent' or last.get('result')!='a7c2.names.result' or last.get('mode')!=1:
+        journal=state['journal']
+        if not journal:raise ValueError('No completed operation report to continue')
+        last=journal[-1]
+        during=(busy and last.get('event')=='native_intent' and last.get('result')=='a7c2.names.result'
+                and last.get('mode')==1)
+        # Stopped after the names finished and were cleaned up, e.g. a USB
+        # read error before the first program stage: nothing else ran.
+        tail=journal[-3:] if last.get('event')=='names_complete_programs_unchanged_verified' else journal[-2:]
+        after=(len(tail)>=2 and tail[0].get('event')=='native_result_verified' and tail[1].get('event')=='native_cleanup_verified'
+               and all(e.get('stage')=='lut-names-staged.so' and e.get('mode')==1 for e in tail[:2]))
+        if not (during or after):
             raise ValueError('Unknown operation after name commit')
-    return root,state,paths[0].read_bytes()
+    return root,state,raw
 
 
 def verify_files(camera,root,state):

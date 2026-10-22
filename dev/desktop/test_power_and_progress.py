@@ -216,6 +216,29 @@ class PowerProgressTests(unittest.TestCase):
         new_job.assert_not_called()
         self.assertEqual(window.settings['factory_direct_work'], str(failed))
 
+    def test_first_one_click_on_windows_suggests_drivers_first(self):
+        window = self.window()
+        window.settings.pop('connection_verified', None)
+        args = {'workspace': str(self.root / 'new-setup')}
+        with patch('desktopapp.window.sys.platform', 'win32'):
+            for choice, proceed in (('drivers', False), ('cancel', False), ('continue', True)):
+                with self.subTest(choice=choice), patch.object(window, 'ask_drivers_first', return_value=choice) as ask:
+                    window.nav.setCurrentRow(0)
+                    self.assertEqual(window.drivers_first(args), proceed)
+                    ask.assert_called_once()
+                    self.assertEqual(window.nav.currentRow(), 1 if choice == 'drivers' else 0)
+            # A verified connection, or an installation already in progress, is not asked again.
+            with patch.object(window, 'ask_drivers_first') as ask:
+                window.settings['connection_verified'] = True
+                self.assertTrue(window.drivers_first(args))
+                window.settings.pop('connection_verified')
+                (self.root / 'new-setup').mkdir(); (self.root / 'new-setup/setup.private.json').write_text('{}')
+                self.assertTrue(window.drivers_first(args))
+                ask.assert_not_called()
+        with patch('desktopapp.window.sys.platform', 'darwin'), patch.object(window, 'ask_drivers_first') as ask:
+            self.assertTrue(window.drivers_first({'workspace': str(self.root / 'mac')}))
+            ask.assert_not_called()
+
     def test_completed_continuation_is_verified_first_with_rewrite_fallback(self):
         window = self.window()
         failed, completed = self.root / 'old-failure', self.root / 'completed'

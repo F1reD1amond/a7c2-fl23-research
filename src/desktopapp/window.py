@@ -9,6 +9,9 @@ from . import VERSION
 from . import jobs
 from . import presets
 from . import reloadguide
+
+DRIVER_HINT = ('\n驱动或连接没有成功：先在“连接与驱动”页卸载驱动后重装；仍不行，'
+               '可按 README 的“驱动还是装不上：用 Zadig 手动安装”给 0E8A 和 0336 两个身份分别装 libusbK。')
 from . import connectionguide
 from .paths import ROOT, data_root, load_settings, write_json
 from .theme import WINDOW as STYLE
@@ -202,6 +205,41 @@ class Window(W.QMainWindow):
         compile_button.clicked.connect(self.compiler_dialog); look_section.addWidget(compile_button); self.buttons.append(compile_button)
         hint = W.QLabel('恢复出厂、卸载驱动和删除外观不会混入安装流程。自定义声音请在“电子快门声音”中转换后直接保存，试听可选。')
         hint.setWordWrap(True); layout.addWidget(hint); layout.addStretch()
+
+    def drivers_first(self, arguments):
+        """Suggest the connection page before a first one-click install on Windows."""
+        if (sys.platform != 'win32' or self.settings.get('connection_verified')
+                or Path(arguments.get('workspace', ''), 'setup.private.json').is_file()):
+            return True
+        choice = self.ask_drivers_first()
+        if choice == 'drivers':
+            self.nav.setCurrentRow(1)
+        return choice == 'continue'
+
+    def ask_drivers_first(self):
+        box = W.QMessageBox(self)
+        box.setWindowTitle('建议先安装驱动')
+        box.setText('这台电脑还没有成功连接过相机。建议先到“连接与驱动”页，点“准备两阶段驱动并测试连接”，'
+                    '看到连接成功后再回来一键安装。')
+        box.setInformativeText('一键安装也会自动尝试安装驱动，但驱动失败时排查更麻烦。'
+                               '驱动反复装不上，可按 README 的“驱动还是装不上：用 Zadig 手动安装”操作。')
+        go = box.addButton('先去安装驱动', W.QMessageBox.AcceptRole)
+        box.addButton('直接一键安装', W.QMessageBox.DestructiveRole)
+        cancel = box.addButton(W.QMessageBox.Cancel)
+        box.setDefaultButton(go)
+        box.exec()
+        return 'drivers' if box.clickedButton() is go else 'cancel' if box.clickedButton() is cancel else 'continue'
+
+    def driver_step_failed(self, action):
+        if action in ('usb_prepare', 'connect', 'driver_install'):
+            return True
+        if action != 'setup_all':
+            return False
+        try:
+            state = json.loads(Path(self.settings.get('setup_work', ''), 'setup.private.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return False
+        return 'drivers' not in state.get('completed_steps', [])
 
     def direct_verify_args(self, group, accepted=False):
         workspace=self.settings.get(group + '_direct_work', '')
@@ -636,6 +674,8 @@ class Window(W.QMainWindow):
         if self.process is not None:
             return
         factory_finished = False
+        if action == 'setup_all' and not self.drivers_first(arguments):
+            return
         if action=='direct_looks_import' and arguments.get('failed_workspace'):
             action='direct_resume_looks'
         if action=='direct_looks_import':
@@ -785,6 +825,9 @@ class Window(W.QMainWindow):
         status_path = self.current_job / 'status.private.json'
         status = json.loads(status_path.read_text(encoding='utf-8')) if status_path.exists() else {}
         success = code == 0 and status.get('phase') == 'SUCCEEDED'
+        if success and (status.get('action') in ('usb_prepare', 'connect') or
+                        (status.get('action') == 'setup_all' and 'drivers' in status.get('result', {}).get('completed_steps', []))):
+            self.settings['connection_verified'] = True
         if success and status.get('action') == 'restore_auto':
             self.fields['restore_backup'].setText(status['result']['backup'])
             self.fields['restore_work'].setText(status['result']['workspace'])
@@ -825,6 +868,8 @@ class Window(W.QMainWindow):
                            '名称与只读挂载已确认；程序尚未安装，请点自定义外观页“继续槽位更改”。' if resource_ready else
                            '完成。请按日志提示进行下一步。' if success else
                            '操作停止：' + status.get('error', '进程异常退出，退出码 ' + str(code)) + '。请导出诊断包。')
+        if not success and sys.platform == 'win32' and self.driver_step_failed(status.get('action')):
+            self.status.setText(self.status.text() + DRIVER_HINT)
         if sound_notice:self.status.setText(sound_notice['status'])
         if factory_wait:self.status.setText('恢复尚未完成：写入和读回已结束，必须断电重启、接回 USB，再点“重启后核对并完成恢复”。')
         elif factory_done:self.status.setText('原厂恢复核对通过，旧安装状态已清除。请继续检查机身拍摄和回放；重新安装请点首页“一键安装”。')

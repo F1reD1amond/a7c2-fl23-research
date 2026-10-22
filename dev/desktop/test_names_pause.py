@@ -71,6 +71,30 @@ class NamesPauseTests(unittest.TestCase):
             self.assertFalse(self.camera.native_calls)
             self.camera.files=files;self.temps.clear();self.temps.update(temps)
 
+    def test_read_error_after_completed_cleaned_names_continues_without_name_write(self):
+        # Field case: names committed and cleaned up, then "Wrong senser
+        # sequence" before the first program stage. Clean and busy reports.
+        clean=nameworker.REPORT.pack(b'A7NMR001',1,1,9,68,0,0,0,0,0,0,517,68,0,68,0,0,0,bytes(32))
+        done=[dict(event='native_result_verified',stage='lut-names-staged.so',mode=1,result={}),
+              dict(event='native_cleanup_verified',stage='lut-names-staged.so',mode=1)]
+        for raw in (clean,self.raw):
+            with self.subTest(busy=raw is self.raw):
+                (self.failed/'evidence/failed-names-forward-1.bin').write_bytes(raw)
+                self.state['journal']=[dict(event='native_intent',result='a7c2.names.result',mode=1),*done]
+                self.save();self.temps.clear()
+                self.assertEqual(namespause.source(self.failed)[2],raw)
+                job=SimDirect(self.root/('after-'+str(len(self.camera.native_calls))+str(raw is self.raw)),factory=self.camera)
+                job.prepare_names_reload(self.failed,power_confirmed=True)
+                self.assertFalse(any(kind in ('program','names') for kind,mode in self.camera.native_calls))
+                # Anything that ran after the names is not this checkpoint.
+                self.state['journal'].append(dict(event='native_intent',result='a7c2.wbi.result',mode=0))
+                self.save()
+                with self.assertRaisesRegex(ValueError,'Unknown operation'):namespause.source(self.failed)
+        self.build['stream_install']=False;self.state['forward_name_build']=self.build
+        self.state['journal']=[dict(event='native_intent',result='a7c2.names.result',mode=1),*done];self.save()
+        (self.failed/'evidence/failed-names-forward-1.bin').write_bytes(clean)
+        with self.assertRaisesRegex(ValueError,'not fully accounted'):namespause.source(self.failed)
+
     def test_only_complete_clean_stream_name_busy_is_accepted(self):
         self.assertTrue(nameworker.validate(self.raw,1,self.build,allow_completed_busy=True)['readonly_deferred_busy'])
         with self.assertRaises(ValueError):nameworker.validate(self.raw,1,self.build)
