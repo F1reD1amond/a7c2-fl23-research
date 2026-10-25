@@ -2,6 +2,10 @@
 
 [Home](../../README.md) · [简体中文](../zh-CN/changelog.md)
 
+## Standard license update — 2026-10-25
+
+- Use the unmodified public PolyForm Noncommercial License 1.0.0, replacing the previous MIT/Commons Clause combination and custom preamble. README and startup notice prominently state the commercial-use/profit prohibition, separately from the false-authorization heading. Third-party and previous licenses are retained.
+
 ## License change — 2026-10-25
 
 - Apply MIT with Commons Clause 1.0 to QAQLeonard's original project code in subsequent distributions, within the rights owned or authorized. Restrict paid flashing, resale and paid unlocking according to the clause's definition of Sell. Retain the original MIT text and separately licensed contributions, third-party components and DCP/profile terms. This is a source-available license, not plain MIT or an OSI-approved open-source license. Earlier grants and published release packages are unchanged.

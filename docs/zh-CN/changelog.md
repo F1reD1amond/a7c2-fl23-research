@@ -2,6 +2,10 @@
 
 [首页](../../README.zh-CN.md) · [English](../en/changelog.md)
 
+## 标准许可证更新 — 2026-10-25
+
+- 采用公开原文的 PolyForm Noncommercial License 1.0.0，替代此前 MIT＋Commons Clause 组合及自拟前言。首页和启动弹窗统一突出“禁止一切商用牟利行为”，独立保留禁止冒充授权的标题；第三方及旧版原有许可不变。
+
 ## 许可证切换 — 2026-10-25
 
 - 后续发行版中，QAQLeonard 持有或有权许可的项目原创代码采用 MIT＋Commons Clause 1.0，按其 Sell 定义限制收费代刷、售卖或付费解锁本工具。保留原 MIT 文本，以及其他贡献者独立贡献、第三方组件、DCP／外观素材的原许可。这是源码可用许可，不再标为纯 MIT 或 OSI 意义的开源许可；旧版已授予的许可及既有 Release 安装包不变。
