@@ -7,15 +7,15 @@
 >
 > **This is an unofficial, independent research tool for learning and technical discussion. It is not affiliated with, authorized or endorsed by Sony.**
 >
-> **Use at your own risk:** modifying a camera can cause boot failure, repeated restarts, malfunctions or data loss, and can affect official updates, warranty or repair. Successful writes and matching readback do not establish boot safety; restoration is not guaranteed to recover the camera.
+> **Use at your own risk: modifying a camera can cause boot failure, repeated restarts, malfunctions or data loss, and can affect official updates, warranty or repair. Successful writes and matching readback do not establish boot safety; restoration is not guaranteed to recover the camera.**
 >
-> **Do not claim official or author authorization:** the author provides this project free of charge, offers no paid flashing service, and opposes third-party resale, paid remote installation, activation keys/dongles and hardware bundles for profit. Do not advertise, charge or promise warranty coverage in Sony's or the author's name.
+> **Do not claim official or author authorization: the author provides this project free of charge, offers no paid flashing service, and explicitly opposes any use of this project for commercial profit, including third-party resale, paid flashing, paid remote installation, activation keys/dongles and hardware bundles. Do not advertise, charge or promise warranty coverage in Sony's or the author's name.**
 >
-> Only operate a device you lawfully own or for which the owner has given explicit permission. Back up important data. Do not proceed if you cannot accept device damage and repair costs.
+> **Only operate a device you lawfully own or for which the owner has given explicit permission. Back up important data. Do not proceed if you cannot accept device damage and repair costs.**
 >
-> Code remains MIT-licensed. This statement does not revoke the commercial-use or redistribution rights already granted by MIT, or exclude liability that cannot lawfully be excluded.
+> **The author has not authorized third parties to offer paid services or promise warranty coverage in the author's name. This statement provides no endorsement or guarantee of third-party commercial activities and does not exclude liability that cannot lawfully be excluded. See [LICENSE](LICENSE) for the code license and [Sources and licenses](docs/en/notices.md) for third-party rights.**
 >
-> [Read the full risk notice and use statement](docs/en/notices.md#risk-notice-and-use-statement)
+> **[Read the full risk notice and use statement](docs/en/notices.md#risk-notice-and-use-statement)**
 
 A desktop tool for the **Sony A7C II (ILCE-7CM2) on firmware 2.01**. It adds FL2/FL3, custom Creative Looks, electronic shutter sound and Vertical Display, and can restore factory functions in one click.
 
