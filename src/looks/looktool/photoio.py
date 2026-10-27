@@ -113,13 +113,31 @@ def loaded_storage(cp):
 def allocation(cp):
     from .device_layout import runtime
     loaded_storage(cp)
-    spec=next(row for row in runtime()['cp_sources'] if row['kind']=='fl23')
+    asset=runtime()
+    spec=next(row for row in asset['cp_sources'] if row['kind']=='fl23')
     # These authored entry/selector and retry blocks establish which runtime
     # owns the extension. Empty bytes alone are never an allocation proof.
     for window in spec['windows']:
         if window['offset'] not in (0xb27490,0xb27f10):continue
         raw=bytes.fromhex(window['after']);at=window['offset']
-        if cp[at:at+len(raw)]!=raw:raise ValueError('Six-table runtime allocation conflicts at '+hex(at))
+        accepted=[raw]+[bytes.fromhex(old['after']) for old in asset.get('superseded_windows',()) if old['offset']==at]
+        if cp[at:at+len(raw)] not in accepted:raise ValueError('Six-table runtime allocation conflicts at '+hex(at))
+
+
+def preview_helper(cp):
+    """Replace an exact earlier reviewed preview helper image by the current one.
+
+    Other bytes are left alone for allocation() to reject. Callers pass a CP
+    whose native-photo hooks are not applied (see underlay).
+    """
+    from .device_layout import runtime
+    asset=runtime()
+    spec=next(row for row in asset['cp_sources'] if row['kind']=='fl23')
+    window=next(row for row in spec['windows'] if row['offset']==0xb27490)
+    at=window['offset'];current=bytes.fromhex(window['after'])
+    if not any(old['offset']==at and cp[at:at+len(current)]==bytes.fromhex(old['after']) for old in asset.get('superseded_windows',())):return cp
+    result=bytearray(cp);result[at:at+len(current)]=current
+    return bytes(result)
 
 
 def inspect(cp,baseline=None):
@@ -159,7 +177,7 @@ def update(cp,changes,baseline=None,*,allocation_proved=False):
             if baseline is None:raise ValueError('Fresh body ST records are required for native stages')
             blob=photobasis.compile_delta(baseline,delta)
             knobs[slot-1]=unpack(blob);mask|=1<<(slot-1)
-    result,_=build(underlay(cp) if state else cp,bank,knobs,active_mask=mask)
+    result,_=build(preview_helper(underlay(cp) if state else cp),bank,knobs,active_mask=mask)
     if len(result)!=len(cp) or result[0x20124:0x20154]!=cp[0x20124:0x20154]:
         raise ValueError('Native stages must preserve file length and loaded segment headers')
     inspect(result,bank)
